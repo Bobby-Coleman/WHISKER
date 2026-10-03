@@ -52,6 +52,19 @@ const CSS = `
 #hud .bars.on{display:block}
 #hud .bars div{position:absolute;background:#0d0e0e}
 #hud .preset{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+#hud .card{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);text-align:center;opacity:0;transition:opacity 1.6s;width:min(86vw,900px)}
+#hud .card .num{font-size:clamp(13px,1.5vw,17px);letter-spacing:.45em;opacity:.75;text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+#hud .card h2{font-weight:normal;font-size:clamp(30px,4.8vw,56px);letter-spacing:.16em;margin:.18em 0 0;text-transform:uppercase;text-shadow:0 2px 10px rgba(0,0,0,.45)}
+#hud .card p{margin:.7em auto 0;font-style:italic;opacity:.88;font-size:clamp(15px,1.7vw,21px);max-width:44em;text-shadow:0 1px 4px rgba(0,0,0,.55)}
+#hud .objective{position:absolute;left:18px;top:64px;font-size:14px;font-style:italic;opacity:0;transition:opacity 1.2s;text-shadow:0 1px 2px #000;max-width:min(46vw,420px)}
+#hud .objective:before{content:'';display:inline-block;width:16px;height:1px;background:currentColor;opacity:.6;vertical-align:middle;margin-right:8px}
+#hud .credits{pointer-events:auto;position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(20,22,22,.55),rgba(8,9,9,.88));opacity:0;visibility:hidden;transition:opacity 3s,visibility 0s 3s;text-align:center;padding:24px;box-sizing:border-box;overflow:auto}
+#hud .credits.on{opacity:1;visibility:visible;transition:opacity 3s}
+#hud .credits h1{font-weight:normal;font-size:clamp(34px,6vw,64px);letter-spacing:.2em;margin:0;text-transform:uppercase}
+#hud .credits .lines{margin:18px 0 26px;font-style:italic;font-size:clamp(16px,1.8vw,21px);line-height:1.6;opacity:.9}
+#hud .credits .roll{font:13px/1.7 Georgia,serif;opacity:.72;max-width:560px}
+#hud .credits .roll b{font-weight:normal;letter-spacing:.14em;text-transform:uppercase;font-size:11px;opacity:.8;display:block;margin-top:10px}
+#hud .credits button{margin-top:26px;font:15px Georgia,serif;background:rgba(236,232,222,.08);color:#ece8de;border:1px solid rgba(236,232,222,.4);border-radius:3px;padding:8px 18px;cursor:pointer}
 @media (max-width:600px){#hud .who{font-size:13px}}
 #hud.touch .msg{bottom:calc(196px + env(safe-area-inset-bottom,0px));max-width:min(80vw,560px)}
 #hud.touch .prompt{bottom:calc(250px + env(safe-area-inset-bottom,0px))}
@@ -67,6 +80,8 @@ export class Hud {
   private lastWho = '';
   private lastPrompt: string | null = '';
   private lastPreset = '';
+  private cardEl!: HTMLDivElement; private objEl!: HTMLDivElement; private creditsEl!: HTMLDivElement;
+  private cardTimer = 0; private lastObjective: string | null = null;
   begun = false;
   ready = false;
 
@@ -78,18 +93,23 @@ export class Hud {
       <div class="bars"><div class="l"></div><div class="r"></div><div class="t"></div><div class="b"></div></div>
       <div class="who"></div><div class="preset"></div>
       <div class="msg"></div><div class="prompt"></div>
+      <div class="card"><div class="num"></div><h2></h2><p></p></div>
+      <div class="objective"></div>
+      <div class="credits"><h1>Whisker</h1><div class="lines"></div><div class="roll"></div><button>Keep walking</button></div>
       <button class="btn" title="Settings and controls (H)">Settings &amp; controls</button>
       <div class="panel">
         <h3>Controls</h3>
         <table>
           <tr><td>WASD / stick</td><td>Move (camera-relative)</td></tr>
-          <tr><td>Shift / hold B</td><td>Walk</td></tr>
+          <tr><td>Shift / hold RB</td><td>Walk</td></tr>
           <tr><td>Mouse / right stick</td><td>Look (click to capture mouse, Esc to release)</td></tr>
           <tr><td>Wheel</td><td>Camera distance</td></tr>
           <tr><td>Tab / Y</td><td>Switch between kitten and knight</td></tr>
-          <tr><td>E / A</td><td>Interact (lift, pull, take)</td></tr>
-          <tr><td>Q / X</td><td>Companion waits or follows</td></tr>
-          <tr><td>R / Back</td><td>Reset both to the start</td></tr>
+          <tr><td>E / X</td><td>Interact (lift, pull, turn, take)</td></tr>
+          <tr><td>Q / B</td><td>Companion waits or follows</td></tr>
+          <tr><td>Space / A</td><td>Jump</td></tr>
+          <tr><td>G / LB</td><td>A hint for where you are stuck</td></tr>
+          <tr><td>R / Back</td><td>Back to where this chapter began</td></tr>
           <tr><td>1-4, 0</td><td>Review camera presets, 0 returns to play</td></tr>
           <tr><td>C</td><td>Clean render (no image treatment)</td></tr>
           <tr><td>F</td><td>4:3 reference framing</td></tr>
@@ -126,7 +146,7 @@ export class Hud {
           <label>Second environment (warm) <input type="checkbox" data-l="env2"></label>
           <label>Turntable <input type="checkbox" checked data-l="turn"></label>
         </div>
-        <p style="opacity:.6;font-size:12px;margin:12px 0 0">Whisker, first field prototype. Rendering: <span class="backend"></span>.</p>
+        <p style="opacity:.6;font-size:12px;margin:12px 0 0">Whisker. Skies and scanned surfaces: Poly Haven (CC0). Rendering: <span class="backend"></span>.</p>
       </div>
       <div class="title"><h1>Whisker</h1><p class="begin">${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} to begin</p><div class="loading"><div class="bar"><div class="fill"></div></div><div class="load">Preparing the moor…</div></div></div>`;
     document.getElementById('boot')?.remove();
@@ -134,6 +154,8 @@ export class Hud {
     const q = <T extends HTMLElement>(s: string) => this.root.querySelector(s) as T;
     this.msgEl = q('.msg'); this.promptEl = q('.prompt'); this.whoEl = q('.who'); this.panel = q('.panel'); this.title = q('.title'); this.bars = q('.bars'); this.presetEl = q('.preset');
     this.loadEl = q('.load'); this.fillEl = q('.fill');
+    this.cardEl = q('.card'); this.objEl = q('.objective'); this.creditsEl = q('.credits');
+    this.creditsEl.addEventListener('pointerdown', (e) => e.stopPropagation());
     q<HTMLButtonElement>('.btn').onclick = (e) => { e.stopPropagation(); this.togglePanel(); };
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.panel.querySelectorAll('input,select').forEach((el) => {
@@ -193,6 +215,31 @@ export class Hud {
     this.msgTimer = seconds;
   }
 
+  // Chapter card: numeral, title and one line, fading in over the play view and out again.
+  card(num: string, title: string, line = '', seconds = 6) {
+    (this.cardEl.querySelector('.num') as HTMLElement).textContent = num;
+    (this.cardEl.querySelector('h2') as HTMLElement).textContent = title;
+    (this.cardEl.querySelector('p') as HTMLElement).textContent = line;
+    this.cardEl.style.opacity = '1';
+    this.cardTimer = seconds;
+  }
+
+  // The current objective, small under the character name; null hides it.
+  objective(text: string | null) {
+    if (text === this.lastObjective) return;
+    this.lastObjective = text;
+    if (text) { this.objEl.textContent = text; this.objEl.style.opacity = '0.82'; } else this.objEl.style.opacity = '0';
+  }
+
+  // End credits over the world; the button returns to free play.
+  credits(lines: string[], roll: string, onClose: () => void) {
+    (this.creditsEl.querySelector('.lines') as HTMLElement).innerHTML = lines.map((l) => `<div>${l}</div>`).join('');
+    (this.creditsEl.querySelector('.roll') as HTMLElement).innerHTML = roll;
+    const b = this.creditsEl.querySelector('button') as HTMLButtonElement;
+    b.onclick = (e) => { e.stopPropagation(); this.creditsEl.classList.remove('on'); onClose(); };
+    this.creditsEl.classList.add('on');
+  }
+
   setPrompt(text: string | null) {
     if (text === this.lastPrompt) return;
     this.lastPrompt = text;
@@ -229,5 +276,6 @@ export class Hud {
 
   update(dt: number) {
     if (this.msgTimer > 0) { this.msgTimer -= dt; if (this.msgTimer <= 0) this.msgEl.style.opacity = '0'; }
+    if (this.cardTimer > 0) { this.cardTimer -= dt; if (this.cardTimer <= 0) this.cardEl.style.opacity = '0'; }
   }
 }

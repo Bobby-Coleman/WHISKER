@@ -1,17 +1,20 @@
 // Region graph navigation with per-character profiles. The field is open ground, so steering handles
 // rocks; this graph handles the places where scale matters (culvert, crawl gap, doors, the tower).
 import * as THREE from 'three/webgpu';
-import { YARD, CHAPEL, POCKET, TOWER, GATE, CULVERT, insideRect } from '../world/layout';
+import { YARD, CHAPEL, POCKET, TOWER, GATE, CULVERT, SLUICE, GATEHOUSE, insideRect } from '../world/layout';
 import { Kind } from '../chars/character';
 
-export type Region = 'field' | 'yard' | 'chapel' | 'pocket' | 'towerDown' | 'towerUp';
-export type NavState = { gateOpen: boolean; chapelOpen: boolean; towerOpen: boolean; groundY: (x: number, z: number) => number };
+export type Region = 'field' | 'yard' | 'chapel' | 'pocket' | 'towerDown' | 'towerUp' | 'hut' | 'gateBay';
+export type NavState = { gateOpen: boolean; chapelOpen: boolean; towerOpen: boolean; portOpen?: boolean; portHeld?: boolean; groundY: (x: number, z: number) => number };
 
 export function regionOf(p: THREE.Vector3): Region {
   const td = Math.hypot(p.x - TOWER.x, p.z - TOWER.z);
   if (td < TOWER.r - TOWER.wallT * 0.5) {
     return p.y > (window as any).__towerFloorY - 0.4 ? 'towerUp' : 'towerDown';
   }
+  if (Math.abs(p.x - SLUICE.hutX) < SLUICE.hut - 0.05 && Math.abs(p.z - SLUICE.hutZ) < SLUICE.hut - 0.05) return 'hut';
+  // Past the portcullis: the warden's bay and the last of the causeway toward the castle.
+  if (p.z < GATEHOUSE.z - 0.2 && Math.abs(p.x - GATEHOUSE.x) < 7) return 'gateBay';
   if (insideRect(p.x, p.z, CHAPEL) && p.z < CHAPEL.maxZ) return 'chapel';
   if (insideRect(p.x, p.z, POCKET)) return 'pocket';
   if (insideRect(p.x, p.z, YARD)) return 'yard';
@@ -26,6 +29,11 @@ const PORTALS: Portal[] = [
   { a: 'yard', b: 'chapel', pa: [CHAPEL.doorX, CHAPEL.maxZ + 1.2], pb: [CHAPEL.doorX, CHAPEL.maxZ - 1.2], kinds: ['knight', 'kitten'], open: (s) => s.chapelOpen },
   { a: 'yard', b: 'pocket', pa: [POCKET.maxX + 0.9, POCKET.gapZ], pb: [POCKET.maxX - 0.7, POCKET.gapZ], kinds: ['kitten'], open: () => true },
   { a: 'field', b: 'towerDown', pa: [TOWER.x + TOWER.r + 1.2, TOWER.z], pb: [TOWER.x + TOWER.r - 1.3, TOWER.z], kinds: ['knight', 'kitten'], open: (s) => s.towerOpen },
+  // The sluice hut's hatch admits only the kitten.
+  { a: 'field', b: 'hut', pa: [SLUICE.hutX + SLUICE.hut + 0.75, SLUICE.hutZ], pb: [SLUICE.hutX + SLUICE.hut - 0.5, SLUICE.hutZ], kinds: ['kitten'], open: () => true },
+  // The warden's gate: open to both once the counterweight has fallen; to the kitten while the knight holds it up.
+  { a: 'field', b: 'gateBay', pa: [GATEHOUSE.x, GATEHOUSE.z + 1.2], pb: [GATEHOUSE.x, GATEHOUSE.z - 1.2], kinds: ['knight', 'kitten'], open: (s) => !!s.portOpen },
+  { a: 'field', b: 'gateBay', pa: [GATEHOUSE.x + 0.55, GATEHOUSE.z + 1.0], pb: [GATEHOUSE.x + 0.55, GATEHOUSE.z - 1.2], kinds: ['kitten'], open: (s) => !!s.portHeld },
 ];
 
 // Returns the next point to steer toward, or null when this character has no route.

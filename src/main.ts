@@ -1,6 +1,6 @@
 // Whisker: first field prototype. Bootstraps rendering, world, characters and play.
 import * as THREE from 'three/webgpu';
-import { createSky, createEnvironment, createLights, setupFog, createMistCards } from './world/atmosphere';
+import { createSky, createEnvironment, createLights, setupFog, createMistCards, MIST_CARDS } from './world/atmosphere';
 import { createTerrain, createDistantWater, terrainMaterial, photoTerrainMaterial } from './world/terrain';
 import { preloadSurfaces } from './world/surfaces';
 import { bakeFieldMaps } from './world/ground';
@@ -23,13 +23,15 @@ import { PlayerController, CompanionController } from './game/controllers';
 import { CameraRig } from './game/camera';
 import { KeyboardMouseGamepad } from './game/input';
 import { Puzzles } from './game/puzzles';
+import { Story } from './game/story';
+import { createCauseway } from './world/causeway';
 import { regionOf } from './game/nav';
 import { Soundscape } from './audio/audio';
 import { Hud } from './ui/hud';
 import { LoadTracker, nextPaint } from './ui/loading';
 import { StatsPanel } from './ui/stats';
 import { downloads } from './chars/binfile';
-import { SPAWN, FIELD, heightAt, wetness } from './world/layout';
+import { SPAWN, FIELD, MARSH, GATEHOUSE, heightAt, wetness } from './world/layout';
 import { Simplex2 } from './world/noise';
 
 // Older WebGPU implementations reject the default 'rgba' view swizzle string; it is an identity, so drop it.
@@ -161,6 +163,9 @@ async function main() {
   const physics = new PhysicsWorld();
   const structures = createStructures(physics);
   fieldRoot.add(structures.root);
+  const causeway = createCauseway(physics);
+  fieldRoot.add(causeway.root);
+  causeway.setWater(MARSH.floorY + MARSH.flood);
   load.progress('world', 0.7);
   await nextPaint();
   let veg = createVegetation(tier.grassDensity, tier.grassRadius);
@@ -205,8 +210,20 @@ async function main() {
   const input = new KeyboardMouseGamepad(renderer.domElement);
   input.onTouchMode = () => hud.setTouch();
   if (matchMedia('(pointer: coarse)').matches) input.enterTouchMode();
-  const puzzles = new Puzzles(structures, physics, kitten, knight, (t) => hud.say(t), (n, p, g) => audio.play(n, p, g));
-  (puzzles as any).onPlacedOnSill = () => { companions.get(kitten)!.mode = 'wait'; hud.say('The kitten is on the ledge.'); };
+  let story: Story | null = null;
+  const say = (t: string, d?: number) => (story ? story.feedback(t, d) : hud.say(t, d));
+  const puzzles = new Puzzles(structures, physics, kitten, knight, (t) => say(t), (n, p, g) => audio.play(n, p, g), causeway);
+  (puzzles as any).onPlacedOnSill = () => { companions.get(kitten)!.mode = 'wait'; say('The kitten is on the ledge.'); };
+  const placePair = (k: THREE.Vector3, n: THREE.Vector3, yaw: number) => {
+    for (const [c, p] of [[kitten, k], [knight, n]] as const) {
+      c.body.pos.copy(p); c.body.prevPos.copy(p); c.body.yaw = c.body.prevYaw = yaw; c.body.vel.set(0, 0, 0); c.body.vy = 0;
+      c.carriedBy = null; c.holding = null;
+      c.resetPose(ground);
+    }
+    kitten.resetCloth();
+    for (const cc of companions.values()) cc.mode = 'follow';
+  };
+  story = new Story(hud, rig, puzzles, photoSky ? weather : null, scene, causeway, placePair);
 
   // Prime poses and cloth before the first frame.
   const ctx0: PoseContext = { dt: 1 / 60, time: 0, ground, lookAt: null, active: true };
@@ -347,6 +364,9 @@ async function main() {
     skip: () => { started = true; rig.revealT = rig.revealDur; },
     clean: (on: boolean) => hudCb.onClean(on),
     interact: () => puzzles.interact(active),
+    story: () => story,
+    chapter: (i: number) => story!.jump(i),
+    causeway,
     switchChar: () => switchChar(),
     wait: () => toggleWait(),
     camYaw: (y: number, p = 0.2) => { rig.yaw = y; rig.pitch = p; },
@@ -401,7 +421,7 @@ async function main() {
   W.__stats = stats;
 
   function physicsStep(inp: ReturnType<typeof input.poll>, playing: boolean) {
-    const pc = playing && !puzzles.busy.has(active) && !active.carriedBy;
+    const pc = playing && !puzzles.busy.has(active) && !active.carriedBy && !rig.moment;
     player.update(active, inp, rig.yaw, H, pc);
     const cc = companions.get(companion)!;
     if (!puzzles.busy.has(companion)) cc.update(companion, active, physics, puzzles.nav, H, clockT, (p) => rig.isVisible(p));
@@ -432,7 +452,7 @@ async function main() {
     void keys;
     if (mode === 'field' && rig.mode === 'reveal') {
       if (!started) rig.updateReveal(0, kitten, knight); // hold the opening shot behind the title
-      if (started && rig.updateReveal(dt, kitten, knight)) { rig.endReveal(active); hud.say(input.touchMode ? 'The Switch button changes between the kitten and the knight.' : 'Tab switches between the kitten and the knight.', 5); }
+      if (started && rig.updateReveal(dt, kitten, knight)) { rig.endReveal(active); story!.begin(input.touchMode ? 'The Switch button changes between the kitten and the knight.' : 'Tab switches between the kitten and the knight. G gives a hint.'); }
       if (started && inp.skipPressed && rig.revealT > 0.4) rig.revealT = rig.revealDur;
       inp = { ...inp, move: new THREE.Vector2() };
     }
@@ -441,12 +461,16 @@ async function main() {
       if (inp.switchPressed) switchChar();
       if (inp.waitPressed) toggleWait();
       if (inp.interactPressed) puzzles.interact(active);
-      if (inp.resetPressed) { placeAtSpawn(); kitten.resetCloth(); hud.say('The pair returns to where they began.', 2.5); }
+      if (inp.hintPressed) story!.hint();
+      if (inp.resetPressed) {
+        if (story!.started) story!.checkpoint(); else { placeAtSpawn(); kitten.resetCloth(); }
+        hud.say('The pair returns to where this part began.', 2.5);
+      }
     }
     acc += Math.min(dt, 0.1);
     while (acc >= H) { physicsStep(inp, playing); acc -= H; }
     const alpha = acc / H;
-    if (mode === 'field') puzzles.update(dt, active);
+    if (mode === 'field') { puzzles.update(dt, active); story!.update(dt, playing && !rig.moment); }
     // Turntable in the lab.
     if (mode === 'lab') {
       if (turntable) labYaw += dt * 0.35;
@@ -483,7 +507,7 @@ async function main() {
       rig.updatePreset(kitten, knight);
     } else if (rig.mode === 'play') {
       const moving = Math.hypot(active.body.vel.x, active.body.vel.z) > 0.3;
-      rig.update(dt, active, companion, inp.look, inp.zoom, physics, moving);
+      if (!rig.updateMoment(dt)) rig.update(dt, active, companion, inp.look, inp.zoom, physics, moving);
     }
     // Shadow frustum follows the camera's subject, snapped to texels to avoid shimmer.
     const focus = mode === 'lab' ? new THREE.Vector3(0, 0, 0) : active.group.position;
@@ -504,6 +528,11 @@ async function main() {
       veg.update(camera);
       grass.update(camera);
       mist.update(clockT, camera, heightAt, active.group.position);
+      // Under a roof or between walls (the hut, chapel, tower, the gate passage), the mist cards ease out.
+      const ap = active.body.pos, rg = regionOf(ap);
+      const enclosed = rg === 'hut' || rg === 'chapel' || rg === 'towerDown' || rg === 'towerUp' || rg === 'pocket'
+        || (Math.abs(ap.x - GATEHOUSE.x) < 2.2 && ap.z < GATEHOUSE.z + 3 && ap.z > GATEHOUSE.innerZ - 0.5);
+      MIST_CARDS.amount.value += ((enclosed ? 0 : 1) - MIST_CARDS.amount.value) * Math.min(1, dt * 1.5);
       spray.update(WIND.gust);
     }
     audio.listener.copy(camera.position);

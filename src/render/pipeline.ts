@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   pass, Fn, vec2, vec3, vec4, float, uv, mix, dot, clamp, smoothstep, fract, sin, floor, renderOutput, convertToTexture,
   max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity, metalness, roughness, normalView,
-  directionToColor, colorToDirection, sample, blendColor,
+  packNormalToRGB, unpackRGBToNormal, sample, blendColor,
 } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
@@ -102,7 +102,7 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   const useSSR = !!opts.ssr && taa;
   const targets: Record<string, any> = { output, metal: vec2(metalness, roughness) };
   if (taa) targets.velocity = velocity;
-  if (useSSR) targets.normal = directionToColor(normalView);
+  if (useSSR) targets.normal = packNormalToRGB(normalView);
   scenePass.setMRT(mrt(targets));
   if (useSSR) scenePass.getTexture('normal').type = THREE.UnsignedByteType;
   const sceneColor = scenePass.getTextureNode('output');
@@ -124,7 +124,7 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   let ssrNode: any = null;
   if (useSSR) {
     const nrm: any = scenePass.getTextureNode('normal');
-    const sceneNormal = sample((st: any) => colorToDirection(nrm.sample(st)));
+    const sceneNormal = sample((st: any) => unpackRGBToNormal(nrm.sample(st)));
     ssrNode = ssr(sceneColor, scenePass.getTextureNode('depth'), sceneNormal, { metalnessNode: metalTex.r, roughnessNode: metalTex.g, camera });
     ssrNode.resolutionScale = 0.5;
     ssrNode.maxDistance.value = 6;

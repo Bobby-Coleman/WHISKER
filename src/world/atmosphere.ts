@@ -110,6 +110,10 @@ export function createLights(scene: THREE.Scene, shadowSize: number) {
   return { sun, hemi };
 }
 
+// Strength of the mist cards (0..1): eased to 0 while the active character is under a roof or between walls, where a
+// card floating between the camera and the walls reads as a ghost rather than as mist.
+export const MIST_CARDS = { amount: uniform(1) };
+
 // Soft camera-facing mist cards drifting low over the field. One instanced draw: the cards share one colour, so
 // their blending does not depend on draw order. Cards out of view, or too near or far to show, are skipped.
 export function createMistCards(count: number) {
@@ -129,7 +133,7 @@ export function createMistCards(count: number) {
     const d = length(wp.sub(cameraPosition));
     const nearFade = smoothstep(2.5, 9.0, d);
     const farFade = float(1).sub(smoothstep(70, 120, d));
-    const a: any = edge.mul(n).mul(nearFade).mul(farFade).mul(0.2).mul(LOOK.mistAmount).mul(LOOK.fogEnabled);
+    const a: any = edge.mul(n).mul(nearFade).mul(farFade).mul(0.2).mul(LOOK.mistAmount).mul(LOOK.fogEnabled).mul(MIST_CARDS.amount);
     return vec4(LOOK.fogColor.mul(1.06), a);
   });
   mat.colorNode = tex();

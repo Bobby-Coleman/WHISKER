@@ -34,7 +34,8 @@ export const CASTLE = { x: -95, z: -430 };
 // The drowned hollow between the moor and the castle (chapters IV and V): a marsh crossed by a raised stone causeway.
 // The sluice on its east bank lets the marsh drain into the low ground; the warden's gatehouse stands on the
 // causeway at its far side. Heights are set relative to the marsh floor (computed below).
-export const MARSH = { x: -50, z: -84, rx: 22, rz: 27, fall: 7, floorY: 0, flood: 0.95, drained: 0.18 };
+// Flooded, the water stands 0.6 m over the causeway: thigh-deep on the knight, past what he will wade in plate.
+export const MARSH = { x: -50, z: -84, rx: 22, rz: 27, fall: 7, floorY: 0, flood: 1.15, drained: 0.18 };
 export const CAUSEWAY: { x: number; z: number }[] = [{ x: -46.5, z: -55 }, { x: -48.6, z: -80 }, { x: -51.2, z: -104 }, { x: -52.6, z: -118 }];
 export const CAUSEWAY_HALF = 1.2, CAUSEWAY_TOP = 0.55;
 export const SLUICE = { x: -27.4, z: -84, chanHalf: 0.75, chanX1: -17, hutX: -26.2, hutZ: -86.9, hut: 0.95 };

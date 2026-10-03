@@ -1,0 +1,7 @@
+[
+  { "label": "begin", "js": "(() => { const t = document.querySelector('#hud .title'); t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return 'clicked'; })()", "wait": 1500 },
+  { "label": "skip reveal", "js": "(() => { __kk.skip(); return 'ok'; })()", "wait": 2500 },
+  { "js": "__kk.story().chapter", "out": "s01_prologue.png", "wait": 6000 },
+  { "js": "document.querySelector('#hud .msg').textContent", "out": "s02_line.png", "wait": 16000 },
+  { "js": "__kk.story().chapter", "out": "s03_chapter1.png", "wait": 500 }
+]

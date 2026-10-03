@@ -1,8 +1,11 @@
-// Scripted play-test through the debug API: movement, companion, switching and all three puzzles.
+// Scripted play-test through the debug API: movement, companion, switching, the first three puzzles and the story
+// around them (chapter cards, trust, the kitten refusing to be lifted until she trusts the knight). The marsh chapters
+// have their own plan (tools/plans/marsh.json, run with tools/cap.mjs).
+// Usage: node playtest.mjs [url]. Uses installed Chrome on this machine's GPU (CHROME=path overrides it).
 import { chromium } from 'playwright-core';
-const url = process.argv[2] || 'http://localhost:4173/?still&q=low';
-const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader'];
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args });
+const url = process.argv[2] || 'http://127.0.0.1:5173/?still&q=low';
+const args = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--force_high_performance_gpu'];
+const browser = await chromium.launch({ executablePath: process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe', args });
 const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
 const errs = [];
 page.on('pageerror', e => errs.push('pageerror: ' + e.message));
@@ -12,13 +15,15 @@ const t0 = Date.now();
 while (Date.now() - t0 < 240000) { if (await page.evaluate(() => window.__done || window.__error)) break; await new Promise(r => setTimeout(r, 500)); }
 const ev = (js) => page.evaluate(js);
 const st = async (label) => {
-  const s = await ev(`(() => { const s = __kk.state(); const r = v => v.map(x => +x.toFixed(2)); return JSON.stringify({ active: s.active, k: r(s.kpos), n: r(s.npos), region: s.region, comp: s.comp, prompt: s.prompt, p: Object.entries(s.puzzles).filter(([k, v]) => v).map(([k]) => k).join(',') }); })()`);
+  const s = await ev(`(() => { const s = __kk.state(); const r = v => v.map(x => +x.toFixed(2)); const st = __kk.story(); return JSON.stringify({ active: s.active, k: r(s.kpos), n: r(s.npos), region: s.region, comp: s.comp, prompt: s.prompt, ch: st.chapter, trust: st.trust, msg: document.querySelector('#hud .msg').textContent.slice(0, 70), p: Object.entries(s.puzzles).filter(([k, v]) => v).map(([k]) => k).join(',') }); })()`);
   console.log(label.padEnd(34), s);
 };
 const shot = async (name) => { await ev('__kk.render(); 1'); await new Promise(r => setTimeout(r, 3500)); await page.screenshot({ path: 'caps/' + name, timeout: 120000 }); console.log('shot', name); };
 
 await ev('__kk.skip(); __kk.step(10); __kk.camYaw(0, 0.25); 1');
 await st('start');
+await ev('__kk.switchChar(); __kk.teleport("knight", 0.2, 6.6, Math.PI); __kk.teleport("kitten", 0.2, 5.9, 0); __kk.step(2); __kk.interact(); __kk.step(6); __kk.switchChar(); 1');
+await st('knight tries to lift (trust 0)');
 // A. Run north for four seconds; the knight should follow.
 await ev('__kk.simMove(0, 1, 4); __kk.step(120); 1'); await st('after 4 s run north');
 await ev('__kk.step(60); 1'); await st('settled 2 s');
@@ -47,7 +52,8 @@ await ev('__kk.step(90); 1'); await st('chapel opening');
 await ev('__kk.teleport("kitten", 7, -59.3, Math.PI); __kk.step(2); __kk.interact(); __kk.step(10); 1'); await st('shield');
 // F. Tower: lift, place on the sill, rope, bar.
 await ev('__kk.teleport("kitten", -28.8, -18.6, 0); __kk.teleport("knight", -28.6, -17.6, Math.PI); __kk.switchChar(); __kk.step(2); 1'); await st('tower approach');
-await ev('__kk.interact(); __kk.step(45); 1'); await shot('pt_lift.png'); await st('lifted');
+await ev('__kk.step(900); 1'); await st('story caught up');
+await ev('__kk.interact(); __kk.step(45); 1'); await shot('pt_lift.png'); await st('lifted (trust >= 2 by now)');
 await ev('__kk.teleport("knight", -34, -17.25, Math.PI); __kk.step(4); 1'); await st('knight at sill');
 await ev('__kk.interact(); __kk.step(90); 1'); await st('placed on sill');
 await ev('__kk.switchChar(); __kk.step(4); 1'); await st('kitten on sill');

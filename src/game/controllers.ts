@@ -6,6 +6,7 @@ import { GAME } from '../render/settings';
 import { PhysicsWorld, MASK } from './physics';
 import { InputFrame } from './input';
 import { regionOf, nextWaypoint, NavState } from './nav';
+import { waterDepthAt } from '../world/layout';
 
 export const PROFILES = {
   // Both respond at once; the knight carries a little more momentum through stops and turns, the kitten less.
@@ -155,7 +156,8 @@ export class CompanionController {
         p.y = physics.groundAt(p.x, p.z, leader.body.pos.y + 0.5);
         const o = { x: 0, z: 0 };
         const blocked = physics.resolve(p.x, p.z, b.radius, p.y + 0.1, p.y + b.height, mask, o);
-        if (!blocked && regionOf(p) === leadRegion && !isVisible(b.pos) && !isVisible(p)) {
+        const tooDeep = physics.waterLevel > -1e8 && waterDepthAt(p.x, p.z, physics.waterLevel, p.y) > physics.wadeDepth[c.kind] * 0.8;
+        if (!blocked && !tooDeep && regionOf(p) === leadRegion && !isVisible(b.pos) && !isVisible(p)) {
           b.pos.copy(p); b.prevPos.copy(p); b.vel.set(0, 0, 0);
           c.resetPose(physics.groundAt.bind(physics) as any);
           this.stuckT = 0; this.recoveries++; this.status = 'recovered';

@@ -21,6 +21,9 @@ export class Knight extends Character {
   swordBlend = 0; // 0 presented before the chest, 1 carried on the shoulder
   backBlend = 0; // sword slung on the back while the arms hold the kitten
   carryPose = 0; // 0..1 arms raised to hold the kitten
+  // Both hands on something in the world (a wheel's handles, a portcullis bar): blends toward reachL/reachR (world).
+  reach = 0; reachWant = 0;
+  reachL = new THREE.Vector3(); reachR = new THREE.Vector3();
   private moveTimer = 0;
   private lookYaw = 0; private lookPitch = 0;
   private idleShift = 0;
@@ -229,7 +232,7 @@ export class Knight extends Character {
   update(_dt: number, _ctx: PoseContext) {}
 
   protected crouchAmount(speed: number) {
-    return 0.006 + 0.026 * Math.min(1, speed / GAME.runSpeed) + this.carryPose * 0.02;
+    return 0.006 + 0.026 * Math.min(1, speed / GAME.runSpeed) + this.carryPose * 0.02 + this.reach * 0.05;
   }
 
   protected poseUpper(ctx: PoseContext) {
@@ -264,7 +267,8 @@ export class Knight extends Character {
     if (speed > 0.25) this.moveTimer = Math.min(this.moveTimer + dt, 1); else this.moveTimer = Math.max(this.moveTimer - dt * 0.8, 0);
     const wantCarried = this.moveTimer > 0.15 ? 1 : 0;
     this.swordBlend += (wantCarried - this.swordBlend) * Math.min(1, dt * 4.0);
-    this.backBlend += ((this.holding ? 1 : 0) - this.backBlend) * Math.min(1, dt * 3.5);
+    this.backBlend += ((this.holding || this.reachWant > 0.5 ? 1 : 0) - this.backBlend) * Math.min(1, dt * 3.5);
+    this.reach += (this.reachWant - this.reach) * Math.min(1, dt * 4);
     this.carryPose += ((this.holding ? 1 : 0) - this.carryPose) * Math.min(1, dt * 4);
     const sm = (x: number) => { const c = THREE.MathUtils.clamp(x, 0, 1); return c * c * (3 - 2 * c); };
     // Move out to the shoulder first, then tip back, so the blade never passes through the helm.
@@ -307,6 +311,13 @@ export class Knight extends Character {
       this.armR.target.lerp(hold.clone().add(new THREE.Vector3(-0.07, 0, 0)), c);
       this.armL.pole.lerp(new THREE.Vector3(1, -1, 0), c);
       this.armR.pole.lerp(new THREE.Vector3(-1, -1, 0), c);
+    }
+    if (this.reach > 0.001) {
+      const c = sm(this.reach);
+      this.armL.target.lerp(this.toLocal(this.reachL, new THREE.Vector3()), c);
+      this.armR.target.lerp(this.toLocal(this.reachR, new THREE.Vector3()), c);
+      this.armL.pole.lerp(new THREE.Vector3(1, -0.7, -0.3), c);
+      this.armR.pole.lerp(new THREE.Vector3(-1, -0.7, -0.3), c);
     }
     this.poseSkirt(ctx);
   }

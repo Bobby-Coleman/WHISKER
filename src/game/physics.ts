@@ -10,9 +10,10 @@ export type Collider =
   | { id?: string; kind: 'circle'; x: number; z: number; r: number; yMin: number; yMax: number; mask: number; enabled: boolean }
   | { id?: string; kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number; yMin: number; yMax: number; mask: number; enabled: boolean };
 
+// A platform with a mask carries only those characters (a beam that holds a kitten and not a knight in plate).
 export type Platform =
-  | { id?: string; kind: 'circle'; x: number; z: number; r: number; top: number }
-  | { id?: string; kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number; top: number };
+  | { id?: string; kind: 'circle'; x: number; z: number; r: number; top: number; mask?: number }
+  | { id?: string; kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number; top: number; mask?: number };
 
 export class PhysicsWorld {
   colliders: Collider[] = [];
@@ -41,10 +42,11 @@ export class PhysicsWorld {
   }
   get(id: string) { return this.colliders.find((c) => c.id === id); }
 
-  groundAt(x: number, z: number, feetY = Infinity, step = 0.3) {
+  groundAt(x: number, z: number, feetY = Infinity, step = 0.3, mask: number = MASK.all) {
     let g = heightAt(x, z);
     for (const p of this.platforms) {
       if (p.top > feetY + step) continue;
+      if (p.mask !== undefined && (p.mask & mask) === 0) continue;
       if (!insidePlatform(p, x, z)) continue;
       g = Math.max(g, p.top);
     }
@@ -112,7 +114,7 @@ export class PhysicsWorld {
       if (d < m && d > 1e-6) { out.x = o.x + (dx / d) * m; out.z = o.z + (dz / d) * m; }
     }
     // Step height and slope limit: refuse moves onto ground that rises too sharply.
-    const gNew = this.groundAt(out.x, out.z, body.pos.y, step);
+    const gNew = this.groundAt(out.x, out.z, body.pos.y, step, mask);
     if (gNew - body.pos.y > step) { out.x = body.pos.x; out.z = body.pos.z; }
     // Deep water: refuse a step that goes deeper than this character can wade (stepping back out is always allowed).
     if (this.waterLevel > -1e8) {
@@ -123,7 +125,7 @@ export class PhysicsWorld {
     // Keep velocity consistent with the resolved motion so animation matches travel.
     if (dt > 0) { body.vel.x = (out.x - body.pos.x) / dt; body.vel.z = (out.z - body.pos.z) / dt; }
     body.pos.x = out.x; body.pos.z = out.z;
-    const g = this.groundAt(body.pos.x, body.pos.z, body.pos.y, step);
+    const g = this.groundAt(body.pos.x, body.pos.z, body.pos.y, step, mask);
     // Airborne when above the ground or launched upward (a jump); otherwise snapped to it.
     if (body.pos.y > g + 0.02 || body.vy > 0.01) {
       body.vy -= 9.8 * dt;
