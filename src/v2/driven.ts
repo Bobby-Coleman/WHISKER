@@ -19,6 +19,7 @@ export type Proportions = {
   frames: Partial<Record<PartName, Frame>>;
   hipRatio: number; // the library's hip height over this character's
   speeds: { walk: number; jog: number; sprint: number };
+  stance?: number; // at rest the feet come in toward each other by this factor
 };
 
 const mirror = (f: Frame): Frame => ({
@@ -63,6 +64,7 @@ export const KNIGHT_PROPS: Proportions = {
   }),
   hipRatio: 0.917 / 0.961,
   speeds: { walk: 1.45, jog: 3.2, sprint: 5.4 },
+  stance: 0.6, // he stands with his feet nearer together than the library's idle
 };
 
 // The kitten: hips 0.108 m, thigh 0.05, shin 0.048, shoulders 0.047 out at 0.194, upper arm 0.046, long forearms
@@ -111,7 +113,7 @@ export class DrivenAvatar {
     this.kind = char.kind;
     this.anim = new SkinnedAvatar({
       kind: char.kind, url: 'chars/mannequin.glb', radius: char.body.radius, height: char.body.height, body: char.body,
-      hipRatio: props.hipRatio, speeds: props.speeds, setup: (model) => this.setup(model),
+      hipRatio: props.hipRatio, speeds: props.speeds, stance: props.stance, setup: (model) => this.setup(model),
     });
     this.group.name = `${char.kind}_driven`;
     this.group.add(this.anim.group, char.group);

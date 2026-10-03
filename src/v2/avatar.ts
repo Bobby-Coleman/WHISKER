@@ -6,6 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CharacterBody, PoseContext } from '../chars/character';
+import { solveTwoBone } from '../chars/rig';
 
 const loader = new GLTFLoader();
 let library: Promise<Map<string, THREE.AnimationClip>> | null = null;
@@ -43,10 +44,13 @@ export type AvatarSpec = {
   speeds?: { walk: number; jog: number; sprint: number };
   setup?: (model: THREE.Object3D) => void;
   body?: CharacterBody; // share another visual's gameplay body (driven.ts)
+  // At rest the feet come in toward each other by this factor (1: as the clip stands).
+  stance?: number;
 };
 
 type Layered = { lower: THREE.AnimationAction; upper: THREE.AnimationAction; dur: number; offset: number };
 const LOCO = ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'] as const;
+const _ik = { r: new THREE.Vector3(), q: new THREE.Quaternion(), w: new THREE.Quaternion(), p: new THREE.Quaternion() };
 
 export class SkinnedAvatar {
   kind: 'kitten' | 'knight';
@@ -254,8 +258,77 @@ export class SkinnedAvatar {
     // Idle, the air and landing loops and one-shots run on the mixer's clock.
     this.mixer.update(dt);
     this.model.updateMatrixWorld(true);
+    this.footIK(ctx, dt, wi * locoW, ground);
     this.lookAt(ctx, dt);
     this.footsteps(sp);
+  }
+
+  // Feet on the ground. The clips are made on flat ground, so each foot goes to the ground under it (a step, a slope)
+  // and the hips come down when a foot has to reach below; at rest the stance can narrow. Two-bone IK on thigh and
+  // calf; the foot keeps its animated orientation. Fades out in the air.
+  private footOff = [0, 0];
+  private hipOff = 0;
+  private footIK(ctx: PoseContext, dt: number, idleW: number, w: number) {
+    const pelvis = this.bones.get('pelvis');
+    if (!pelvis || w < 0.01) { this.hipOff *= 0.8; return; }
+    const legs = [['thigh_l', 'calf_l', 'foot_l'], ['thigh_r', 'calf_r', 'foot_r']].map((n) => n.map((b) => this.bones.get(b)!));
+    if (legs.some((l) => l.some((b) => !b))) return;
+    const root = this.group.position;
+    const right = _ik.r.set(Math.cos(this.renderYaw), 0, -Math.sin(this.renderYaw));
+    const narrow = THREE.MathUtils.lerp(1, this.spec.stance ?? 1, idleW);
+    const k = Math.min(1, dt * 14);
+    const targets: THREE.Vector3[] = [];
+    let low = 0;
+    legs.forEach(([th, ca, ft], i) => {
+      const H = th.getWorldPosition(new THREE.Vector3()), K = ca.getWorldPosition(new THREE.Vector3()), A = ft.getWorldPosition(new THREE.Vector3());
+      const len = H.distanceTo(K) + K.distanceTo(A);
+      const g = ctx.ground(A.x, A.z);
+      const off = THREE.MathUtils.clamp(g - root.y, -0.45 * len, 0.45 * len);
+      this.footOff[i] += (off - this.footOff[i]) * k;
+      low = Math.min(low, this.footOff[i]);
+      // The stance: the foot's sideways offset from the body's centre line, drawn in at rest.
+      const side = (A.x - root.x) * right.x + (A.z - root.z) * right.z;
+      const T = A.clone().addScaledVector(right, side * (narrow - 1));
+      T.y += this.footOff[i];
+      targets.push(T);
+    });
+    this.hipOff += (low * w - this.hipOff) * k;
+    // Hips down.
+    const pw = pelvis.getWorldPosition(new THREE.Vector3());
+    pw.y += this.hipOff;
+    pelvis.position.copy(pelvis.parent!.worldToLocal(pw));
+    pelvis.updateMatrixWorld(true);
+    legs.forEach(([th, ca, ft], i) => {
+      const H = th.getWorldPosition(new THREE.Vector3()), K = ca.getWorldPosition(new THREE.Vector3()), A = ft.getWorldPosition(new THREE.Vector3());
+      const T = targets[i];
+      // Blend from the clip's foot toward the target by the IK weight.
+      const Aw = A.clone().lerp(T, w);
+      const l1 = H.distanceTo(K), l2 = K.distanceTo(A);
+      const footQ = ft.getWorldQuaternion(new THREE.Quaternion());
+      // The knee keeps bending the way the clip bends it.
+      const axis = A.clone().sub(H).normalize();
+      const pole = K.clone().sub(H).addScaledVector(axis, -K.clone().sub(H).dot(axis));
+      if (pole.lengthSq() < 1e-8) pole.set(Math.sin(this.renderYaw), 0, Math.cos(this.renderYaw));
+      const K2 = new THREE.Vector3();
+      const end = solveTwoBone(H, Aw, l1, l2, pole, K2);
+      this.aim(th, K.clone().sub(H), K2.clone().sub(H));
+      const A1 = ft.getWorldPosition(new THREE.Vector3());
+      this.aim(ca, A1.sub(K2), end.clone().sub(K2));
+      // The foot as the clip turned it.
+      const cq = ca.getWorldQuaternion(new THREE.Quaternion());
+      ft.quaternion.copy(cq.invert().multiply(footQ));
+      ft.updateMatrixWorld(true);
+    });
+  }
+
+  // Turns a bone (in world space) so that a direction it carries, `from`, points along `to`.
+  private aim(b: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
+    if (from.lengthSq() < 1e-10 || to.lengthSq() < 1e-10) return;
+    const q = _ik.q.setFromUnitVectors(from.normalize(), to.normalize());
+    const wq = b.getWorldQuaternion(_ik.w);
+    const pq = b.parent!.getWorldQuaternion(_ik.p);
+    b.quaternion.copy(pq.invert().multiply(q.multiply(wq)));
+    b.updateMatrixWorld(true);
   }
 
   // The head turns toward a point of interest (the other character), within a comfortable range.

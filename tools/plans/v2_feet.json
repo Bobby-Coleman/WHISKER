@@ -1,0 +1,8 @@
+[
+  { "label": "idle", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.teleport('knight', 0.3, 0.436, -2.2, 0.0); __v2.teleport('kitten', -0.6, 0.436, -1.6, 0.0); __v2.setActive('knight'); __v2.camYaw(0.0, 0.05); __v2.game.camera.zoom = 0.8; return 1; })()", "wait": 3000 },
+  { "js": "1", "out": "ft_1_idle.png", "wait": 100 },
+  { "label": "slope", "js": "(() => { __v2.teleport('knight', 7, 1.0, -4.6, Math.PI / 2); __v2.camYaw(Math.PI / 2 + 0.3, 0.1); __v2.game.camera.zoom = 0.75; return JSON.stringify(__v2.state().knight.pos); })()", "wait": 2500 },
+  { "js": "JSON.stringify(__v2.state().knight.pos)", "out": "ft_2_slope.png", "wait": 100 },
+  { "label": "kitten slope", "js": "(() => { __v2.teleport('kitten', 6.6, 1.0, -4.4, Math.PI / 2); __v2.setActive('kitten'); __v2.camYaw(Math.PI / 2 + 0.3, 0.1); __v2.game.camera.zoom = 0.6; return 1; })()", "wait": 2500 },
+  { "js": "1", "out": "ft_3_kitten_slope.png", "wait": 100 }
+]
