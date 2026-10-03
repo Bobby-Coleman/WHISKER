@@ -1,0 +1,14 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.setActive('knight'); __v2.teleport('knight', 2, 0.436, -1, Math.PI); __v2.camYaw(-2.2, 0.15); return JSON.stringify(__v2.state().knight); })()", "wait": 1500 },
+  { "js": "1", "out": "ual_1_idle.png", "wait": 100 },
+  { "label": "walk", "js": "(() => { __v2.camYaw(-2.0, 0.12); __v2.simMove(0, 0.35, 3); return 1; })()", "wait": 1200 },
+  { "js": "JSON.stringify(__v2.state().knight.vel)", "out": "ual_2_walk.png", "wait": 100 },
+  { "label": "run", "js": "(() => { __v2.teleport('knight', 2, 0.436, -1, Math.PI); __v2.simMove(0, 1, 3); return 1; })()", "wait": 1100 },
+  { "js": "JSON.stringify(__v2.state().knight.vel)", "out": "ual_3_run.png", "wait": 100 },
+  { "label": "jump", "js": "(() => { __v2.teleport('knight', 2, 0.436, -1, Math.PI); __v2.simMove(0, 1, 2, true); setTimeout(() => __v2.jump(), 500); return 1; })()", "wait": 780 },
+  { "js": "JSON.stringify(__v2.state().knight)", "out": "ual_4_jump.png", "wait": 100 },
+  { "label": "lift", "js": "(() => { __v2.simMove(0,0,0.1); __v2.teleport('kitten', 4.2, 0.436, -3.0, 0); __v2.teleport('knight', 4.2, 0.436, -3.6, 0); __v2.setActive('knight'); __v2.camYaw(2.4, 0.22); __v2.act(); return 1; })()", "wait": 1400 },
+  { "js": "JSON.stringify(__v2.state().holding)", "out": "ual_5_lift.png", "wait": 100 },
+  { "label": "carry walk", "js": "(() => { __v2.simMove(0, 0.4, 2); return 1; })()", "wait": 1000 },
+  { "js": "1", "out": "ual_6_carry.png", "wait": 100 }
+]

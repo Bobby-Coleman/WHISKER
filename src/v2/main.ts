@@ -29,7 +29,8 @@ import { StatsPanel } from '../ui/stats';
 import { Physics } from './physics';
 import { LevelBuilder } from './level';
 import { prepareField, buildPlayground } from './levels/playground';
-import { Game } from './game';
+import { Game, Avatar } from './game';
+import { SkinnedAvatar } from './avatar';
 import { Timeline } from './timeline';
 
 const W = window as any;
@@ -121,7 +122,13 @@ export async function run(params: URLSearchParams) {
   const kitten = new Kitten(tier.furShells, kittenAssets as any);
   load.progress('characters', 0.6);
   await nextPaint();
-  const knight = new Knight(knightAssets as any);
+  // ?ual: the knight as a skinned character on the shared animation library (the new pipeline, under test).
+  let skinned: SkinnedAvatar | null = null;
+  if (params.has('ual')) {
+    skinned = new SkinnedAvatar({ kind: 'knight', url: params.get('ual') === 'm' ? 'chars/mannequin.glb' : 'chars/knight.glb', radius: 0.3, height: 1.8, scale: 1.8 / 1.88 });
+    await skinned.load();
+  }
+  const knight: Avatar = skinned ?? new Knight(knightAssets as any);
   scene.add(kitten.group, knight.group);
   // The knight dissolves while he stands between the camera and the kitten (his shadow stays).
   const knightVis = uniform(1);
@@ -177,13 +184,13 @@ export async function run(params: URLSearchParams) {
     LOOK.resolution.value.set(innerWidth * pr, innerHeight * pr);
   };
   addEventListener('resize', resize);
-  const KP = kitten.parts, NP = knight.parts;
+  const KP = kitten.parts, NP = (knight as any).parts;
   const kittenOcc: OccSpec = [
     [KP.pelvis, 0, -0.005, -0.004, 0.042], [KP.chest, 0, 0.045, 0, 0.048], [KP.head, 0, 0, 0, 0.05],
     [KP.thighL, 0, -0.025, 0, 0.02], [KP.thighR, 0, -0.025, 0, 0.02], [KP.shinL, 0, -0.03, 0, 0.014], [KP.shinR, 0, -0.03, 0, 0.014],
     [KP.footL, 0, -0.006, 0.008, 0.014], [KP.footR, 0, -0.006, 0.008, 0.014],
   ];
-  const knightOcc: OccSpec = [
+  const knightOcc: OccSpec = skinned ? skinned.occluders() : [
     [NP.pelvis, 0, 0, 0, 0.16], [NP.chest, 0, 0.2, 0, 0.19], [NP.head, 0, 0.1, 0, 0.13],
     [NP.thighL, 0, -0.22, 0, 0.09], [NP.thighR, 0, -0.22, 0, 0.09], [NP.shinL, 0, -0.25, 0, 0.07], [NP.shinR, 0, -0.25, 0, 0.07],
     [NP.footL, 0, -0.035, 0.06, 0.06], [NP.footR, 0, -0.035, 0.06, 0.06],
@@ -231,7 +238,7 @@ export async function run(params: URLSearchParams) {
     physics.sync(alpha);
     // Visuals.
     const kHead = kitten.parts.head.getWorldPosition(new THREE.Vector3());
-    const nHead = knight.parts.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.12, 0));
+    const nHead = (skinned ? skinned.headPos(new THREE.Vector3()) : (knight as any).parts.head.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, 0.12, 0));
     kitten.updateVisual(alpha, { dt, time: clockT, ground: game.kitten.ground, lookAt: nHead, active: game.active === game.kitten });
     knight.updateVisual(alpha, { dt, time: clockT, ground: game.knight.ground, lookAt: kHead, active: game.active === game.knight });
     kitten.update(dt, { dt, time: clockT, ground: game.kitten.ground, lookAt: null, active: true });
@@ -241,9 +248,14 @@ export async function run(params: URLSearchParams) {
     const gp = GRASS_PUSHERS.array as THREE.Vector4[];
     gp[0].set(kitten.body.pos.x, kitten.body.pos.z, 0.2, kitten.carriedBy ? 0 : 1);
     gp[1].set(knight.body.pos.x, knight.body.pos.z, 0.42, 1);
-    for (const c of [kitten, knight]) {
-      for (const e of c.gait.stepEvents) { const f = c.gait.feet[e.side > 0 ? 1 : 0].cur; audio.footstep(c.kind, f, e.strength, wetness(f.x, f.z)); }
-      c.gait.stepEvents.length = 0;
+    for (const c of [kitten, knight] as any[]) {
+      if (c.gait) {
+        for (const e of c.gait.stepEvents) { const f = c.gait.feet[e.side > 0 ? 1 : 0].cur; audio.footstep(c.kind, f, e.strength, wetness(f.x, f.z)); }
+        c.gait.stepEvents.length = 0;
+      } else {
+        for (const e of c.stepEvents) audio.footstep(c.kind, c.body.pos, e.strength, wetness(c.body.pos.x, c.body.pos.z));
+        c.stepEvents.length = 0;
+      }
     }
     // Camera: a cutscene's shots, or the follow camera.
     if (timeline.playing) { if (inp.skipPressed && timeline.t > 0.5) timeline.skip(); else timeline.update(dt, camera); }

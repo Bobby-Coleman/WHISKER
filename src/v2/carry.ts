@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Physics, SOLID } from './physics';
 import { Motor } from './motor';
-import type { Character } from '../chars/character';
+import type { Avatar } from './game';
 
 // From his hands (about 1.1 m up) she rises some 2 m: ledges up to about 3 m high, a metre or two ahead.
 export const THROW = { forward: 3.0, up: 10, reach: 1.15 };
@@ -13,7 +13,7 @@ export class Carry {
   holding = false;
   private hold = new THREE.Vector3();
 
-  constructor(public physics: Physics, public knight: { char: Character; motor: Motor }, public kitten: { char: Character; motor: Motor }) {
+  constructor(public physics: Physics, public knight: { char: Avatar; motor: Motor }, public kitten: { char: Avatar; motor: Motor }) {
     knight.motor.canJump = () => !this.holding;
   }
 
@@ -43,7 +43,8 @@ export class Carry {
     if (!this.holding) return;
     const n = this.knight, k = this.kitten, b = k.char.body;
     b.prevPos.copy(b.pos); b.prevYaw = b.yaw;
-    (n.char as any).holdPoint(this.hold);
+    if (n.char.holdPoint) n.char.holdPoint(this.hold);
+    else this.hold.copy(n.char.body.pos).add(new THREE.Vector3(0, n.motor.build.height * 0.6, 0));
     b.pos.copy(this.hold);
     b.yaw = n.char.body.yaw;
     b.vel.set(0, 0, 0); b.vy = 0; b.grounded = false;

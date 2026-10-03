@@ -1,4 +1,4 @@
-// Engine v2 play: the two characters (a visual Character, the motor that moves it, and their abilities), which one
+// Engine v2 play: the two characters (a visual avatar, the motor that moves it, and their abilities), which one
 // is played, the fixed physics step, the follow camera, falls and respawns. Single player switches between them; the
 // one not played stays exactly where it was left (on a platform it rides along), so nothing wanders off or glitches
 // behind the player's back.
@@ -8,11 +8,27 @@ import { Motor, MotorInput, BUILDS } from './motor';
 import { Climber } from './climb';
 import { Carry } from './carry';
 import { FollowCamera, Subject } from './camera';
-import type { Character } from '../chars/character';
+import type { CharacterBody, PoseContext } from '../chars/character';
 import type { InputFrame } from '../game/input';
 import type { Cutscene } from './timeline';
 
-export type Actor = { char: Character; motor: Motor; ground: (x: number, z: number) => number };
+// What play needs of a character's visual: v1's procedural Character and v2's SkinnedAvatar both fit.
+export interface Avatar {
+  kind: 'kitten' | 'knight';
+  body: CharacterBody;
+  group: THREE.Object3D;
+  renderPos: THREE.Vector3;
+  carriedBy: Avatar | null;
+  holding: Avatar | null;
+  resetPose(ground: (x: number, z: number) => number): void;
+  updateVisual(alpha: number, ctx: PoseContext): void;
+  update(dt: number, ctx: PoseContext): void;
+  holdPoint?(out: THREE.Vector3): THREE.Vector3;
+  resetCloth?(): void;
+  play?(name: string): void;
+}
+
+export type Actor = { char: Avatar; motor: Motor; ground: (x: number, z: number) => number };
 export type Spawn = { pos: THREE.Vector3; yaw: number };
 export type LevelInfo = { killY: number; killZones: THREE.Box3[]; spawn: { kitten: Spawn; knight: Spawn }; intro?: Cutscene };
 
@@ -33,8 +49,8 @@ export class Game {
   onFall?: (actor: Actor, phase: 'out' | 'in') => void;
   onSwitch?: (to: Actor) => void;
 
-  constructor(public physics: Physics, kittenChar: Character, knightChar: Character, public level: LevelInfo, aspect: number) {
-    const mk = (char: Character, kind: 'kitten' | 'knight'): Actor => {
+  constructor(public physics: Physics, kittenChar: Avatar, knightChar: Avatar, public level: LevelInfo, aspect: number) {
+    const mk = (char: Avatar, kind: 'kitten' | 'knight'): Actor => {
       const motor = new Motor(physics, BUILDS[kind], char.body);
       const B = motor.build;
       const ground = (x: number, z: number) => physics.groundY(x, char.body.pos.y + B.step + 0.05, z, B.step + 1.2, SOLID | L.prop) ?? char.body.pos.y;
@@ -57,7 +73,7 @@ export class Game {
     this.kitten.motor.place(s.kitten.pos, s.kitten.yaw);
     this.knight.motor.place(s.knight.pos, s.knight.yaw);
     for (const a of [this.kitten, this.knight]) a.char.resetPose(a.ground);
-    (this.kitten.char as any).resetCloth?.();
+    this.kitten.char.resetCloth?.();
     this.camera.snap(this.subject());
   }
 
@@ -83,7 +99,7 @@ export class Game {
       else a.motor.queueJump();
     }
     if (inp.interactPressed && a === this.knight) {
-      if (this.carry.holding) { this.carry.throw(); this.switchTo(this.kitten); }
+      if (this.carry.holding) { this.knight.char.play?.('OverhandThrow'); this.carry.throw(); this.switchTo(this.kitten); }
       else if (this.carry.canLift()) this.carry.lift();
     }
     if (inp.waitPressed && a === this.knight && this.carry.holding) this.carry.putDown();
@@ -170,7 +186,7 @@ export class Game {
     this.carry.cancel();
     a.motor.place(a.motor.safe);
     a.char.resetPose(a.ground);
-    if (a === this.kitten) (a.char as any).resetCloth?.();
+    if (a === this.kitten) a.char.resetCloth?.();
     if (a === this.active) { this.camera.snap(this.subject(), this.camera.yaw); this.onFall?.(a, 'in'); }
   }
 }

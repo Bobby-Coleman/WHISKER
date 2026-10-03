@@ -1,0 +1,12 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.setActive('knight'); __v2.teleport('knight', 2, 0.436, -1, Math.PI * 0.85); __v2.camYaw(-0.6, 0.12); __v2.game.camera.zoom = 0.75; return JSON.stringify(__v2.state().knight); })()", "wait": 2000 },
+  { "js": "1", "out": "kn_1_idle.png", "wait": 100 },
+  { "label": "run", "js": "(() => { __v2.teleport('knight', 2, 0.436, 1, Math.PI); __v2.camYaw(-2.3, 0.12); __v2.simMove(-0.3, 1, 3); return 1; })()", "wait": 1100 },
+  { "js": "JSON.stringify(__v2.state().knight.vel)", "out": "kn_2_run.png", "wait": 100 },
+  { "label": "walk", "js": "(() => { __v2.teleport('knight', 2, 0.436, 1, Math.PI); __v2.camYaw(-2.0, 0.12); __v2.simMove(0, 0.38, 3); return 1; })()", "wait": 1300 },
+  { "js": "1", "out": "kn_3_walk.png", "wait": 100 },
+  { "label": "jump", "js": "(() => { __v2.teleport('knight', 2, 0.436, 1, Math.PI); __v2.camYaw(-1.8, 0.1); __v2.simMove(0, 1, 2, true); setTimeout(() => __v2.jump(), 450); return 1; })()", "wait": 720 },
+  { "js": "1", "out": "kn_4_jump.png", "wait": 100 },
+  { "label": "lift", "js": "(() => { __v2.simMove(0,0,0.1); __v2.teleport('kitten', 4.2, 0.436, -3.0, 0); __v2.teleport('knight', 4.2, 0.436, -3.6, 0); __v2.camYaw(2.6, 0.18); __v2.act(); return 1; })()", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state().holding)", "out": "kn_5_carry.png", "wait": 100 }
+]
