@@ -105,6 +105,8 @@ export class VerletCloth {
   }
 
   step(dt: number, groundY: (x: number, z: number) => number, extraForce?: THREE.Vector3) {
+    // A zero step would divide by zero below and leave every particle NaN for good.
+    if (!(dt > 0)) return;
     const g = -9.8;
     const gust = 0.35 + WIND.gust * 1.1;
     const wx = WIND.dir.x * gust * this.windResponse, wz = WIND.dir.y * gust * this.windResponse;

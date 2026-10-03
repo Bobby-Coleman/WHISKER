@@ -1,11 +1,14 @@
-// Vegetation kit (living grass, dead grass, reeds, weeds, small flowers) distributed into
-// spatially chunked InstancedMesh groups, animated on the GPU with shared TSL wind.
+// Vegetation kit (living grass, dead grass, reeds, weeds, small flowers) placed in 16 m chunks and animated on the
+// GPU with shared TSL wind. Each kit draws as two instanced meshes (near chunks, which cast shadows, and the rest):
+// whenever the view changes, the chunks in view are packed into them, thinned with distance. That keeps the plants
+// to about two dozen draws instead of one per kit per chunk, and all kits share one material (one shader).
 import * as THREE from 'three/webgpu';
 import {
   positionLocal, uv, vec3, transformNormalToView, vec2, float, sin, mx_noise_float, mx_fractal_noise_float, mix, attribute, smoothstep, Fn, normalLocal, pow,
-  positionWorld,
+  positionWorld, cos,
 } from 'three/tsl';
 import { WIND } from '../render/settings';
+import { bakedNoise } from '../render/noisetex';
 import { characterAO } from '../render/occlusion';
 import { heightAt, pathDist, wetNatural, vegetationExclusion } from './layout';
 import { mulberry32, Simplex2 } from './noise';
@@ -96,8 +99,12 @@ export const windOffset = Fn(([p, tip, height, stiffness]: any[]) => {
   const dir = vec2(WIND.dir.x, WIND.dir.y);
   const t = WIND.time;
   const travel = p.xz.mul(0.045).sub(dir.mul(t).mul(0.16));
-  const gust = smoothstep(-0.25, 0.75, mx_noise_float(vec3(travel.x, travel.y, t.mul(0.05))));
-  const ripple = mx_noise_float(vec3(p.xz.mul(0.35).sub(dir.mul(t).mul(0.6)), t.mul(0.2))).mul(0.5).add(0.5);
+  // Baked gradient noise (two texture reads per vertex instead of two 3D noise evaluations). Each read returns two
+  // independent fields; turning one against the other over time stands in for the noise's slow third axis.
+  const g = bakedNoise(travel, true), ga = t.mul(0.08);
+  const gust = smoothstep(-0.25, 0.75, g.b.mul(cos(ga)).add(g.a.mul(sin(ga))));
+  const r = bakedNoise(p.xz.mul(0.35).sub(dir.mul(t).mul(0.6)).add(vec2(3.7, 1.3)), true), ra = t.mul(0.3);
+  const ripple = r.b.mul(cos(ra)).add(r.a.mul(sin(ra))).mul(0.5).add(0.5);
   const flutter = sin(t.mul(7.3).add(p.x.mul(5.1)).add(p.z.mul(3.7))).mul(0.035);
   const bend = float(0.14).add(gust.mul(0.42)).add(ripple.mul(0.08)).mul(WIND.strength).div(stiffness);
   const w = pow(tip, 1.7).mul(height);
@@ -107,14 +114,14 @@ export const windOffset = Fn(([p, tip, height, stiffness]: any[]) => {
   return off.sub(vec3(0, drop, 0));
 });
 
-function vegetationMaterial(stiffness: number) {
+function vegetationMaterial() {
   const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, vertexColors: true });
   m.roughness = 0.82;
   m.metalness = 0;
   const tip = uv().y, h = uv().x;
   // Up-facing shading normal: blades read as part of the turf instead of dark flipped faces.
   m.normalNode = transformNormalToView(vec3(0, 1, 0));
-  m.positionNode = positionLocal.add(windOffset(positionLocal, tip, h, float(stiffness)));
+  m.positionNode = positionLocal.add(windOffset(positionLocal, tip, h, attribute('stiff', 'float')));
   // Restrained backlit translucency near blade tips, without glow.
   m.emissiveNode = attribute('color', 'vec3').mul(pow(tip, 2.0).mul(0.06));
   // Blades around a character's feet sit in its occlusion too (lower blades more, as the ground does).
@@ -123,19 +130,25 @@ function vegetationMaterial(stiffness: number) {
   return m;
 }
 
-export type VegChunk = { cx: number; cz: number; meshes: { mesh: THREE.InstancedMesh; full: number; tall: boolean }[] };
+type KitRun = { k: number; mats: Float32Array; cols: Float32Array; full: number; tall: boolean };
+type VegChunk = { cx: number; cz: number; sphere: THREE.Sphere; kits: KitRun[] };
 
 export function createVegetation(density: number, radius: number) {
   const group = new THREE.Group();
   group.name = 'Vegetation';
-  const kitGeos = KITS.map((k, i) => buildCluster(k, 1000 + i * 77));
-  const kitMats = KITS.map((k) => vegetationMaterial(k.stiffness));
+  const kitGeos = KITS.map((k, i) => {
+    const g = buildCluster(k, 1000 + i * 77);
+    g.setAttribute('stiff', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(k.stiffness), 1));
+    return g;
+  });
+  const material = vegetationMaterial();
   const broad = new Simplex2(91);
   const CH = 16;
   const chunks: VegChunk[] = [];
   const R = 96;
   const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   const tmpC = new THREE.Color();
+  const capacity = new Array(KITS.length).fill(0);
   let total = 0;
   for (let cz = -R; cz < R; cz += CH) for (let cx = -R; cx < R; cx += CH) {
     const ccx = cx + CH / 2, ccz = cz + CH / 2;
@@ -143,6 +156,7 @@ export function createVegetation(density: number, radius: number) {
     const rand = mulberry32((cx * 73856093) ^ (cz * 19349663));
     const lists: { m: THREE.Matrix4; c: THREE.Color }[][] = KITS.map(() => []);
     const step = 0.62 / Math.sqrt(density);
+    let yMin = Infinity, yMax = -Infinity;
     for (let z = cz; z < cz + CH; z += step) for (let x = cx; x < cx + CH; x += step) {
       const px = x + (rand() - 0.5) * step * 1.4, pz = z + (rand() - 0.5) * step * 1.4;
       const ex = vegetationExclusion(px, pz);
@@ -168,6 +182,7 @@ export function createVegetation(density: number, radius: number) {
         kit = pd < 2.2 ? (u < 0.5 ? 4 : u < 0.8 ? 0 : 3) : u < 0.38 ? 4 : u < 0.62 ? 2 : u < 0.8 ? 1 : 3;
       }
       const y = heightAt(px, pz);
+      yMin = Math.min(yMin, y); yMax = Math.max(yMax, y);
       tmpP.set(px, y - 0.01, pz);
       tmpQ.setFromAxisAngle(up, rand() * Math.PI * 2);
       const s = 0.75 + rand() * 0.6;
@@ -177,44 +192,92 @@ export function createVegetation(density: number, radius: number) {
       tmpC.setRGB(tint * (0.97 + bB * 0.06), tint, tint * (0.95 + bA * 0.05));
       lists[kit].push({ m: tmpM.clone(), c: tmpC.clone() });
     }
-    const chunk: VegChunk = { cx: ccx, cz: ccz, meshes: [] };
+    if (yMin > yMax) continue;
+    // Bounds for view culling: the chunk square, its ground heights and the tallest reeds, with room for wind.
+    const half = CH / 2 + 1.5;
+    const sphere = new THREE.Sphere(new THREE.Vector3(ccx, (yMin + yMax) / 2 + 0.7, ccz), Math.hypot(half, half, (yMax - yMin) / 2 + 1.6));
+    const chunk: VegChunk = { cx: ccx, cz: ccz, sphere, kits: [] };
     lists.forEach((list, k) => {
       if (!list.length) return;
       // Random order so truncating count thins density evenly with distance.
       for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); const t = list[i]; list[i] = list[j]; list[j] = t; }
-      const im = new THREE.InstancedMesh(kitGeos[k], kitMats[k], list.length);
-      list.forEach((e, i) => { im.setMatrixAt(i, e.m); im.setColorAt(i, e.c); });
-      im.instanceMatrix.needsUpdate = true;
-      im.computeBoundingSphere();
-      im.boundingSphere!.radius += 1.5;
-      im.receiveShadow = true;
-      im.castShadow = false;
-      im.frustumCulled = true;
-      im.name = `Veg_${KITS[k].name}_${cx}_${cz}`;
-      group.add(im);
-      chunk.meshes.push({ mesh: im, full: list.length, tall: k >= 7 && k <= 8 });
+      const mats = new Float32Array(list.length * 16), cols = new Float32Array(list.length * 3);
+      list.forEach((e, i) => { e.m.toArray(mats, i * 16); e.c.toArray(cols, i * 3); });
+      chunk.kits.push({ k, mats, cols, full: list.length, tall: k >= 7 && k <= 8 });
+      capacity[k] += list.length;
       total += list.length;
     });
     chunks.push(chunk);
   }
-  let lodRadius = radius;
+  // Two meshes per kit: chunks within 10 m (they cast shadows, and are kept even when behind the camera, as their
+  // shadows can fall into view) and the rest (only when in view).
+  // Capacity stays above what fits a uniform buffer (1024 matrices at WebGPU's default limit): smaller instanced
+  // meshes get their count baked into the shader, which gave every chunk of the old layout its own shader.
+  const makeMesh = (k: number, near: boolean) => {
+    if (!capacity[k]) return null;
+    const cap = Math.max(capacity[k], 1100);
+    const im = new THREE.InstancedMesh(kitGeos[k], material, cap);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+    im.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    im.count = 0;
+    im.visible = false;
+    im.frustumCulled = false;
+    im.receiveShadow = true;
+    im.castShadow = near;
+    im.name = `Veg_${KITS[k].name}_${near ? 'near' : 'far'}`;
+    group.add(im);
+    return im;
+  };
+  const nearMeshes = KITS.map((_, k) => makeMesh(k, true));
+  const farMeshes = KITS.map((_, k) => makeMesh(k, false));
+  const nearN = new Int32Array(KITS.length), farN = new Int32Array(KITS.length);
+  const frustum = new THREE.Frustum(), vp = new THREE.Matrix4(), camPos = new THREE.Vector3();
+  const lastVP = new Float32Array(16);
+  let lodRadius = radius, lastRadius = -1;
+  const upload = (im: THREE.InstancedMesh | null, n: number) => {
+    if (!im) return;
+    im.count = n;
+    im.visible = n > 0;
+    im.instanceMatrix.clearUpdateRanges(); im.instanceColor!.clearUpdateRanges();
+    if (n === 0) return;
+    im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
+    im.instanceColor!.addUpdateRange(0, n * 3); im.instanceColor!.needsUpdate = true;
+  };
   return {
     group,
     total,
     setRadius(r: number) { lodRadius = r; },
-    update(cam: THREE.Vector3) {
+    update(cam: THREE.Camera) {
+      cam.updateMatrixWorld();
+      vp.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      // A still view (the title, a paused game) re-packs and re-uploads nothing.
+      let same = lodRadius === lastRadius;
+      for (let i = 0; i < 16 && same; i++) same = Math.abs(vp.elements[i] - lastVP[i]) < 1e-6;
+      if (same) return;
+      lastVP.set(vp.elements); lastRadius = lodRadius;
+      frustum.setFromProjectionMatrix(vp, (cam as any).coordinateSystem, (cam as any).reversedDepth);
+      cam.getWorldPosition(camPos);
+      nearN.fill(0); farN.fill(0);
       for (const c of chunks) {
-        const d = Math.max(0, Math.hypot(c.cx - cam.x, c.cz - cam.z) - CH * 0.6);
+        const d = Math.max(0, Math.hypot(c.cx - camPos.x, c.cz - camPos.z) - CH * 0.6);
+        const isNear = d < 10;
+        if (!isNear && !frustum.intersectsSphere(c.sphere)) continue;
         // Smooth density fade by distance instead of a hard pop.
-        const near = 1 - Math.min(1, Math.max(0, (d - 14) / (lodRadius - 14)));
-        for (const e of c.meshes) {
-          const f = e.tall ? Math.max(near, d < lodRadius * 1.3 ? 0.6 : 0) : near * near;
+        const fade = 1 - Math.min(1, Math.max(0, (d - 14) / (lodRadius - 14)));
+        const meshes = isNear ? nearMeshes : farMeshes, counts = isNear ? nearN : farN;
+        for (const e of c.kits) {
+          const f = e.tall ? Math.max(fade, d < lodRadius * 1.3 ? 0.6 : 0) : fade * fade;
           const n = Math.floor(e.full * f);
-          e.mesh.count = n;
-          e.mesh.visible = n > 0;
-          e.mesh.castShadow = d < 10;
+          const im = meshes[e.k];
+          if (n === 0 || !im) continue;
+          const o = counts[e.k];
+          (im.instanceMatrix.array as Float32Array).set(e.mats.subarray(0, n * 16), o * 16);
+          (im.instanceColor!.array as Float32Array).set(e.cols.subarray(0, n * 3), o * 3);
+          counts[e.k] = o + n;
         }
       }
+      for (let k = 0; k < KITS.length; k++) { upload(nearMeshes[k], nearN[k]); upload(farMeshes[k], farN[k]); }
     },
   };
 }

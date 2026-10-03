@@ -11,6 +11,8 @@ export type HudCallbacks = {
   onMode: (m: 'field' | 'lab') => void;
   onLabToggle: (key: string, on: boolean) => void;
   onSkipReveal: () => void;
+  onStats: (on: boolean) => void;
+  onAdaptive: (on: boolean) => void;
 };
 
 const CSS = `
@@ -35,7 +37,14 @@ const CSS = `
 #hud .title{pointer-events:auto;position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(40,44,44,.35),rgba(15,17,17,.75));transition:opacity 1.6s;cursor:pointer}
 #hud .title h1{font-weight:normal;font-size:clamp(34px,6vw,64px);letter-spacing:.18em;margin:0;text-transform:uppercase}
 #hud .title p{opacity:.75;letter-spacing:.08em;margin:14px 0 0;font-style:italic}
-#hud .title .load{font-size:13px;opacity:.6;margin-top:26px;font-style:normal;letter-spacing:.1em}
+#hud .title .load{font-size:13px;opacity:.7;margin-top:12px;font-style:normal;letter-spacing:.08em;min-height:1.4em;text-align:center}
+#hud .title .loading{margin-top:28px;display:flex;flex-direction:column;align-items:center;transition:opacity .6s}
+#hud .title .bar{width:min(320px,62vw);height:2px;background:rgba(236,232,222,.2);overflow:hidden}
+#hud .title .fill{height:100%;width:0;background:#ece8de;transition:width .3s}
+#hud .title .begin{opacity:0;transition:opacity .8s}
+#hud .title.ready .begin{opacity:.75}
+#hud .title.ready .loading{opacity:0}
+#hud .title:not(.ready){cursor:progress}
 #hud .bars{position:absolute;inset:0;pointer-events:none;display:none}
 #hud .bars.on{display:block}
 #hud .bars div{position:absolute;background:#0d0e0e}
@@ -51,7 +60,12 @@ export class Hud {
   private msgTimer = 0;
   private keyLabel = 'E';
   private loadEl: HTMLElement;
+  private fillEl: HTMLElement;
+  private lastWho = '';
+  private lastPrompt: string | null = '';
+  private lastPreset = '';
   begun = false;
+  ready = false;
 
   constructor(private cb: HudCallbacks) {
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
@@ -77,12 +91,15 @@ export class Hud {
           <tr><td>C</td><td>Clean render (no image treatment)</td></tr>
           <tr><td>F</td><td>4:3 reference framing</td></tr>
           <tr><td>H</td><td>Show or hide this panel</td></tr>
+          <tr><td>P</td><td>Show or hide performance stats</td></tr>
           <tr><td>Touch</td><td>Left thumb moves, right thumb looks; Switch, Act and Wait buttons</td></tr>
         </table>
         <h3>Image</h3>
         <label>Treatment strength <input type="range" min="0" max="1.5" step="0.05" value="0.6" data-k="treat"></label>
         <label>Clean render <input type="checkbox" data-k="clean"></label>
         <label>4:3 framing <input type="checkbox" data-k="aspect"></label>
+        <label>Adaptive resolution <input type="checkbox" checked data-k="drs"></label>
+        <label>Performance stats (P) <input type="checkbox" data-k="stats"></label>
         <label>Quality <select data-k="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
         <h3>Sound</h3>
         <label>Volume <input type="range" min="0" max="1" step="0.05" value="0.8" data-k="vol"></label>
@@ -105,11 +122,12 @@ export class Hud {
         </div>
         <p style="opacity:.6;font-size:12px;margin:12px 0 0">Whisker, first field prototype. Rendering: <span class="backend"></span>.</p>
       </div>
-      <div class="title"><h1>Whisker</h1><p>${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} to begin</p><div class="load">Preparing the moor…</div></div>`;
+      <div class="title"><h1>Whisker</h1><p class="begin">${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} to begin</p><div class="loading"><div class="bar"><div class="fill"></div></div><div class="load">Preparing the moor…</div></div></div>`;
+    document.getElementById('boot')?.remove();
     document.body.appendChild(this.root);
     const q = <T extends HTMLElement>(s: string) => this.root.querySelector(s) as T;
     this.msgEl = q('.msg'); this.promptEl = q('.prompt'); this.whoEl = q('.who'); this.panel = q('.panel'); this.title = q('.title'); this.bars = q('.bars'); this.presetEl = q('.preset');
-    this.loadEl = q('.load');
+    this.loadEl = q('.load'); this.fillEl = q('.fill');
     q<HTMLButtonElement>('.btn').onclick = (e) => { e.stopPropagation(); this.togglePanel(); };
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.panel.querySelectorAll('input,select').forEach((el) => {
@@ -122,6 +140,8 @@ export class Hud {
         if (k === 'quality') cb.onQuality(i.value);
         if (k === 'vol') cb.onVolume(+i.value);
         if (k === 'mute') cb.onMute(i.checked);
+        if (k === 'stats') cb.onStats(i.checked);
+        if (k === 'drs') cb.onAdaptive(i.checked);
         if (l) cb.onLabToggle(l, i.checked);
       });
     });
@@ -134,11 +154,16 @@ export class Hud {
     this.title.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.begin(); });
   }
 
-  setLoading(text: string | null) {
-    this.loadEl.textContent = text ?? '';
+  setProgress(fraction: number, text: string) {
+    this.fillEl.style.width = `${(fraction * 100).toFixed(1)}%`;
+    this.loadEl.textContent = `${text}  ${Math.floor(fraction * 100)}%`;
   }
 
+  // Loading finished: the title now invites the player in.
+  setReady() { this.ready = true; this.title.classList.add('ready'); }
+
   begin() {
+    if (!this.ready) return;
     if (this.begun) { this.cb.onSkipReveal(); return; }
     this.begun = true;
     this.title.style.opacity = '0';
@@ -159,14 +184,20 @@ export class Hud {
   }
 
   setPrompt(text: string | null) {
+    if (text === this.lastPrompt) return;
+    this.lastPrompt = text;
     if (text) { this.promptEl.innerHTML = `<span class="key">${this.keyLabel}</span>${text}`; this.promptEl.style.opacity = '1'; } else this.promptEl.style.opacity = '0';
   }
 
   // Touch players see the on-screen button name instead of a keyboard key.
-  setTouch() { this.keyLabel = 'Act'; this.root.classList.add('touch'); }
+  setTouch() { this.keyLabel = 'Act'; this.lastPrompt = ''; this.root.classList.add('touch'); }
 
-  setWho(name: string, companion: string) { this.whoEl.innerHTML = `${name}<small>${companion}</small>`; }
-  setPresetName(n: string) { this.presetEl.textContent = n; }
+  // Called every frame, so the DOM is only touched when the text changes.
+  setWho(name: string, companion: string) {
+    const html = `${name}<small>${companion}</small>`;
+    if (html !== this.lastWho) { this.lastWho = html; this.whoEl.innerHTML = html; }
+  }
+  setPresetName(n: string) { if (n !== this.lastPreset) { this.lastPreset = n; this.presetEl.textContent = n; } }
 
   setAspectBars(on: boolean) {
     this.bars.classList.toggle('on', on);

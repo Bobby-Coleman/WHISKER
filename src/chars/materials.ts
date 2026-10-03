@@ -27,7 +27,8 @@ const armorCache = new Map<string, THREE.Material>();
 export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string; scale?: number; emblem?: boolean; side?: THREE.Side; masks?: boolean } = {}) {
   const key = JSON.stringify(opts);
   if (armorCache.has(key)) return armorCache.get(key)!;
-  const mud = opts.mud ?? 0.1, wear = opts.wear ?? 0.5, sc = opts.scale ?? 1;
+  // Amounts, scale and tint are uniforms rather than constants, so plates that differ only in those share a shader.
+  const mud = uniform(opts.mud ?? 0.1), wear = uniform(opts.wear ?? 0.5), sc = uniform(opts.scale ?? 1);
   const m = new THREE.MeshPhysicalNodeMaterial();
   const p = positionLocal.mul(sc);
   const broad = mx_fractal_noise_float(p.mul(13.0), 3, 2.0, 0.5).mul(0.5).add(0.5);
@@ -38,7 +39,7 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
   const grime = smoothstep(0.45, 0.9, mx_fractal_noise_float(p.mul(19.0).add(3.1), 3, 2.0, 0.6).mul(0.5).add(0.5));
   const mudN = mx_fractal_noise_float(p.mul(17.0).add(9.0), 4, 2.0, 0.55).mul(0.5).add(0.5);
   const mudMask = smoothstep(float(1.0).sub(mud), float(1.0).sub(mud).add(0.18), mudN.add(normalLocal.y.mul(-0.08)));
-  const silver = color(opts.tint ?? '#b8b7b0');
+  const silver = uniform(new THREE.Color(opts.tint ?? '#b8b7b0'));
   let base = silver.mul(mix(float(1.0), float(0.8), grime.mul(0.5))).mul(mid.mul(0.05).add(0.96));
   base = mix(base, color('#4a3f31'), mudMask);
   // Optional painted cross on the breastplate: worn, chipped, non-metallic paint.
@@ -60,18 +61,18 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
     edge = mk.g; cav = mk.b;
     m.aoNode = mix(float(1), mk.r, 0.85);
     // Dark grime settles in creases and under overlapping lames; worn edges are a touch brighter.
-    base = base.mul(float(1).sub(cav.mul(0.35).mul(wear + 0.4))).mul(edge.mul(0.07).add(1));
+    base = base.mul(float(1).sub(cav.mul(0.35).mul(wear.add(0.4)))).mul(edge.mul(0.07).add(1));
   }
   m.colorNode = base;
   m.metalnessNode = mix(float(1.0), float(0.0), clamp(mudMask.add(paint), 0, 1));
   // Dirty silver rather than chrome: broad overcast reflections with regional breakup (about 0.22-0.45).
   const rough = float(0.22).add(broad.mul(0.12)).add(grime.mul(0.12).mul(wear)).add(scratch.mul(0.1)).add(mid.mul(0.04))
-    .sub(edge.mul(0.06)).add(cav.mul(0.16).mul(wear + 0.3));
+    .sub(edge.mul(0.06)).add(cav.mul(0.16).mul(wear.add(0.3)));
   m.roughnessNode = mix(mix(mix(float(0.4), rough, CHAR_TOGGLES.roughnessMaps), float(0.92), mudMask), float(0.68), paint);
   // Subtle hammered dents and scratch grooves in the normal.
   // Real scale: dents about 0.15 mm deep over ~2.5 cm, scratches a few hundredths of a millimetre.
   const bumpH = mx_noise_float(p.mul(42.0)).mul(0.00015).sub(scratch.mul(0.00004)).mul(CHAR_TOGGLES.detailNormals);
-  m.normalNode = procBump(bumpH.div(sc), float(0.006 / sc));
+  m.normalNode = procBump(bumpH.div(sc), float(0.006).div(sc));
   armorCache.set(key, m);
   return m;
 }
@@ -101,7 +102,8 @@ export function clothMaterial(hex: string, opts: { sheen?: string; rough?: numbe
   const m = new THREE.MeshPhysicalNodeMaterial({ side: THREE.DoubleSide });
   const p = positionLocal;
   const n = mx_fractal_noise_float(p.mul(30.0), 3, 2.0, 0.5).mul(0.5).add(0.5);
-  const weave = sin(p.x.mul(2400)).mul(sin(p.y.mul(2400))).mul(0.5).add(0.5).mul(opts.weave ?? 0.0);
+  // Colour and amounts are uniforms, so cloths that differ only in those share a shader.
+  const weave = sin(p.x.mul(2400)).mul(sin(p.y.mul(2400))).mul(0.5).add(0.5).mul(uniform(opts.weave ?? 0.0));
   let puff: any = float(1);
   if (opts.quilt) {
     const arc = atan(p.x, p.z).mul(length(p.xz)).div(opts.quilt);
@@ -110,8 +112,8 @@ export function clothMaterial(hex: string, opts: { sheen?: string; rough?: numbe
     puff = pow(abs(sin(u.mul(Math.PI))), 0.45);
     m.normalNode = procBump(puff.mul(CHAR_TOGGLES.detailNormals).mul(0.002), float(opts.quilt * 0.5));
   }
-  m.colorNode = color(hex).mul(n.mul(0.16).add(0.88)).mul(float(1).sub(weave.mul(0.06))).mul(puff.mul(0.18).add(0.82));
-  m.roughnessNode = float(opts.rough ?? 0.88).sub(float(opts.wet ?? 0).mul(n).mul(0.2));
+  m.colorNode = uniform(new THREE.Color(hex)).mul(n.mul(0.16).add(0.88)).mul(float(1).sub(weave.mul(0.06))).mul(puff.mul(0.18).add(0.82));
+  m.roughnessNode = uniform(opts.rough ?? 0.88).sub(uniform(opts.wet ?? 0).mul(n).mul(0.2));
   m.metalness = 0;
   m.sheen = 0.6;
   m.sheenRoughness = 0.7;
@@ -154,14 +156,15 @@ export function capeMaterial(hex: string) {
 export function leatherMaterial(hex = '#3b2b1f', opts: { mud?: number; mudTop?: number; mudFull?: number; scuff?: number } = {}) {
   const m = new THREE.MeshPhysicalNodeMaterial();
   const p = positionLocal;
+  // Colour and amounts are uniforms, so leathers that differ only in those share a shader.
   const n = mx_fractal_noise_float(p.mul(60.0), 3, 2.0, 0.5).mul(0.5).add(0.5);
-  const crease = smoothstep(0.06, 0.0, abs(mx_noise_float(p.mul(vec3(30, 90, 30))))).mul(opts.scuff ?? 0.4);
-  let base: any = color(hex).mul(n.mul(0.25).add(0.82)).mul(float(1).sub(crease.mul(0.35)));
+  const crease = smoothstep(0.06, 0.0, abs(mx_noise_float(p.mul(vec3(30, 90, 30))))).mul(uniform(opts.scuff ?? 0.4));
+  let base: any = uniform(new THREE.Color(hex)).mul(n.mul(0.25).add(0.82)).mul(float(1).sub(crease.mul(0.35)));
   let rough: any = float(0.5).add(n.mul(0.22)).add(crease.mul(0.15));
   if (opts.mud) {
     const mn = mx_fractal_noise_float(p.mul(22.0).add(5.0), 4, 2.0, 0.55).mul(0.5).add(0.5);
-    const h = smoothstep(float(opts.mudTop ?? 0), float(opts.mudFull ?? -0.1), p.y);
-    const mask = smoothstep(0.62, 0.7, mn.mul(0.55).add(h.mul(opts.mud)));
+    const h = smoothstep(uniform(opts.mudTop ?? 0), uniform(opts.mudFull ?? -0.1), p.y);
+    const mask = smoothstep(0.62, 0.7, mn.mul(0.55).add(h.mul(uniform(opts.mud))));
     base = mix(base, color('#4b3f30').mul(mn.mul(0.3).add(0.78)), mask);
     rough = mix(rough, float(0.95), mask);
   }
@@ -207,30 +210,31 @@ const strandField = (pg: any) => {
 
 export function furShellMaterial(layer: number, layers: number, furLength = 0.004, density = 1300, groom: [number, number, number] = [0, -0.45, -0.55]) {
   const m = new THREE.MeshStandardNodeMaterial({ vertexColors: true });
-  const t = layer / layers;
+  // The layer's height through the coat is a uniform, not a constant, so all the layers share one compiled shader.
+  const t = uniform(layer / layers);
   const furLen = attribute('furLen', 'float');
-  const g = vec3(groom[0], groom[1], groom[2]).mul(t * t * 0.85);
-  const windDir = vec3(WIND.dir.x, 0, WIND.dir.y).mul(t * t * 0.25).mul(WIND.strength);
+  const g = vec3(groom[0], groom[1], groom[2]).mul(t.mul(t).mul(0.85));
+  const windDir = vec3(WIND.dir.x, 0, WIND.dir.y).mul(t.mul(t).mul(0.25)).mul(WIND.strength);
   m.positionNode = positionLocal.add(normalLocal.mul(t).add(g).add(windDir).mul(furLen.mul(furLength)).mul(CHAR_TOGGLES.fuzz));
   const pg = positionGeometry.mul(density);
   const { d, h } = strandField(pg);
   const clump = mx_noise_float(pg.mul(0.21)).mul(0.5).add(0.5);
   const strandH = h.mul(0.5).add(0.42).mul(clump.mul(0.4).add(0.78));
-  const rad = 0.08 + 0.5 * (1 - 0.7 * t);
-  const strand = smoothstep(rad + 0.14, rad - 0.1, d).mul(smoothstep(float(t).sub(0.04), float(t).add(0.06), strandH));
-  const avg = float(Math.min(1, 3.0 * rad * rad)).mul(smoothstep(float(t).add(0.12), float(t).sub(0.12), strandH));
+  const rad = float(1).sub(t.mul(0.7)).mul(0.5).add(0.08);
+  const strand = smoothstep(rad.add(0.14), rad.sub(0.1), d).mul(smoothstep(t.sub(0.04), t.add(0.06), strandH));
+  const avg = min(rad.mul(rad).mul(3.0), 1).mul(smoothstep(t.add(0.12), t.sub(0.12), strandH));
   // Strands narrower than about a pixel fade to their average coverage (by distance, not view angle,
   // so grazing silhouettes keep their strands instead of turning into a translucent bubble).
   const cellsPerPx = positionView.z.negate().mul(CHAR_TOGGLES.pixelAngle).mul(density);
   const lod = smoothstep(0.7, 1.5, cellsPerPx);
-  const keep = mix(strand, avg, lod).mul(step(0.05, furLen)).mul(1 - 0.3 * t);
+  const keep = mix(strand, avg, lod).mul(step(0.05, furLen)).mul(float(1).sub(t.mul(0.3)));
   m.opacityNode = keep.mul(step(0.5, CHAR_TOGGLES.fuzz.add(0.49)));
   // Blended rather than alpha-tested: a soft, fluffy edge instead of a speckled one. Drawn inner to outer.
   m.transparent = true;
   m.depthWrite = false;
   m.alphaTest = 0.01;
-  const ao = 0.62 + 0.38 * t;
-  m.colorNode = attribute('color', 'vec3').mul(float(ao)).mul(h.mul(0.16).add(0.92)).mul(1 + 0.12 * t);
+  const ao = t.mul(0.38).add(0.62);
+  m.colorNode = attribute('color', 'vec3').mul(ao).mul(h.mul(0.16).add(0.92)).mul(t.mul(0.12).add(1));
   m.roughness = 0.85;
   m.metalness = 0;
   void uv; void vec2; void clamp; void pow; void max;
@@ -242,29 +246,30 @@ export function furShellMaterial(layer: number, layers: number, furLength = 0.00
 // albedo: the skin's colour map, or null to take the colour from the mesh's vertex colours.
 export function heroShellMaterial(layer: number, layers: number, density: number, albedo: THREE.Texture | null) {
   const m = new THREE.MeshStandardNodeMaterial();
-  const t = layer / layers;
+  // A uniform, as in furShellMaterial, so all the layers share one compiled shader.
+  const t = uniform(layer / layers);
   const furLen = attribute('furLen', 'float');
   const furDir = attribute('furDir', 'vec3');
   // Undercoat leaves the skin at a steep angle and lies down along the comb as it lengthens.
-  const off = normalLocal.mul(t * 0.75).add(furDir.mul(t * (0.35 + 0.5 * t)));
-  const windDir = vec3(WIND.dir.x, 0, WIND.dir.y).mul(t * t * 0.15).mul(WIND.strength);
+  const off = normalLocal.mul(t.mul(0.75)).add(furDir.mul(t.mul(t.mul(0.5).add(0.35))));
+  const windDir = vec3(WIND.dir.x, 0, WIND.dir.y).mul(t.mul(t).mul(0.15)).mul(WIND.strength);
   m.positionNode = positionLocal.add(off.add(windDir).mul(furLen).mul(CHAR_TOGGLES.fuzz));
   const pg = positionGeometry.mul(density);
   const { d, h } = strandField(pg);
   const clump = mx_noise_float(pg.mul(0.18)).mul(0.5).add(0.5);
   const strandH = h.mul(0.45).add(0.5).mul(clump.mul(0.35).add(0.8));
-  const rad = 0.1 + 0.45 * (1 - 0.75 * t);
-  const strand = smoothstep(rad + 0.14, rad - 0.1, d).mul(smoothstep(float(t).sub(0.04), float(t).add(0.06), strandH));
-  const avg = float(Math.min(1, 3.0 * rad * rad)).mul(smoothstep(float(t).add(0.12), float(t).sub(0.12), strandH));
+  const rad = float(1).sub(t.mul(0.75)).mul(0.45).add(0.1);
+  const strand = smoothstep(rad.add(0.14), rad.sub(0.1), d).mul(smoothstep(t.sub(0.04), t.add(0.06), strandH));
+  const avg = min(rad.mul(rad).mul(3.0), 1).mul(smoothstep(t.add(0.12), t.sub(0.12), strandH));
   const cellsPerPx = positionView.z.negate().mul(CHAR_TOGGLES.pixelAngle).mul(density);
   const lod = smoothstep(0.7, 1.5, cellsPerPx);
-  const keep = mix(strand, avg, lod).mul(smoothstep(0.0003, 0.0008, furLen)).mul(1 - 0.25 * t);
+  const keep = mix(strand, avg, lod).mul(smoothstep(0.0003, 0.0008, furLen)).mul(float(1).sub(t.mul(0.25)));
   m.opacityNode = keep.mul(step(0.5, CHAR_TOGGLES.fuzz.add(0.49)));
   m.transparent = true;
   m.depthWrite = false;
   m.alphaTest = 0.01;
   const base = albedo ? texture(albedo, uv()).rgb : attribute('color', 'vec3');
-  m.colorNode = base.mul(float(0.55 + 0.45 * t)).mul(h.mul(0.18).add(0.91)).mul(1 + 0.1 * t);
+  m.colorNode = base.mul(t.mul(0.45).add(0.55)).mul(h.mul(0.18).add(0.91)).mul(t.mul(0.1).add(1));
   m.roughness = 0.8;
   m.metalness = 0;
   return m;

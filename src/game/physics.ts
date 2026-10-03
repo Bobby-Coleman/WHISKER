@@ -102,7 +102,7 @@ export class PhysicsWorld {
     const gNew = this.groundAt(out.x, out.z, body.pos.y, step);
     if (gNew - body.pos.y > step) { out.x = body.pos.x; out.z = body.pos.z; }
     // Keep velocity consistent with the resolved motion so animation matches travel.
-    body.vel.x = (out.x - body.pos.x) / dt; body.vel.z = (out.z - body.pos.z) / dt;
+    if (dt > 0) { body.vel.x = (out.x - body.pos.x) / dt; body.vel.z = (out.z - body.pos.z) / dt; }
     body.pos.x = out.x; body.pos.z = out.z;
     const g = this.groundAt(body.pos.x, body.pos.z, body.pos.y, step);
     if (body.pos.y > g + 0.02) {

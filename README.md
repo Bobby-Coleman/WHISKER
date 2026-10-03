@@ -18,9 +18,19 @@ Play it at https://bobby-coleman.github.io/WHISKER/. It runs best on WebGPU and 
 | R | Back | | Put both back at the start |
 | H | | Settings button | Settings and controls panel |
 | C / F | | | Clean render (no vintage treatment) / 4:3 reference framing |
+| P | | Settings | Performance stats |
 | 1-4, 0 | | | Review camera presets, 0 returns to play |
 
-The settings panel also has the treatment-strength slider (default 0.6), quality (high, medium, low), volume and a material lab.
+The settings panel also has the treatment-strength slider (default 0.6), quality (high, medium, low), adaptive resolution, volume and a material lab.
+
+## Performance
+
+- **Loading bar.** The title screen shows each loading stage (downloading the models, building the moor, dressing the characters, preparing shaders, drawing the first frame) and how long each took. The same timings print to the console and appear in the stats panel.
+- **Stats panel (P).** Frame rate, frame time with the worst recent frame, main-thread and GPU time (where the browser reports it), render resolution, draw calls and triangles.
+- **Adaptive resolution.** When frames run long, the render resolution drops (down to 55%) and climbs back when there is room. It can be switched off in the settings panel.
+- **Few shaders.** Load time is mostly shader compilation, so materials avoid baking per-object numbers into their shaders: fur layers, plate, leather and cloth take theirs as uniforms, and the plant instances sit in large shared batches, because three.js writes the instance count into the shader of small instanced meshes. The game compiles about 150 shader modules instead of the 1,700 it once did.
+- **Cheap noise.** Fog, sky, mist and wind read a small tiling noise texture baked at load instead of computing 3D noise for every pixel or grass vertex.
+- **Less hidden work.** Plants and mist cards outside the view are not drawn, grass blades outside the view or thinned away by distance skip their shaping and colour work, and the depth-of-field passes run only while the look uses them.
 
 ## The three puzzles (spoilers)
 
@@ -64,11 +74,11 @@ python blender/knight_armor.py         # knight helm, plate, gauntlets, boots an
 
 To update the GitHub Pages site, build with `npm run artifact` and replace the contents of the `gh-pages` branch with `dist/`, leaving out the raw `.glb`, `.kkf` and `.bin` models (the build reads their `.txt` copies), `artifact.html` and `_wrapped.html`, and keeping the empty `.nojekyll` file.
 
-`playtest.mjs` drives the whole game through the `window.__kk` debug API in headless Chromium and prints the state after each step; `shots.mjs` takes review captures from a plan file.
+`playtest.mjs` drives the whole game through the `window.__kk` debug API in headless Chromium and prints the state after each step; `shots.mjs` takes review captures from a plan file; `perfprobe.mjs` prints the loading stages, the number and size of compiled shaders (grouped into families that differ only in numbers, which is how a shader explosion shows up) and the frame cost with each part of the scene hidden in turn.
 
 ## Known issues
 
-- Frame rate on real GPUs has not been measured yet; all testing so far ran on a software renderer. Phones start on low quality.
+- Frame rate on real GPUs has not been measured yet; all testing so far ran on a software renderer. Phones start on low quality. The stats panel (P) shows what your machine is doing.
 - The chapel and yard walls look boxy from far away.
 - The first load downloads about 9 MB of models and fur.
 - In the winch corner the camera can tip almost straight down if the kitten faces away from the winch.

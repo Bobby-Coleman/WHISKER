@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { loadStrands, StrandData } from './strands';
-import { fetchBinary } from './binfile';
+import { fetchBinary, modelManifest, countDownload } from './binfile';
 
 const BASE = './models/';
 
@@ -42,7 +42,8 @@ async function loadBody() {
 
 function texture(name: string, srgb: boolean) {
   return new Promise<THREE.Texture>((resolve, reject) => {
-    new THREE.TextureLoader().load(BASE + name, (t) => {
+    new THREE.TextureLoader().load(BASE + name, async (t) => {
+      countDownload((await modelManifest(BASE))[name] ?? 0);
       // glTF UVs put v = 0 at the top of the image.
       t.flipY = false;
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
@@ -94,6 +95,7 @@ async function glbGeometry(name: string) {
 }
 
 export async function loadKittenAssets(): Promise<KittenAssets | null> {
+  void modelManifest(BASE);
   try {
     const [head, headShell, armor, albedo, normal, orm, headFur, whiskers, body] = await Promise.all([
       glbGeometry('kitten_head.glb'), glbGeometry('kitten_head_shell.glb'), glbPieces('kitten_armor.glb'),
@@ -110,6 +112,7 @@ export async function loadKittenAssets(): Promise<KittenAssets | null> {
 
 // The knight's helm, plate, boots and sword (part__material__piece), or null to keep the code-built pieces.
 export async function loadKnightAssets(): Promise<Map<string, THREE.BufferGeometry> | null> {
+  void modelManifest(BASE);
   try {
     return await glbPieces('knight_armor.glb');
   } catch (e) {

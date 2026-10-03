@@ -50,7 +50,11 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
 
   let hdr: any = sceneColor;
   if (opts.dof) {
-    const blurred = dof(sceneColor, viewZ, LOOK.focusDistance, float(2.6), float(1.6));
+    const blurred: any = dof(sceneColor, viewZ, LOOK.focusDistance, float(2.6), float(1.6));
+    // Its seven passes run only while the look asks for softness (the reveal, some presets). In play the mix weight
+    // is 0, so the skipped, stale result is never seen.
+    const runDof = blurred.updateBefore.bind(blurred);
+    blurred.updateBefore = (frame: any) => (LOOK.dofAmount.value > 0.002 ? runDof(frame) : undefined);
     hdr = mix(sceneColor, blurred, LOOK.dofAmount);
   }
   const bloomPass = bloom(hdr, 1.0, 0.5, 0.82);

@@ -2,10 +2,11 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, vec3, vec4, float, positionWorld, cameraPosition, positionLocal, normalize, mix, smoothstep, exp, pow, max,
-  mx_fractal_noise_float, length, uniform, uv, vec2, sin, color, clamp, attribute, cameraViewMatrix, modelWorldMatrix,
+  mx_fractal_noise_float, length, uniform, uv, vec2, sin, cos, color, clamp, attribute, cameraViewMatrix, modelWorldMatrix,
   fog,
 } from 'three/tsl';
 import { LOOK, WIND, SKY_LIFT } from '../render/settings';
+import { bakedNoise, MX_ORIGIN } from '../render/noisetex';
 
 // Shared fog factor so custom materials (distant silhouettes, water) can match the scene fog.
 export const fogFactorAt = Fn(([wp]: any[]) => {
@@ -14,7 +15,11 @@ export const fogFactorAt = Fn(([wp]: any[]) => {
   // Low mist patches drifting downwind through world space, slower than grass gusts.
   const drift = vec2(WIND.dir.x, WIND.dir.y).mul(WIND.time).mul(0.55);
   const p = wp.xz.mul(0.022).sub(drift.mul(0.022));
-  const patch = smoothstep(0.0, 0.55, mx_fractal_noise_float(vec3(p.x, p.y, WIND.time.mul(0.01)), 3, 2.0, 0.5).add(0.15));
+  // Baked fBm: r is the original fog noise (its window starts at MX_ORIGIN). Two independent fields turned slowly
+  // against each other stand in for the noise's slow third axis (the mix keeps the same spread at every angle).
+  // Read at full detail like the original: the patches are tens of metres across, so they cannot shimmer.
+  const nz = bakedNoise(p.sub(MX_ORIGIN), true), th = WIND.time.mul(0.016);
+  const patch = smoothstep(0.0, 0.55, nz.r.mul(cos(th)).add(nz.g.mul(sin(th))).add(0.15));
   const h = mix(cameraPosition.y, wp.y, 0.65);
   const low = exp(max(h.add(0.5), 0).div(1.5).negate());
   const mist = patch.mul(low).mul(float(1).sub(exp(d.div(16).negate()))).mul(0.6).mul(LOOK.mistAmount);
@@ -31,7 +36,7 @@ function skyColorNode(dir: any) {
   const up = smoothstep(-0.02, 0.55, y);
   let c = mix(LOOK.skyHorizon, LOOK.skyZenith, up);
   // Broad, slow cloud mottling; no visible sun.
-  const n = mx_fractal_noise_float(vec3(dir.x.div(y.add(0.25)).mul(1.3).add(WIND.time.mul(0.004)), dir.z.div(y.add(0.25)).mul(1.3), 0.0), 4, 2.0, 0.5);
+  const n = bakedNoise(vec2(dir.x.div(y.add(0.25)).mul(1.3).add(WIND.time.mul(0.004)), dir.z.div(y.add(0.25)).mul(1.3))).r;
   c = c.mul(float(1).add(n.mul(0.07).mul(up)));
   // Below the horizon blend into fog so the far edge has no seam.
   c = mix(LOOK.fogColor, c, smoothstep(-0.04, 0.06, y));
@@ -104,53 +109,69 @@ export function createLights(scene: THREE.Scene, shadowSize: number) {
   return { sun, hemi };
 }
 
-// Soft camera-facing mist cards drifting low over the field.
+// Soft camera-facing mist cards drifting low over the field. One instanced draw: the cards share one colour, so
+// their blending does not depend on draw order. Cards out of view, or too near or far to show, are skipped.
 export function createMistCards(count: number) {
   const group = new THREE.Group();
   group.name = 'MistCards';
   const geo = new THREE.PlaneGeometry(1, 1);
   const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
   mat.fog = false;
-  const seed = uniform(0);
   const tex = Fn(() => {
     const u = uv().sub(0.5);
     const r = length(u.mul(vec2(1.0, 1.8)));
     const edge = smoothstep(0.5, 0.05, r);
     const wp = positionWorld;
-    const n = mx_fractal_noise_float(vec3(wp.x.mul(0.18).sub(WIND.time.mul(0.05)), wp.y.mul(0.3), wp.z.mul(0.18)), 3, 2.0, 0.55).mul(0.5).add(0.5);
+    // Baked 3-octave fBm, projected from world space so the pattern holds still as the cards turn to the camera.
+    const q = vec2(wp.x.mul(0.18).add(wp.z.mul(0.07)).sub(WIND.time.mul(0.05)), wp.z.mul(0.18).add(wp.y.mul(0.3)));
+    const n = bakedNoise(q).g.mul(0.5).add(0.5);
     const d = length(wp.sub(cameraPosition));
     const nearFade = smoothstep(2.5, 9.0, d);
     const farFade = float(1).sub(smoothstep(70, 120, d));
-    const a = edge.mul(n).mul(nearFade).mul(farFade).mul(0.16).mul(LOOK.mistAmount).mul(LOOK.fogEnabled);
+    const a: any = edge.mul(n).mul(nearFade).mul(farFade).mul(0.16).mul(LOOK.mistAmount).mul(LOOK.fogEnabled);
     return vec4(LOOK.fogColor.mul(1.06), a);
   });
   mat.colorNode = tex();
-  void seed;
-  const cards: { mesh: THREE.Mesh; base: THREE.Vector3; speed: number; scale: number }[] = [];
+  const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, count));
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.renderOrder = 5;
+  mesh.frustumCulled = false;
+  mesh.count = 0;
+  mesh.name = 'MistCardsInstanced';
+  group.add(mesh);
+  const cards: { base: THREE.Vector3; speed: number; scale: number }[] = [];
   for (let i = 0; i < count; i++) {
-    const m = new THREE.Mesh(geo, mat);
     const a = Math.random() * Math.PI * 2, rr = 8 + Math.random() * 80;
-    const base = new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr);
-    const sc = 10 + Math.random() * 16;
-    m.scale.set(sc, sc * 0.32, 1);
-    m.renderOrder = 5;
-    m.frustumCulled = false;
-    group.add(m);
-    cards.push({ mesh: m, base, speed: 0.35 + Math.random() * 0.3, scale: sc });
+    cards.push({ base: new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr), speed: 0.35 + Math.random() * 0.3, scale: 10 + Math.random() * 16 });
   }
+  const frustum = new THREE.Frustum(), vp = new THREE.Matrix4(), m = new THREE.Matrix4();
+  const pos = new THREE.Vector3(), scl = new THREE.Vector3(), camPos = new THREE.Vector3(), sphere = new THREE.Sphere();
   return {
     group,
     update(t: number, cam: THREE.Camera, heightAt: (x: number, z: number) => number, center: THREE.Vector3) {
+      cam.updateMatrixWorld();
+      vp.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(vp, (cam as any).coordinateSystem, (cam as any).reversedDepth);
+      cam.getWorldPosition(camPos);
+      let n = 0;
       for (const c of cards) {
         let x = c.base.x + WIND.dir.x * t * c.speed, z = c.base.z + WIND.dir.y * t * c.speed;
         // Wrap within a ring around the play area center so the drift never ends.
         const R = 95;
         x = ((x - center.x + R) % (2 * R) + 2 * R) % (2 * R) - R + center.x;
         z = ((z - center.z + R) % (2 * R) + 2 * R) % (2 * R) - R + center.z;
-        c.mesh.position.set(x, heightAt(x, z) + c.scale * 0.08, z);
-        c.mesh.quaternion.copy(cam.quaternion);
+        pos.set(x, heightAt(x, z) + c.scale * 0.08, z);
+        // The shader fades a card out nearer than 2.5 m and beyond 120 m; skip it once all of it is past either.
+        const reach = c.scale * 0.53, d = pos.distanceTo(camPos);
+        if (d + reach < 2.5 || d - reach > 120) continue;
+        if (!frustum.intersectsSphere(sphere.set(pos, reach))) continue;
+        scl.set(c.scale, c.scale * 0.32, 1);
+        mesh.setMatrixAt(n++, m.compose(pos, cam.quaternion, scl));
       }
+      mesh.count = n;
+      mesh.instanceMatrix.clearUpdateRanges();
+      if (n > 0) { mesh.instanceMatrix.addUpdateRange(0, n * 16); mesh.instanceMatrix.needsUpdate = true; }
     },
   };
 }
-void attribute; void cameraViewMatrix; void modelWorldMatrix; void sin;
+void attribute; void cameraViewMatrix; void modelWorldMatrix; void sin; void mx_fractal_noise_float; void uniform;

@@ -23,6 +23,9 @@ import { Puzzles } from './game/puzzles';
 import { regionOf } from './game/nav';
 import { Soundscape } from './audio/audio';
 import { Hud } from './ui/hud';
+import { LoadTracker, nextPaint } from './ui/loading';
+import { StatsPanel } from './ui/stats';
+import { downloads } from './chars/binfile';
 import { SPAWN, FIELD, heightAt, wetness } from './world/layout';
 import { Simplex2 } from './world/noise';
 
@@ -39,13 +42,49 @@ if (GT && GT.prototype.createView) {
 const params = new URLSearchParams(location.search);
 const W = window as any;
 
+// Per-viewer settings remembered between visits (storage can be unavailable, e.g. in a private window).
+function readPref(key: string, fallback: boolean) {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : v === '1'; } catch { return fallback; }
+}
+function writePref(key: string, on: boolean) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* not remembered */ }
+}
+
 async function main() {
   const phone = matchMedia('(pointer: coarse) and (max-width: 900px)').matches;
   const tierName = (params.get('q') as QualityTier) || (phone ? 'low' : matchMedia('(max-width: 800px), (pointer: coarse)').matches ? 'medium' : 'high');
   const tier = TIERS[tierName] ?? TIERS.high;
   const forceWebGL = params.has('webgl');
-  const renderer = new THREE.WebGPURenderer({ antialias: tier.msaa, forceWebGL });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, tier.pixelRatioCap) * tier.renderScale);
+
+  // ---- Loading. Model downloads start first and overlap building the world; preparing shaders is the long
+  // tail on many machines, so it gets its own share of the bar.
+  const load = new LoadTracker([
+    ['files', 'Downloading the kitten and the knight', 30],
+    ['world', 'Building the moor', 14],
+    ['characters', 'Dressing the characters', 8],
+    ['shaders', 'Preparing shaders', 40],
+    ['warmup', 'Drawing the first frame', 8],
+  ]);
+  const hudCb: any = {};
+  const hud = new Hud(hudCb);
+  load.onChange = (f, t) => hud.setProgress(f, t);
+  const statsPanel = new StatsPanel();
+  statsPanel.setVisible(readPref('kk-stats', true) && !params.has('still'));
+  hud.setChecked('stats', statsPanel.visible);
+  const mb = (b: number) => (b / 1048576).toFixed(1);
+  downloads.onProgress = () => {
+    const f = downloads.expected > 0 ? downloads.loaded / downloads.expected : downloads.filesDone / 17;
+    load.progress('files', Math.min(0.99, f), downloads.expected > 0 ? `${mb(downloads.loaded)} of ${mb(downloads.expected)} MB` : '');
+  };
+  // Hero head (Blender sculpt, baked maps, groomed strand fur) needs MSAA for its alpha-to-coverage strands.
+  const heroAssets: Promise<[Awaited<ReturnType<typeof loadKittenAssets>>, Awaited<ReturnType<typeof loadKnightAssets>>]> =
+    tier.msaa ? Promise.all([loadKittenAssets(), loadKnightAssets()]) : Promise.resolve([null, null]);
+  heroAssets.then(() => load.done('files'));
+  await nextPaint();
+
+  const renderer = new THREE.WebGPURenderer({ antialias: tier.msaa, forceWebGL, trackTimestamp: true });
+  const basePixelRatio = Math.min(devicePixelRatio, tier.pixelRatioCap) * tier.renderScale;
+  renderer.setPixelRatio(basePixelRatio);
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -55,10 +94,12 @@ async function main() {
   const backend = (renderer.backend as any).isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
   W.__backend = backend;
 
-  const hudCb: any = {};
-  const hud = new Hud(hudCb);
   hud.setBackend(backend);
+  const gpuTiming = (renderer.backend as any).trackTimestamp === true;
+  statsPanel.gpuSupported = gpuTiming;
   const audio = new Soundscape();
+  load.progress('world', 0.05);
+  await nextPaint();
 
   // ---- Scene.
   const scene = new THREE.Scene();
@@ -68,6 +109,8 @@ async function main() {
   scene.environmentIntensity = 1.0;
   scene.add(createSky());
   setupFog(scene);
+  load.progress('world', 0.15);
+  await nextPaint();
   const fieldRoot = new THREE.Group(); fieldRoot.name = 'FIELD_01';
   scene.add(fieldRoot);
   const terrain = createTerrain();
@@ -75,21 +118,30 @@ async function main() {
   // Baked field maps drive the ground detail and the blade carpet from the same data as the vegetation.
   const fieldMaps = bakeFieldMaps(terrain.near, FIELD.nearHalf, 0.8);
   terrain.near.material = terrainMaterial(fieldMaps);
+  load.progress('world', 0.45);
+  await nextPaint();
   const grass = createGrass(fieldMaps, tier.grassDensity);
   fieldRoot.add(grass.group);
   const physics = new PhysicsWorld();
   const structures = createStructures(physics);
   fieldRoot.add(structures.root);
+  load.progress('world', 0.7);
+  await nextPaint();
   let veg = createVegetation(tier.grassDensity, tier.grassRadius);
   fieldRoot.add(veg.group);
   const mist = createMistCards(tier.mistCards);
   fieldRoot.add(mist.group);
   const { sun, hemi } = createLights(scene, tier.shadowMap);
+  load.done('world');
+  await nextPaint();
 
   // ---- Characters.
-  // Hero head (Blender sculpt, baked maps, groomed strand fur) needs MSAA for its alpha-to-coverage strands.
-  const [kittenAssets, knightAssets] = tier.msaa ? await Promise.all([loadKittenAssets(), loadKnightAssets()]) : [null, null];
+  const [kittenAssets, knightAssets] = await heroAssets;
+  load.progress('characters', 0.1);
+  await nextPaint();
   const kitten = new Kitten(tier.furShells, kittenAssets);
+  load.progress('characters', 0.6);
+  await nextPaint();
   const knight = new Knight(knightAssets);
   scene.add(kitten.group, knight.group);
   kitten.attachCloth(scene);
@@ -121,7 +173,7 @@ async function main() {
   kitten.resetCloth();
 
   // ---- Final image.
-  let { pipeline } = createPipeline(renderer, scene, camera, { dof: tier.dof });
+  const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof });
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -164,6 +216,8 @@ async function main() {
 
   // ---- HUD callbacks.
   let started = params.has('noreveal') || params.has('still');
+  let adaptive = readPref('kk-drs', true);
+  hud.setChecked('drs', adaptive);
   let cleanMode = false;
   let treatment = 0.6;
   Object.assign(hudCb, {
@@ -177,6 +231,8 @@ async function main() {
     onPreset: (i: number) => { rig.setPreset(i); hud.setPresetName(i >= 0 ? rig.presets[i].name : ''); },
     onAspect43: (on: boolean) => { aspect43 = on; hud.setAspectBars(on); },
     onMode: (m: 'field' | 'lab') => setMode(m),
+    onStats: (on: boolean) => { statsPanel.setVisible(on); writePref('kk-stats', on); },
+    onAdaptive: (on: boolean) => { adaptive = on; writePref('kk-drs', on); if (!on) setRenderScale(1); },
     onLabToggle: (k: string, on: boolean) => {
       if (k === 'normals') CHAR_TOGGLES.detailNormals.value = on ? 1 : 0;
       if (k === 'rough') CHAR_TOGGLES.roughnessMaps.value = on ? 1 : 0;
@@ -244,6 +300,21 @@ async function main() {
     step: (n: number, dt = 1 / 30) => { for (let i = 0; i < n; i++) frame(dt, false); },
     render: () => frame(1 / 60, true),
     grassDebug: (v: number) => { GRASS_DEBUG.value = v; },
+    // Performance probes: hide one part of the scene to measure what it costs.
+    perf: (k: string, on: boolean) => {
+      const set = (o: THREE.Object3D | null | undefined) => { if (o) o.visible = on; };
+      if (k === 'grass') set(grass.group);
+      else if (k === 'veg') set(veg.group);
+      else if (k === 'mist') set(mist.group);
+      else if (k === 'structures') set(structures.root);
+      else if (k === 'terrain') set(terrain.near);
+      else if (k === 'far') set(terrain.far);
+      else if (k === 'shadows') renderer.shadowMap.enabled = on;
+      else if (k === 'kitten') set(kitten.group);
+      else if (k === 'knight') set(knight.group);
+      else if (k === 'fur') kitten.group.traverse((o) => { if (/fur|whisk/i.test(o.name)) o.visible = on; });
+    },
+    info: () => JSON.parse(JSON.stringify(renderer.info.render)),
     state: () => ({ active: active.kind, kpos: kitten.body.pos.toArray(), npos: knight.body.pos.toArray(), puzzles: puzzles.state, comp: companions.get(companion)!.status, region: [regionOf(kitten.body.pos), regionOf(knight.body.pos)], prompt: puzzles.prompt }),
   };
 
@@ -368,7 +439,7 @@ async function main() {
     sun.target.position.set(fx, focus.y, fz);
     sun.target.updateMatrixWorld();
     if (mode === 'field') {
-      veg.update(camera.position);
+      veg.update(camera);
       grass.update(camera);
       mist.update(clockT, camera, heightAt, active.group.position);
     }
@@ -388,6 +459,7 @@ async function main() {
   // Keys handled outside the per-frame input (UI toggles).
   addEventListener('keydown', (e) => {
     if (e.code === 'KeyH') hud.togglePanel();
+    if (e.code === 'KeyP') { hudCb.onStats(!statsPanel.visible); hud.setChecked('stats', statsPanel.visible); }
     if (e.code === 'KeyC') { hudCb.onClean(!cleanMode); hud.setChecked('clean', cleanMode); }
     if (e.code === 'KeyF') { aspect43 = !aspect43; hud.setAspectBars(aspect43); hud.setChecked('aspect', aspect43); }
     if (rig.mode !== 'reveal' && mode === 'field') {
@@ -400,16 +472,95 @@ async function main() {
     if (!hud.begun && (e.code === 'Space' || e.code === 'Enter')) hud.begin();
   });
 
-  if (params.has('noreveal')) { hud.begin(); started = true; rig.revealT = rig.revealDur; }
   if (params.has('still')) hud.title.style.display = 'none';
   resize();
-  hud.setLoading(null);
+  load.done('characters');
+  await nextPaint();
+
+  // ---- Shaders. Compile every material for the scene pass before the first frame (off-screen objects too),
+  // so the game does not stall the first time each one comes into view.
+  {
+    const rt = scenePass.renderTarget;
+    rt.samples = renderer.samples;
+    rt.texture.type = (renderer as any).getOutputBufferType?.() ?? THREE.HalfFloatType;
+    const unculled: THREE.Object3D[] = [];
+    scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.frustumCulled) { o.frustumCulled = false; unculled.push(o); } });
+    // Plant and mist meshes stay hidden until something is in view; show them while compiling.
+    const unhidden: THREE.Object3D[] = [];
+    for (const g of [veg.group, mist.group]) g.traverse((o) => { if (!o.visible) { o.visible = true; unhidden.push(o); } });
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(rt);
+    try {
+      await renderer.compileAsync(scene, camera, null, (e: ProgressEvent) => load.progress('shaders', e.loaded / Math.max(1, e.total), `${e.loaded} of ${e.total}`));
+    } catch (e) {
+      console.warn('Shader precompile failed; shaders will compile on first use.', e);
+    } finally {
+      renderer.setRenderTarget(prev);
+      for (const o of unculled) o.frustumCulled = true;
+      for (const o of unhidden) o.visible = false;
+    }
+  }
+  load.done('shaders');
+  await nextPaint();
+  // ---- First frames through the whole chain: shadow and post-processing passes compile here.
+  const gpuIdle = () => (renderer as any).backend?.device?.queue?.onSubmittedWorkDone?.() ?? Promise.resolve();
+  frame(1 / 60, true);
+  load.progress('warmup', 0.5);
+  await gpuIdle();
+  await nextPaint();
+  frame(1 / 60, true);
+  await gpuIdle();
+  load.done('warmup');
+  const report = load.report();
+  statsPanel.setLoad(report);
+  console.info(`Whisker loaded in ${(report.totalMs / 1000).toFixed(1)} s: ` + report.stages.map((x) => `${x.label} ${(x.ms / 1000).toFixed(2)} s`).join(', '));
+  W.__load = report;
+  hud.setReady();
+  if (params.has('noreveal')) { hud.begin(); started = true; rig.revealT = rig.revealDur; }
   W.__ready = true;
+
+  // ---- Adaptive resolution: keeps frames near 60 fps by scaling the render resolution between 55% and 100% of
+  // the tier's pixel ratio. Judged on GPU time where the browser reports it, otherwise on frame time.
+  let renderScale = 1;
+  function setRenderScale(s: number) {
+    s = THREE.MathUtils.clamp(s, 0.55, 1);
+    if (Math.abs(s - renderScale) < 0.01) return;
+    renderScale = s;
+    renderer.setPixelRatio(basePixelRatio * s);
+    resize();
+  }
+  const drs = { ema: 16.7, hold: 2, ceiling: 1, ceilingT: 0 };
+  function adaptResolution(dtMs: number, dt: number) {
+    if (!adaptive || params.has('still')) return;
+    const gpu = statsPanel.gpuMs;
+    if (dtMs > 250) return; // a hitch or a hidden tab says nothing about steady load
+    const m = gpu !== null && gpu > 0 ? gpu : dtMs;
+    drs.ema += (Math.min(m, 100) - drs.ema) * 0.08;
+    drs.hold -= dt;
+    drs.ceilingT -= dt;
+    if (drs.ceilingT <= 0) drs.ceiling = 1;
+    if (drs.hold > 0) return;
+    if (drs.ema > 18.5) {
+      // Too slow: scale the pixel count toward a 16 ms frame, at most 20% per step.
+      const before = renderScale;
+      setRenderScale(renderScale * THREE.MathUtils.clamp(Math.sqrt(16 / drs.ema), 0.8, 0.96));
+      drs.ceiling = before; drs.ceilingT = 20;
+      drs.hold = 0.75;
+    } else if (renderScale < drs.ceiling - 0.01 && drs.ema < (gpu !== null ? 12 : 17.4)) {
+      // Headroom: creep back up, never past a scale that was too slow in the last 20 s.
+      setRenderScale(Math.min(drs.ceiling, renderScale * 1.05));
+      drs.hold = gpu !== null ? 1 : 3;
+    }
+  }
+
   const still = params.has('still');
   let stillFrames = 0;
+  let frameNo = 0;
+  last = performance.now();
   renderer.setAnimationLoop(() => {
     const now = performance.now();
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const dtMs = now - last;
+    const dt = Math.min(0.1, dtMs / 1000);
     last = now;
     if (still) {
       // Manual capture mode: the test harness steps the simulation and renders on demand.
@@ -417,8 +568,20 @@ async function main() {
       return;
     }
     frame(dt);
+    const cpu = performance.now() - now;
     stats.frames++; stats.ms += dt * 1000;
     if (stats.frames % 60 === 0) { stats.fps = Math.round(60000 / stats.ms); stats.ms = 0; }
+    // GPU time of the last finished frame, read back every few frames.
+    if (gpuTiming && ++frameNo % 6 === 0) {
+      renderer.resolveTimestampsAsync(THREE.TimestampQuery.RENDER).then((v) => { if (typeof v === 'number' && v > 0) statsPanel.gpuMs = v; }).catch(() => {});
+    }
+    statsPanel.push(dtMs, cpu);
+    adaptResolution(dtMs, dt);
+    const pr = renderer.getPixelRatio();
+    statsPanel.update(dt, {
+      width: Math.round(innerWidth * pr), height: Math.round(innerHeight * pr), scale: renderScale, adaptive,
+      backend, tier: tierName, calls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles,
+    });
   });
 }
 
