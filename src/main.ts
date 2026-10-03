@@ -214,7 +214,8 @@ async function main() {
   kitten.resetCloth();
 
   // ---- Final image.
-  const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof, aoView: params.has('aoview') });
+  const ssrOn = params.has('ssr') ? params.get('ssr') !== '0' : tier.ssr;
+  const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof, aoView: params.has('aoview'), ssr: ssrOn });
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();

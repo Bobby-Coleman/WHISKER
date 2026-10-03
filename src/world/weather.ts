@@ -9,7 +9,7 @@
 // air, and the mist draws back.
 import * as THREE from 'three/webgpu';
 import {
-  Fn, vec2, vec3, float, mix, smoothstep, texture, uniform, positionLocal, normalize, atan, asin, clamp, max, pow, dot, color,
+  Fn, vec2, vec3, float, mix, smoothstep, texture, uniform, positionLocal, normalize, atan, asin, clamp, max, pow, dot, color, exp,
 } from 'three/tsl';
 import { countDownload } from '../chars/binfile';
 import { LOOK, SKY_LIFT } from '../render/settings';
@@ -93,11 +93,16 @@ function envMaterial(w: Loaded, fog: THREE.Color) {
   const sky = texture(w.sky, uvS).rgb.mul(w.scale * w.meta.skyScale);
   const irr = new THREE.Color(w.meta.irradiance[0] * w.scale, w.meta.irradiance[1] * w.scale, w.meta.irradiance[2] * w.scale);
   const ground = color(groundRadiance(irr));
-  // On a misty moor every view within a few degrees of level ends in mist, so the band around the horizon is the
-  // fog's own radiance (bright), the open sky takes over above it and the near, unfogged ground below it. Polished
-  // steel facing sideways reflects that band, which is why it reads pale silver in the reference rather than dark.
+  // On a misty moor a view within a degree or two of level ends in mist, so the band around the horizon is the fog's
+  // own radiance (bright); the open sky takes over above it. Below it the ground shows through quickly: from a
+  // knight's chest a ray 5 degrees down meets the turf ~14 m away, through little fog. That dark-below, bright-band,
+  // grey-sky split is what gives polished steel its contrast (bright centre streaks, darker flanks).
   const mist = color(fog).mul(0.97);
-  const below = mix(ground, mist, smoothstep(-0.62, -0.03, dir.y));
+  // Fog between the eye and the turf a ray meets: from height h, a ray dir.y below level travels h / |dir.y| through
+  // mist with an e-folding length F (the moor's low mist is denser than its fog distance); h / F = 0.02 sits between
+  // a knight's chest (1.3 m) and a kitten's (0.15 m), both looking through ground-hugging mist.
+  const mistOver = float(1).sub(exp(float(-0.02).div(max(dir.y.negate(), 0.0005))));
+  const below = mix(ground, mist, mistOver);
   // The photographs' own horizons (bushes, hills, a road) sit within ~6 degrees of level; the moor's mist hides that
   // band in the visible sky, so the reflected sky starts above it too.
   m.colorNode = mix(below, sky, smoothstep(0.1, 0.3, dir.y));

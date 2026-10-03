@@ -56,10 +56,10 @@ export class Knight extends Character {
     const belt = leatherMaterial('#2b2119');
     const dark = plainMaterial('#050505', 1.0);
     const heroMat: Record<string, THREE.Material> = {
-      plate: armorMaterial({ mud: 0.04, wear: 0.5, masks: true }),
-      chestplate: armorMaterial({ mud: 0.03, wear: 0.45, emblem: true, masks: true }),
-      tasset: armorMaterial({ mud: 0.12, wear: 0.6, masks: true }),
-      helm: armorMaterial({ mud: 0.02, wear: 0.45, masks: true }),
+      plate: armorMaterial({ mud: 0.04, wear: 0.5, masks: true, polish: 0.75 }),
+      chestplate: armorMaterial({ mud: 0.03, wear: 0.45, emblem: true, masks: true, polish: 0.8 }),
+      tasset: armorMaterial({ mud: 0.12, wear: 0.6, masks: true, polish: 0.7 }),
+      helm: armorMaterial({ mud: 0.02, wear: 0.45, masks: true, polish: 0.75 }),
       steel: armorMaterial({ mud: 0.0, wear: 0.3, tint: '#c9c9c3', masks: true }),
       dark: new THREE.MeshStandardNodeMaterial({ color: new THREE.Color('#050505'), roughness: 1, side: THREE.DoubleSide }),
       boot, bootfoot: bootFoot, leather: grip,
@@ -83,8 +83,9 @@ export class Knight extends Character {
       this.panels.push({ g, axis: new THREE.Vector3(Math.cos(phiC), 0, -Math.sin(phiC)), out, side, kind, phase: phiC * 3.1 });
       return g;
     };
-    addPanel(0.38, 0.8, 0.0, 'front', 1); addPanel(-0.38, 0.8, 0.0, 'front', -1);
-    addPanel(1.2, 1.0, 0.003, 'side', 1); addPanel(-1.2, 1.0, 0.003, 'side', -1);
+    // Panels under the tassets sit further in, so swinging in the wind they stay behind the plate.
+    addPanel(0.38, 0.8, 0.009, 'front', 1); addPanel(-0.38, 0.8, 0.009, 'front', -1);
+    addPanel(1.2, 1.0, 0.016, 'side', 1); addPanel(-1.2, 1.0, 0.016, 'side', -1);
     addPanel(2.2, 1.12, 0.0015, 'side', 1); addPanel(-2.2, 1.12, 0.0015, 'side', -1);
     addPanel(Math.PI - 0.32, 0.7, 0.0, 'back', 1); addPanel(Math.PI + 0.32, 0.7, 0.0, 'back', -1);
     // Tassets: each half spans from the center line outward, flaring as it falls toward mid-thigh.

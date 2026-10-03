@@ -3,8 +3,10 @@
 import * as THREE from 'three/webgpu';
 import {
   pass, Fn, vec2, vec3, vec4, float, uv, mix, dot, clamp, smoothstep, fract, sin, floor, renderOutput, convertToTexture,
-  max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity, metalness,
+  max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity, metalness, roughness, normalView,
+  directionToColor, colorToDirection, sample, blendColor,
 } from 'three/tsl';
+import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
 import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -87,7 +89,7 @@ function createAO(scenePass: any, camera: THREE.Camera) {
   return blurV;
 }
 
-export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, opts: { dof: boolean; aoView?: boolean }) {
+export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, opts: { dof: boolean; aoView?: boolean; ssr?: boolean }) {
   const pipeline = new THREE.RenderPipeline(renderer);
   pipeline.outputColorTransform = false;
 
@@ -96,7 +98,13 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   // TAA needs each pixel's screen motion: every material writes its velocity beside its colour.
   // Velocity for TAA, and each pixel's metalness so occlusion spares polished steel: ambient occlusion darkens the
   // light a surface receives from the sky, but a mirror-like plate shows the sky's reflection, which barely dims.
-  scenePass.setMRT(taa ? mrt({ output, velocity, metal: metalness }) : mrt({ output, metal: metalness }));
+  // With screen-space reflections, also each pixel's view normal (packed into 8 bits) and roughness.
+  const useSSR = !!opts.ssr && taa;
+  const targets: Record<string, any> = { output, metal: vec2(metalness, roughness) };
+  if (taa) targets.velocity = velocity;
+  if (useSSR) targets.normal = directionToColor(normalView);
+  scenePass.setMRT(mrt(targets));
+  if (useSSR) scenePass.getTexture('normal').type = THREE.UnsignedByteType;
   const sceneColor = scenePass.getTextureNode('output');
   const viewZ = scenePass.getViewZNode();
 
@@ -109,6 +117,22 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   const aoWeight = LOOK.aoAmount.mul(float(1).sub(smoothstep(12, 35, viewZ.negate()))).mul(float(1).sub(metalTex.r.mul(0.8)));
   const aoTerm = mix(float(1), occlusion.r.div(0.9).min(1), aoWeight);
   hdr = hdr.mul(aoTerm);
+  // Screen-space reflections on polished metal: plate mirrors what is really around it (a dark sleeve beside a
+  // breastplate, the turf under a greave, the kitten beside the knight) where the sky probe alone shows only sky
+  // and mist. Traced at half resolution, softened by roughness, faded at the screen edges and where nothing is hit,
+  // so the probe takes over; TAA then smooths what is left.
+  let ssrNode: any = null;
+  if (useSSR) {
+    const nrm: any = scenePass.getTextureNode('normal');
+    const sceneNormal = sample((st: any) => colorToDirection(nrm.sample(st)));
+    ssrNode = ssr(sceneColor, scenePass.getTextureNode('depth'), sceneNormal, { metalnessNode: metalTex.r, roughnessNode: metalTex.g, camera });
+    ssrNode.resolutionScale = 0.5;
+    ssrNode.maxDistance.value = 6;
+    ssrNode.thickness.value = 0.06;
+    ssrNode.quality.value = 0.5;
+    ssrNode.screenEdgeFade.value = 0.25;
+    hdr = blendColor(hdr, ssrNode);
+  }
   // Temporal anti-aliasing on the linear HDR image: the camera is jittered by a sub-pixel Halton offset each
   // frame and the history is reprojected with the velocity buffer, clipped to the current neighbourhood and
   // reset where depth says the surface is new. Depth of field and bloom then work on the stable image.
@@ -173,5 +197,5 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
 
   // Review aid (?aoview): show the occlusion buffer itself, faded as it is applied.
   pipeline.outputNode = opts.aoView ? vec4(vec3(aoTerm), 1) : treated();
-  return { pipeline, scenePass, bloomPass, traaNode };
+  return { pipeline, scenePass, bloomPass, traaNode, ssrNode };
 }

@@ -1,0 +1,17 @@
+[
+ {
+  "label": "setup",
+  "js": "(() => { document.getElementById('hud').style.display = 'none'; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; __kk.rig.handheldAmount = 0; return 'ok'; })()",
+  "wait": 1500
+ },
+ {
+  "js": "(() => { const k = __kk.knight; const p = k.body.pos; const y = k.body.yaw; const f = { x: Math.sin(y), z: Math.cos(y) }, r = { x: Math.cos(y), z: -Math.sin(y) }; __view(p.x + f.x * 4.2 - r.x * 0.8, p.y + 1.1, p.z + f.z * 4.2 - r.z * 0.8, p.x - r.x * 0.5, p.y + 0.95, p.z - r.z * 0.5, 50); })()",
+  "out": "knight_full.png",
+  "wait": 2500
+ },
+ {
+  "js": "(() => { const k = __kk.knight; const p = k.body.pos; const y = k.body.yaw; const f = { x: Math.sin(y), z: Math.cos(y) }; __view(p.x + f.x * 1.6, p.y + 1.35, p.z + f.z * 1.6, p.x, p.y + 1.2, p.z, 50); })()",
+  "out": "knight_chest.png",
+  "wait": 2500
+ }
+]

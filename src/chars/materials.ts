@@ -27,7 +27,9 @@ const armorCache = new Map<string, THREE.Material>();
 // mud is non-metallic and concentrated by the per-part `mud` amount (lower greaves and sabatons get the most).
 // masks: the mesh carries baked per-vertex masks in its colour attribute (R ambient occlusion, G convex edges,
 // B cavities), as the Blender hero armour does: edges read polished, cavities collect grime.
-export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string; scale?: number; emblem?: boolean; side?: THREE.Side; masks?: boolean; engrave?: boolean } = {}) {
+// polish (0..1): how far the plate was burnished toward a mirror; polished plate shows crisp reflections of the
+// horizon, the turf and the wearer's own dark sleeves, which is what makes it glisten rather than look painted.
+export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string; scale?: number; emblem?: boolean; side?: THREE.Side; masks?: boolean; engrave?: boolean; polish?: number } = {}) {
   const key = JSON.stringify(opts);
   if (armorCache.has(key)) return armorCache.get(key)!;
   // Amounts, scale and tint are uniforms rather than constants, so plates that differ only in those share a shader.
@@ -91,7 +93,8 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
   // break them up (about 0.15-0.4).
   const rough = float(0.15).add(broad.mul(0.11)).add(grime.mul(0.12).mul(wear)).add(scratch.mul(0.1)).add(mid.mul(0.04))
     .sub(edge.mul(0.06)).add(cav.mul(0.16).mul(wear.add(0.3)));
-  m.roughnessNode = mix(mix(mix(float(0.4), rough, CHAR_TOGGLES.roughnessMaps), float(0.92), mudMask), float(0.68), paint).add(etch.mul(0.22));
+  const polished = rough.mul(1 - 0.55 * (opts.polish ?? 0));
+  m.roughnessNode = mix(mix(mix(float(0.4), polished, CHAR_TOGGLES.roughnessMaps), float(0.92), mudMask), float(0.68), paint).add(etch.mul(0.22));
   // Subtle hammered dents in the normal (about 0.15 mm deep over ~2.5 cm). Scratches stay in the roughness only:
   // grooves narrower than a pixel turn into bright aliased specks in a derivative bump.
   const bumpH = mx_noise_float(p.mul(42.0)).mul(0.00015).sub(etch.mul(0.00004)).mul(CHAR_TOGGLES.detailNormals);
