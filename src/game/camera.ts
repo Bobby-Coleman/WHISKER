@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { Character } from '../chars/character';
 import { PhysicsWorld, MASK } from './physics';
-import { LOOK, WIND } from '../render/settings';
+import { LOOK, WIND, GAME } from '../render/settings';
 
 // Full-frame-equivalent focal length to vertical FOV (24 mm sensor height).
 export const fovFromMM = (mm: number) => THREE.MathUtils.radToDeg(2 * Math.atan(12 / mm));
@@ -166,9 +166,12 @@ export class CameraRig {
 
   update(dt: number, active: Character, companion: Character, lookIn: THREE.Vector2, zoomIn: number, physics: PhysicsWorld, moving: boolean) {
     const fr = FRAMING[active.kind];
-    // Blend framing toward the active character's settings (switch blend).
+    // Blend framing toward the active character's settings (switch blend). At a run the camera eases back from the
+    // kitten, so the moor does not stream past a hand's breadth from the lens.
     const k = 1 - Math.exp(-dt * 2.6);
-    this.frame.dist += (fr.dist - this.frame.dist) * k;
+    const runK = THREE.MathUtils.clamp(Math.hypot(active.body.vel.x, active.body.vel.z) / GAME.runSpeed, 0, 1);
+    const wantDist = fr.dist + (active.kind === 'kitten' ? 0.65 * runK * runK : 0);
+    this.frame.dist += (wantDist - this.frame.dist) * k;
     this.frame.height += (fr.height - this.frame.height) * k;
     this.frame.mm += (fr.mm - this.frame.mm) * k;
     this.frame.shoulder += (fr.shoulder - this.frame.shoulder) * k;
@@ -231,7 +234,7 @@ export class CameraRig {
       this.lastLook.copy(this.target);
     }
     this.cam.lookAt(this.lastLook);
-    this.handheld(dt, Math.hypot(active.body.vel.x, active.body.vel.z), active.kind === 'kitten' ? 0.55 : 1);
+    this.handheld(dt, Math.hypot(active.body.vel.x, active.body.vel.z), active.kind === 'kitten' ? 0.55 - 0.2 * runK : 1);
     this.cam.fov = fovFromMM(this.frame.mm);
     this.cam.updateProjectionMatrix();
     // Broad gameplay focus; DoF only as a whisper.
@@ -250,7 +253,7 @@ export class CameraRig {
     if (a <= 0) return;
     this.hhT += dt;
     const t = this.hhT;
-    const run = THREE.MathUtils.clamp(speed / 4.2, 0, 1);
+    const run = THREE.MathUtils.clamp(speed / GAME.runSpeed, 0, 1);
     this.hhWalk += ((speed > 0.3 ? 0.35 + 0.65 * run : 0) - this.hhWalk) * Math.min(1, dt * 3);
     // The operator's cadence: about 1.8 steps a second walking, 2.6 running.
     this.hhStep += dt * (1.8 + 0.8 * run) * Math.PI * 2;

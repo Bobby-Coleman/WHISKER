@@ -1,0 +1,9 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __kk.skip(); return 'ok'; })()", "wait": 2500 },
+  { "label": "place", "js": "(() => { __kk.setActive('kitten'); __kk.teleport('kitten', 0.5, 2, Math.PI); __kk.teleport('knight', 0.5, 3.4, Math.PI); __kk.camYaw(0, 0.22); return 'ok'; })()", "wait": 1500 },
+  { "label": "start", "js": "(() => { __kk.simMove(0, 1, 7); return 'run'; })()", "wait": 700 },
+  { "js": "(() => { const k = __kk.kitten.body.pos, n = __kk.knight.body.pos; return JSON.stringify({ kSpeed: +Math.hypot(__kk.kitten.body.vel.x, __kk.kitten.body.vel.z).toFixed(2), gap: +k.distanceTo(n).toFixed(2), k: [k.x, k.z].map(v => +v.toFixed(1)), n: [n.x, n.z].map(v => +v.toFixed(1)) }); })()", "out": "r1.png", "wait": 1500 },
+  { "js": "(() => { const k = __kk.kitten.body.pos, n = __kk.knight.body.pos; return JSON.stringify({ gap: +k.distanceTo(n).toFixed(2), k: [k.x, k.z].map(v => +v.toFixed(1)), n: [n.x, n.z].map(v => +v.toFixed(1)) }); })()", "out": "r2.png", "wait": 2000 },
+  { "js": "(() => { const k = __kk.kitten.body.pos, n = __kk.knight.body.pos; return JSON.stringify({ gap: +k.distanceTo(n).toFixed(2), k: [k.x, k.z].map(v => +v.toFixed(1)), n: [n.x, n.z].map(v => +v.toFixed(1)) }); })()", "out": "r3.png", "wait": 2500 },
+  { "js": "(() => { const k = __kk.kitten.body.pos, n = __kk.knight.body.pos; return JSON.stringify({ gap: +k.distanceTo(n).toFixed(2), stopped: true }); })()", "out": "r4.png", "wait": 300 }
+]

@@ -38,7 +38,7 @@ const CHAPTERS: Chapter[] = [
     objective: 'Get both of you through the sheepfold gate',
     hints: () => [
       'The gate is raised from inside the yard. Something small might find another way in.',
-      'There is a drain under the yard wall, east of the gate. Only the kitten fits.',
+      'There is a drain under the yard wall, east of the gate. Only the kitten fits. Or she can climb the ivy beside it.',
       'Inside, the winch handle is out of her reach. She could hang from it with all her weight.',
     ],
     done: (s) => s.gateOpen,
@@ -73,7 +73,7 @@ const CHAPTERS: Chapter[] = [
       if (s.snagCleared) return ['With the slot clear, turn the wheel again.'];
       if (s.jammed) return [
         'Something is caught in the gate slot, below the middle of the beam.',
-        'The beam would never hold the knight. The kitten can jump up onto it (Space), or be set there.',
+        'The beam would never hold the knight. He can lift the kitten and set her on it.',
         'From the middle of the beam she can kick the snag loose.',
       ];
       if (s.pinOut) return ['With the pin out, the knight can turn the wheel.'];

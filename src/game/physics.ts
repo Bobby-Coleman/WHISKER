@@ -15,9 +15,18 @@ export type Platform =
   | { id?: string; kind: 'circle'; x: number; z: number; r: number; top: number; mask?: number }
   | { id?: string; kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number; top: number; mask?: number };
 
+// A climbable face (ivy on stone, a rough pier): the vertical rectangle above the segment a-b from y0 to y1, facing
+// along n. Only the kitten climbs. At the top she vaults over a wall ('over', landing `depth` beyond the face), pulls
+// herself up onto a ledge ('ledge', at `ledgeTop`), or can go no higher ('none').
+export type Climbable = {
+  id?: string; ax: number; az: number; bx: number; bz: number; nx: number; nz: number; y0: number; y1: number;
+  exit: 'over' | 'ledge' | 'none'; depth?: number; ledgeTop?: number;
+};
+
 export class PhysicsWorld {
   colliders: Collider[] = [];
   platforms: Platform[] = [];
+  climbables: Climbable[] = [];
   boundsRadius = 92;
   // Water standing in the marsh (world height); deep water turns characters back like a wall.
   waterLevel = -1e9;
@@ -41,6 +50,23 @@ export class PhysicsWorld {
     return this.addBox((ax + bx) / 2, (az + bz) / 2, len / 2, thick / 2, rot, yMin, yMax, mask, id);
   }
   get(id: string) { return this.colliders.find((c) => c.id === id); }
+
+  addClimbable(c: Climbable) { this.climbables.push(c); return c; }
+  // A climbable face within reach of a body at p (feet) of radius r, which it is pushing into along (dx, dz).
+  // Returns the face and the position along it (u, metres from a).
+  findClimb(p: { x: number; y: number; z: number }, r: number, dx: number, dz: number, reach = 0.2) {
+    let best: { panel: Climbable; u: number; d: number } | null = null;
+    for (const c of this.climbables) {
+      if (dx * -c.nx + dz * -c.nz < 0.55) continue; // not pushing into it
+      const len = Math.hypot(c.bx - c.ax, c.bz - c.az), tx = (c.bx - c.ax) / len, tz = (c.bz - c.az) / len;
+      const u = (p.x - c.ax) * tx + (p.z - c.az) * tz;
+      const d = (p.x - c.ax) * c.nx + (p.z - c.az) * c.nz;
+      if (u < 0.05 || u > len - 0.05 || d < -0.05 || d > r + reach) continue;
+      if (p.y < c.y0 - 0.35 || p.y > c.y1 - 0.25) continue;
+      if (!best || d < best.d) best = { panel: c, u, d };
+    }
+    return best;
+  }
 
   groundAt(x: number, z: number, feetY = Infinity, step = 0.3, mask: number = MASK.all) {
     let g = heightAt(x, z);

@@ -17,9 +17,11 @@ import { Knight } from './chars/knight';
 import { Character, PoseContext } from './chars/character';
 import { CHAR_TOGGLES } from './chars/materials';
 import { characterAO, writeOccluders, OccSpec } from './render/occlusion';
-import { positionWorld, vec3 } from 'three/tsl';
+import { positionWorld, vec3, uniform, bool } from 'three/tsl';
+import { temporalAlphaThreshold } from './render/temporal';
 import { PhysicsWorld } from './game/physics';
 import { PlayerController, CompanionController } from './game/controllers';
+import { tryGrab, climbStep } from './game/climb';
 import { CameraRig } from './game/camera';
 import { KeyboardMouseGamepad } from './game/input';
 import { Puzzles } from './game/puzzles';
@@ -188,6 +190,19 @@ async function main() {
   await nextPaint();
   const knight = new Knight(knightAssets);
   scene.add(kitten.group, knight.group);
+  // The knight dissolves (screen-door coverage that TAA smooths) while he stands between the camera and the kitten
+  // or right against the lens; his shadow stays. His materials are cloned so the kitten's shared ones are untouched.
+  const knightVis = uniform(1);
+  {
+    const keep = knightVis.greaterThan(temporalAlphaThreshold), solid = bool(true);
+    const done = new Map<THREE.Material, THREE.Material>();
+    knight.group.traverse((o: any) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+      let m = done.get(o.material);
+      if (!m) { m = o.material.clone() as THREE.Material; (m as any).maskNode = keep; (m as any).maskShadowNode = solid; done.set(o.material, m); }
+      o.material = m;
+    });
+  }
   kitten.attachCloth(scene);
   const ground = (x: number, z: number) => physics.groundAt(x, z);
   const placeAtSpawn = () => {
@@ -211,12 +226,13 @@ async function main() {
   input.onTouchMode = () => hud.setTouch();
   if (matchMedia('(pointer: coarse)').matches) input.enterTouchMode();
   let story: Story | null = null;
+  const tips = new Set<string>();
   const say = (t: string, d?: number) => (story ? story.feedback(t, d) : hud.say(t, d));
   const puzzles = new Puzzles(structures, physics, kitten, knight, (t) => say(t), (n, p, g) => audio.play(n, p, g), causeway);
   (puzzles as any).onPlacedOnSill = () => { companions.get(kitten)!.mode = 'wait'; say('The kitten is on the ledge.'); };
   const placePair = (k: THREE.Vector3, n: THREE.Vector3, yaw: number) => {
     for (const [c, p] of [[kitten, k], [knight, n]] as const) {
-      c.body.pos.copy(p); c.body.prevPos.copy(p); c.body.yaw = c.body.prevYaw = yaw; c.body.vel.set(0, 0, 0); c.body.vy = 0;
+      c.body.pos.copy(p); c.body.prevPos.copy(p); c.body.yaw = c.body.prevYaw = yaw; c.body.vel.set(0, 0, 0); c.body.vy = 0; c.body.climb = null;
       c.carriedBy = null; c.holding = null;
       c.resetPose(ground);
     }
@@ -351,6 +367,7 @@ async function main() {
     setActive: (k: 'kitten' | 'knight') => { if (active.kind !== k) switchChar(); },
     teleport: (k: 'kitten' | 'knight', x: number, z: number, yaw = 0) => {
       const c = k === 'kitten' ? kitten : knight;
+      c.body.climb = null;
       c.body.pos.set(x, physics.groundAt(x, z), z); c.body.prevPos.copy(c.body.pos); c.body.yaw = c.body.prevYaw = yaw; c.resetPose(ground);
       if (c === kitten) kitten.resetCloth();
     },
@@ -422,9 +439,21 @@ async function main() {
 
   function physicsStep(inp: ReturnType<typeof input.poll>, playing: boolean) {
     const pc = playing && !puzzles.busy.has(active) && !active.carriedBy && !rig.moment;
-    player.update(active, inp, rig.yaw, H, pc);
+    if (active.body.climb) {
+      // On a face: the stick climbs, a jump pushes off (game/climb.ts).
+      climbStep(active, physics, pc ? inp.move : new THREE.Vector2(), pc && inp.jumpPressed, rig.yaw, H);
+    } else {
+      player.update(active, inp, rig.yaw, H, pc);
+      // Running or jumping into ivy, the kitten takes hold.
+      if (pc && active.kind === 'kitten' && inp.move.lengthSq() > 0.09) {
+        const fx = -Math.sin(rig.yaw), fz = -Math.cos(rig.yaw);
+        const dx = fx * inp.move.y - fz * inp.move.x, dz = fz * inp.move.y + fx * inp.move.x;
+        const l = Math.hypot(dx, dz) || 1;
+        tryGrab(active, physics, dx / l, dz / l);
+      }
+    }
     const cc = companions.get(companion)!;
-    if (!puzzles.busy.has(companion)) cc.update(companion, active, physics, puzzles.nav, H, clockT, (p) => rig.isVisible(p));
+    if (!puzzles.busy.has(companion)) cc.update(companion, active, physics, puzzles.nav, H, clockT, (p) => rig.isVisible(p), rig.cam.position);
     for (const c of [kitten, knight]) {
       if (c.carriedBy) {
         c.body.prevPos.copy(c.body.pos);
@@ -433,6 +462,8 @@ async function main() {
         continue;
       }
       if (puzzles.busy.has(c)) { c.body.prevPos.copy(c.body.pos); c.body.prevYaw = c.body.yaw; c.body.vel.set(0, 0, 0); continue; }
+      // Climbing moves only through climbStep; left on a face by a switch, she holds on where she is.
+      if (c.body.climb) { if (c !== active) { c.body.prevPos.copy(c.body.pos); c.body.prevYaw = c.body.yaw; } continue; }
       const other = c === kitten ? knight : kitten;
       const obstacles = other.carriedBy || c.holding === other ? [] : [{ x: other.body.pos.x, z: other.body.pos.z, r: other.body.radius * 0.8 }];
       physics.move(c.body, c.kind, H, obstacles);
@@ -471,6 +502,20 @@ async function main() {
     while (acc >= H) { physicsStep(inp, playing); acc -= H; }
     const alpha = acc / H;
     if (mode === 'field') { puzzles.update(dt, active); story!.update(dt, playing && !rig.moment); }
+    // First time near climbable ivy as the kitten, and first time on it: how climbing works.
+    if (playing && active === kitten && story!.started) {
+      if (kitten.body.climb) {
+        if (!tips.has('climbing')) { tips.add('climbing'); story!.feedback(input.touchMode ? 'The stick climbs. Jump lets go.' : 'W and S climb, A and D move along. Space lets go.', 5); }
+      } else if (!tips.has('ivy')) {
+        const p = kitten.body.pos;
+        for (const c of physics.climbables) {
+          const len = Math.hypot(c.bx - c.ax, c.bz - c.az);
+          const u = ((p.x - c.ax) * (c.bx - c.ax) + (p.z - c.az) * (c.bz - c.az)) / len;
+          const d = (p.x - c.ax) * c.nx + (p.z - c.az) * c.nz;
+          if (u > -0.2 && u < len + 0.2 && d > 0 && d < 1.1 && Math.abs(p.y - c.y0) < 0.6) { tips.add('ivy'); story!.feedback('Ivy. The kitten can climb it: run into the wall.', 5); break; }
+        }
+      }
+    }
     // Turntable in the lab.
     if (mode === 'lab') {
       if (turntable) labYaw += dt * 0.35;
@@ -508,6 +553,23 @@ async function main() {
     } else if (rig.mode === 'play') {
       const moving = Math.hypot(active.body.vel.x, active.body.vel.z) > 0.3;
       if (!rig.updateMoment(dt)) rig.update(dt, active, companion, inp.look, inp.zoom, physics, moving);
+    }
+    // The knight between the lens and the kitten (or crowding the lens) dissolves until he is clear.
+    {
+      let want = 1;
+      const cp = camera.position, np = knight.body.pos;
+      if (active === kitten && mode === 'field') {
+        const kp = kitten.group.position;
+        const sx = kp.x - cp.x, sz = kp.z - cp.z, sl2 = sx * sx + sz * sz || 1;
+        const t = ((np.x - cp.x) * sx + (np.z - cp.z) * sz) / sl2;
+        if (t > 0 && t < 1.05) {
+          const d = Math.hypot(np.x - (cp.x + sx * t), np.z - (cp.z + sz * t));
+          const ly = cp.y + (kp.y + 0.15 - cp.y) * t;
+          if (d < 0.75 && ly > np.y - 0.1 && ly < np.y + 1.95) want = 0.08;
+        }
+      }
+      if (cp.distanceTo(new THREE.Vector3(np.x, np.y + 1.0, np.z)) < 1.2) want = Math.min(want, 0.15);
+      knightVis.value += (want - knightVis.value) * Math.min(1, dt * 7);
     }
     // Shadow frustum follows the camera's subject, snapped to texels to avoid shimmer.
     const focus = mode === 'lab' ? new THREE.Vector3(0, 0, 0) : active.group.position;

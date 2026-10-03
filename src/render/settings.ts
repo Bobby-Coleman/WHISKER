@@ -53,10 +53,11 @@ export const LOOK = {
 };
 
 export const GAME = {
-  // Shared normal sustained running speed (m/s), used by player and companion. Brisk enough that neither character
-  // holds up the other in traversal or puzzles (as in It Takes Two); the difference is in the gait, not the pace.
-  runSpeed: 4.2,
-  walkSpeed: 1.6,
+  // Shared normal sustained running speed (m/s), used by player and companion, so neither holds up the other (as in
+  // It Takes Two): what differs is what each can do (she climbs and squeezes through, he lifts and holds), not the
+  // pace. A brisk jog for the knight; at 4.2 the kitten, a tenth of his size, read as a blur.
+  runSpeed: 3.5,
+  walkSpeed: 1.45,
   followGap: { knight: 2.1, kitten: 1.7 },
   arriveTolerance: 0.35,
   catchUpMax: 1.18, // bounded multiplier on run speed for path detours

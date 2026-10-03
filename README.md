@@ -40,12 +40,21 @@ It is told in chapter cards, a few lines at a time and short camera moments, nev
 
 The settings panel also has the look (Modern or Vintage), the treatment-strength slider, ambient occlusion, the handheld camera, quality (high, medium, low), adaptive resolution, volume and a material lab.
 
+## What each of them can do
+
+They run at the same pace, so neither holds the other up; what differs is what each can do.
+
+- **The kitten** climbs: run into ivy and she takes hold (the stick climbs, Space lets go), vaulting over walls and pulling herself up onto ledges at the top. Her sword goes across her back while she climbs or hangs from a lever. She also fits through drains, hatches and gaps, walks beams that would never hold the knight, and is light enough to ride a bell rope down.
+- **The knight** lifts and carries her (once she trusts him), holds up what is far too heavy for her, turns stiff wheels, keeps a pressure stone down with his weight and wades water that would be over her head.
+
+As the kitten's companion he trails beside her rather than between her and the camera, and if he does get in the way he fades out until he is clear.
+
 ## The five puzzles (spoilers)
 
-1. **The Sheepfold.** The knight cannot fit through the drain under the yard wall east of the gate. The kitten can. Inside she hangs from the winch handle and her weight brings the gate up.
+1. **The Sheepfold.** The knight cannot fit through the drain under the yard wall east of the gate. The kitten can, or she can climb the ivy on the wall beside it and drop in. Inside she hangs from the winch handle and her weight brings the gate up.
 2. **The Chapel.** The door needs both pressure stones held at once. The big flagstone ignores the kitten, and the small stone sits in a gap the knight cannot crawl into. Walk the knight onto the flagstone and switch to the kitten (he keeps his weight on it), then crawl her through the gap to the small stone. Inside, she takes the last small shield.
 3. **The Bell** (north-west). The tower door is barred from inside. The knight lifts the kitten (once she trusts him) and sets her on the window ledge. She rides the bell rope down, which rings the bell, and the castle on the horizon answers. Then she lifts the door bar.
-4. **The Causeway.** The marsh has drowned the castle road, too deep for either of them. At the sluice on its east bank, only the kitten fits through the hatch of the pin hut, where she pulls the pin that locks the wheel. The knight turns the wheel until the gate jams a hand's breadth up. The beam over the gate would never hold the knight, but the kitten can jump onto it (or be set on it) and kick loose the branch caught in the slot. The knight turns the wheel again, and the marsh drains off the road.
+4. **The Causeway.** The marsh has drowned the castle road, too deep for either of them. At the sluice on its east bank, only the kitten fits through the hatch of the pin hut, where she pulls the pin that locks the wheel. The knight turns the wheel until the gate jams a hand's breadth up. The beam over the gate would never hold the knight, but he can set the kitten on it, and she walks out and kicks loose the branch caught in the slot. The knight turns the wheel again, and the marsh drains off the road.
 5. **The Warden's Gate.** The portcullis is far too heavy for a kitten. The knight heaves it up and holds it, but not for long: switch to the kitten, run under it and pull the counterweight release in the bay behind, and the gate stays up. If his arms give first, he can lift it again.
 
 ## Image

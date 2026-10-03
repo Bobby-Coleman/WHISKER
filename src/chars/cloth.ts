@@ -135,7 +135,9 @@ export class VerletCloth {
         const tu = 1 + 0.35 * Math.sin(t * 5.3 - j * 0.55 + i * 0.3) + 0.2 * Math.sin(t * 11.7 + i * 0.9 - j * 0.4);
         const sx = Math.sin(t * 3.1 + j * 0.37), sy = Math.sin(t * 4.3 + i * 0.5 + j * 0.2);
         const Wx = (WIND.dir.x + sx * 0.25 * WIND.dir.y) * speed * tu, Wy = sy * 0.6 * speed * 0.25, Wz = (WIND.dir.y - sx * 0.25 * WIND.dir.x) * speed * tu;
-        const vx = (x - this.prev[o]) / dt, vy = (y - this.prev[o + 1]) / dt, vz = (z - this.prev[o + 2]) / dt;
+        // Particle velocity, capped: a sudden jump of the pins must not feed the square-law drag an absurd speed.
+        const cap = (v: number) => Math.max(-25, Math.min(25, v));
+        const vx = cap((x - this.prev[o]) / dt), vy = cap((y - this.prev[o + 1]) / dt), vz = cap((z - this.prev[o + 2]) / dt);
         const rx = Wx - vx, ry = Wy - vy, rz = Wz - vz;
         const nx = this.nrm[o], ny = this.nrm[o + 1], nz = this.nrm[o + 2];
         const rn = rx * nx + ry * ny + rz * nz;

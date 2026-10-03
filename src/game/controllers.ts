@@ -69,10 +69,12 @@ export class CompanionController {
   private sideT = 0;
   private detour: THREE.Vector3 | null = null;
   private detourT = 0;
+  // Which side of the player's line of sight the knight trails on (1 right, -1 left, 0 not chosen yet).
+  private viewSide = 0;
   recoveries = 0;
   status = '';
 
-  update(c: Character, leader: Character, physics: PhysicsWorld, nav: NavState, dt: number, time: number, isVisible: (p: THREE.Vector3) => boolean) {
+  update(c: Character, leader: Character, physics: PhysicsWorld, nav: NavState, dt: number, time: number, isVisible: (p: THREE.Vector3) => boolean, camPos?: THREE.Vector3) {
     const b = c.body;
     if (this.mode === 'wait' || c.carriedBy) { drive(c, new THREE.Vector2(), 0, dt); this.moving = false; this.status = 'waiting'; return; }
     const gap = GAME.followGap[leader.kind === 'knight' ? 'kitten' : 'knight'];
@@ -88,6 +90,27 @@ export class CompanionController {
         return;
       }
     }
+    // Following the kitten, the knight trails beside her, off the line from the camera to her, rather than walking
+    // between the player and the little one he is following. He keeps to the side he is already on.
+    let stopOverride = -1;
+    if (finalLeg && camPos && c.kind === 'knight') {
+      const lp = leader.body.pos;
+      const vx = lp.x - camPos.x, vz = lp.z - camPos.z, vl = Math.hypot(vx, vz) || 1;
+      const fx = vx / vl, fz = vz / vl, rx = fz, rz = -fx;
+      const lat = (b.pos.x - lp.x) * rx + (b.pos.z - lp.z) * rz;
+      if (this.viewSide === 0 || Math.abs(lat) > 1.0) this.viewSide = lat >= 0 ? 1 : -1;
+      const spot = (s: number) => new THREE.Vector3(lp.x + rx * s * 1.8 - fx * 0.35, lp.y, lp.z + rz * s * 1.8 - fz * 0.35);
+      const usable = (p: THREE.Vector3) => {
+        const gy = physics.groundAt(p.x, p.z, lp.y + 0.3);
+        if (Math.abs(gy - lp.y) > 0.6) return false;
+        if (physics.waterLevel > -1e8 && waterDepthAt(p.x, p.z, physics.waterLevel, gy) > physics.wadeDepth.knight * 0.7) return false;
+        return !physics.resolve(p.x, p.z, b.radius, gy + 0.3, gy + b.height, MASK.knight, { x: 0, z: 0 });
+      };
+      let s = this.viewSide;
+      let p = spot(s);
+      if (!usable(p)) { s = -s; p = spot(s); }
+      if (usable(p)) { this.viewSide = s; goal = p; stopOverride = 0.45; }
+    }
     if (this.detour) {
       goal = this.detour; finalLeg = false;
       this.detourT -= dt;
@@ -95,7 +118,7 @@ export class CompanionController {
     }
     const dx = goal.x - b.pos.x, dz = goal.z - b.pos.z;
     const dist = Math.hypot(dx, dz);
-    const stopAt = finalLeg ? gap : 0.25;
+    const stopAt = finalLeg ? (stopOverride >= 0 ? stopOverride : gap) : 0.25;
     if (finalLeg) {
       if (this.moving && dist < stopAt + GAME.arriveTolerance) this.moving = false;
       else if (!this.moving && dist > stopAt + GAME.arriveTolerance + 0.55) this.moving = true;

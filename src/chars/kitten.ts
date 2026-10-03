@@ -11,12 +11,14 @@ import type { KittenAssets, BodyFur } from './assets';
 import { strandMesh } from './strands';
 import { polygonize, union, ellipsoid, capsule, smax, smin, SDF } from './sdf';
 import { GAME } from '../render/settings';
+import { CLIMB_DIST } from '../game/climb';
 
 const lin = (hex: string) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b] as [number, number, number]; };
 // Cream-ginger coat: peach base, pale cream face and chest, faint warmer tabby marks on the crown.
 const COAT = lin('#e2c29e'), COAT_DARK = lin('#c99b6e'), CREAM = lin('#f3e9d9'), NOSE = lin('#d69c95'), LID = lin('#3a2a20'), INNER_EAR = lin('#cf9f90');
 const mixc = (a: number[], b: number[], t: number) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t] as [number, number, number];
 const ss = THREE.MathUtils.smoothstep;
+const sm = (x: number) => { const c = Math.min(1, Math.max(0, x)); return c * c * (3 - 2 * c); };
 
 // Face landmarks (head space, +Z forward), shared by the SDF, colors and fur length.
 // Kept in step with blender/kitten_head.py, which sculpts the hero head around the same eyes.
@@ -36,6 +38,8 @@ export class Kitten extends Character {
   swordTilt = new THREE.Vector2(); swordTiltV = new THREE.Vector2();
   private twitchT = 3; private twitchSide = 1; private twitchAmt = 0;
   private lookYaw = 0; private lookPitch = 0; private lookTimer = 2; private wantLookUp = false;
+  // 0 sword in her paws .. 1 sheathed across her back (climbing, hanging from a lever or rope).
+  private sheathe = 0;
   private tailPhase = 0;
   hasShield = false;
   shield = new THREE.Group();
@@ -48,7 +52,8 @@ export class Kitten extends Character {
     const body = new CharacterBody(0.09, 0.34);
     super('kitten', body, {
       hipY: 0.108, hipW: 0.024, l1: 0.05, l2: 0.048, ankleH: 0.014,
-      walkStride: 0.32, runStride: 0.6, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
+      // A long, bounding run stride, so at the shared pace her legs cycle about four times a second, not seven.
+      walkStride: 0.34, runStride: 0.8, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
       swingWalk: 0.42, swingRun: 0.62, stepHeightWalk: 0.016, stepHeightRun: 0.03,
       bobWalk: 0.004, bobRun: 0.009, settleRate: 3.4, footSide: 0.027,
     // Long forearms, as in the reference, where the left vambrace crosses the whole chest to the sword grip.
@@ -491,6 +496,10 @@ export class Kitten extends Character {
   }
 
   resetCloth() {
+    // Bring the drawn body to where the body is now first (after a teleport or a reset it is still at the old
+    // place), or the cloth is laid out there and then yanked across the moor in one step.
+    this.renderPos.copy(this.body.pos); this.renderYaw = this.body.yaw;
+    this.group.position.copy(this.renderPos); this.group.rotation.set(0, this.renderYaw, 0);
     this.group.updateMatrixWorld(true);
     const P = this.parts;
     this.cape.reset((i, j) => {
@@ -514,6 +523,8 @@ export class Kitten extends Character {
     ];
     const sub = Math.min(3, Math.max(1, Math.ceil(dt / (1 / 90))));
     for (let i = 0; i < sub; i++) this.cape.step(Math.min(dt, 1 / 30) / sub, ctx.ground);
+    // Should the cloth ever blow up (a jump in its pins it cannot follow), lay it out again rather than lose it.
+    if (!Number.isFinite(this.cape.pos[0]) || !Number.isFinite(this.cape.pos[this.cape.pos.length - 1])) this.resetCloth();
   }
 
   protected leanScale() { return 0.18; }
@@ -545,7 +556,8 @@ export class Kitten extends Character {
     const breathe = Math.sin(this.breath * 2.2) * 0.0006;
     P.chest.position.set(pe.position.x * 0.5, pe.position.y + 0.018 + breathe, pe.position.z);
     // A slight turn to the right brings the left shoulder forward for the cross-body grip on the sword.
-    P.chest.rotation.set(this.lean * 0.8 - this.hangPose * 0.2, -pe.rotation.y * 0.7 - 0.12 * (1 - this.hangPose), this.leanSide * 0.4 - pe.rotation.z * 0.5);
+    // Climbing, she leans in to the face; the turn for the cross-body sword grip goes with the sword.
+    P.chest.rotation.set(this.lean * 0.8 - this.hangPose * 0.2 + this.climbBlend * 0.18, -pe.rotation.y * 0.7 - 0.12 * (1 - this.hangPose) * (1 - this.climbBlend), this.leanSide * 0.4 - pe.rotation.z * 0.5);
     P.chest.updateMatrix();
     // Head: solemn and still; looks up at the knight now and then.
     this.lookTimer -= dt;
@@ -559,6 +571,7 @@ export class Kitten extends Character {
       if (Math.abs(yaw) < 1.7 && dist < 8) { tYaw = THREE.MathUtils.clamp(yaw, -1.0, 1.0); tPitch = THREE.MathUtils.clamp(pitch, -0.6, 0.3); }
     }
     if (g.moving > 0.3) { tYaw *= 0.25; tPitch = 0.06; }
+    if (this.climbBlend > 0.5) { tYaw = 0; tPitch = -0.32; } // eyes on the way up
     this.lookYaw += (tYaw - this.lookYaw) * Math.min(1, dt * 2.0);
     this.lookPitch += (tPitch - this.lookPitch) * Math.min(1, dt * 2.0);
     P.head.position.copy(new THREE.Vector3(0, 0.122, 0.008).applyMatrix4(P.chest.matrix));
@@ -602,14 +615,51 @@ export class Kitten extends Character {
     this.armL.target.copy(wrist(gripLow, 1));
     this.armL.pole.set(1, -1, 0.15); this.armR.pole.set(-1, -0.8, -0.2);
     if (this.hangPose > 0.001) {
-      // Both paws reach up to a lever handle, bar or rope; the sword is tucked against the body.
+      // Both paws reach up to a lever handle, bar or rope.
       const h = this.hangPose;
       const local = this.toLocal(this.hangTarget, new THREE.Vector3());
       this.armL.target.lerp(local.clone().add(new THREE.Vector3(0.008, 0, 0)), h);
       this.armR.target.lerp(local.clone().add(new THREE.Vector3(-0.008, 0, 0)), h);
-      this.sword.position.lerp(new THREE.Vector3(0.05, 0.1, -0.045), h);
-      this.sword.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.4, 0, -0.5)), h);
+    }
+    // Climbing: paws reach up the face by turns, elbows out, the sword out of the way.
+    if (this.climbBlend > 0.001) {
+      const k = sm(this.climbBlend);
+      const ph = this.body.climb?.phase ?? this.climbPhase;
+      this.climbPhase = ph;
+      const shY = P.chest.position.y + this.dims.shoulderY;
+      const hold = (side: number) => {
+        const reach = Math.max(0, Math.sin(ph + (side > 0 ? 0 : Math.PI)));
+        return new THREE.Vector3(side * 0.03, shY + 0.05 + 0.04 * reach, CLIMB_DIST - 0.012);
+      };
+      this.armL.target.lerp(hold(1), k); this.armR.target.lerp(hold(-1), k);
+      this.armL.pole.lerp(new THREE.Vector3(1, -0.4, -0.6), k); this.armR.pole.lerp(new THREE.Vector3(-1, -0.4, -0.6), k);
+    }
+    // Sheathed across her back while her paws are busy: hilt at her left hip, blade up past her right shoulder.
+    const wantSheath = this.climbBlend > 0.4 || this.hangPose > 0.05 ? 1 : 0;
+    this.sheathe += (wantSheath - this.sheathe) * Math.min(1, dt * 6);
+    if (this.sheathe > 0.001) {
+      const s = sm(this.sheathe);
+      const backPos = new THREE.Vector3(0.03, -0.012, -0.062).applyMatrix4(P.chest.matrix);
+      const backQ = new THREE.Quaternion().setFromEuler(P.chest.rotation).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, 0, 0.5)));
+      // Lifted off the grip and swung round behind her rather than passed through her body.
+      backPos.z -= Math.sin(Math.PI * s) * 0.03;
+      this.sword.position.lerp(backPos, s);
+      this.sword.quaternion.slerp(backQ, s);
     }
     this.shield.visible = this.hasShield;
+  }
+
+  private climbPhase = 0;
+  // Toes on the face by turns, opposite to the paws.
+  protected climbFeet(_ctx: PoseContext) {
+    const k = sm(this.climbBlend);
+    const ph = this.body.climb?.phase ?? this.climbPhase;
+    for (const f of this.gait.feet) {
+      const lift = Math.max(0, Math.sin(ph + (f.side > 0 ? Math.PI : 0)));
+      const t = this.toWorld(new THREE.Vector3(f.side * 0.026, 0.004 + 0.034 * lift, CLIMB_DIST - 0.016), new THREE.Vector3());
+      f.cur.lerp(t, k);
+      f.lift *= 1 - k;
+      f.pitch += (-0.55 - f.pitch) * k;
+    }
   }
 }

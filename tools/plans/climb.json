@@ -1,0 +1,14 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __kk.skip(); window.__cs = () => { const b = __kk.kitten.body, c = b.climb; return JSON.stringify({ climb: c ? { u: +c.u.toFixed(2), v: +c.v.toFixed(2), exit: !!c.exit, panel: c.panel.exit } : null, pos: [b.pos.x, b.pos.y, b.pos.z].map(v => +v.toFixed(2)), msg: document.querySelector('#hud .msg').textContent.slice(0, 50) }); }; return __kk.physics.climbables.map(c => c.exit + '@' + [c.ax, c.az, c.y0, c.y1].map(v => v.toFixed(2)).join(',')).join(' | '); })()", "wait": 2500 },
+  { "label": "to wall", "js": "(() => { const c = __kk.physics.climbables[0]; const mx = (c.ax + c.bx) / 2; __kk.setActive('kitten'); __kk.teleport('kitten', mx, c.az + 0.45, Math.PI); __kk.teleport('knight', mx - 2.5, c.az + 3, Math.PI); __kk.camYaw(0, 0.2); return __cs(); })()", "wait": 1200 },
+  { "label": "push in", "js": "(() => { __kk.simMove(0, 1, 9); return __cs(); })()", "wait": 900 },
+  { "js": "__cs()", "out": "c1_grab.png", "wait": 1500 },
+  { "js": "__cs()", "out": "c2_climbing.png", "wait": 1300 },
+  { "js": "__cs()", "out": "c3_top.png", "wait": 900 },
+  { "js": "__cs()", "out": "c4_vault.png", "wait": 1500 },
+  { "js": "__cs()", "out": "c5_inside.png", "wait": 200 },
+  { "label": "to stone", "js": "(() => { const c = __kk.physics.climbables.find(c => c.exit === 'ledge' && c.y1 > 1); const mx = (c.ax + c.bx) / 2, mz = (c.az + c.bz) / 2; __kk.simMove(0, 0, 0.1); __kk.teleport('kitten', mx + c.nx * 0.5, mz + c.nz * 0.5, Math.atan2(-c.nx, -c.nz)); __kk.camYaw(Math.atan2(c.nx, c.nz), 0.15); return __cs(); })()", "wait": 1200 },
+  { "label": "push in", "js": "(() => { __kk.simMove(0, 1, 6); return __cs(); })()", "wait": 1800 },
+  { "js": "__cs()", "out": "c6_stone_climb.png", "wait": 3500 },
+  { "js": "__cs()", "out": "c7_stone_top.png", "wait": 200 }
+]

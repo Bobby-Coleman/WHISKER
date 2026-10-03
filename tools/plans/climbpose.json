@@ -1,0 +1,8 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; document.querySelector('#hud').style.display = 'none'; __kk.skip(); window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; __kk.rig.handheldAmount = 0; return 'ok'; })()", "wait": 2500 },
+  { "label": "to wall", "js": "(() => { const c = __kk.physics.climbables[0]; const mx = (c.ax + c.bx) / 2; __kk.setActive('kitten'); __kk.teleport('kitten', mx, c.az + 0.4, Math.PI); __kk.teleport('knight', mx - 6, c.az + 6, Math.PI); __kk.wait(); __kk.camYaw(0, 0.2); __kk.simMove(0, 1, 1.9); return 1; })()", "wait": 2600 },
+  { "label": "back", "js": "(() => { const p = __kk.kitten.body.pos; __view(p.x - 0.3, p.y + 0.32, p.z + 0.85, p.x, p.y + 0.17, p.z, 50); return 1; })()", "out": "q1_back.png", "wait": 2200 },
+  { "label": "side", "js": "(() => { const p = __kk.kitten.body.pos; __view(p.x + 0.85, p.y + 0.25, p.z + 0.35, p.x, p.y + 0.16, p.z - 0.04, 45); return 1; })()", "out": "q2_side.png", "wait": 2200 },
+  { "label": "ivy", "js": "(() => { const c = __kk.physics.climbables[0]; const mx = (c.ax + c.bx) / 2 + 0.3; __view(mx + 0.4, c.y0 + 0.75, c.az + 0.9, mx, c.y0 + 0.6, c.az, 45); return 1; })()", "out": "q3_ivy.png", "wait": 2000 },
+  { "label": "game cam", "js": "(() => { __kk.preset(-1); __kk.simMove(0, 1, 0.8); return 1; })()", "out": "q4_play.png", "wait": 1500 }
+]

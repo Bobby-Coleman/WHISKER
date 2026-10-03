@@ -12,6 +12,7 @@ import { photoMaterial } from './surfaces';
 // Photo-scanned stone, rock and timber when their textures loaded; the procedural materials otherwise.
 export const FIELD_MATERIALS = { photo: true };
 import { Simplex2, mulberry32 } from './noise';
+import { createIvy, IvyFace } from './ivy';
 import { LOOK } from '../render/settings';
 
 const noise3 = new Simplex2(77);
@@ -59,9 +60,12 @@ export function createStructures(physics: PhysicsWorld) {
     const rot = Math.atan2(bz - az, bx - ax);
     const n = Math.max(1, Math.round(len / 1.1));
     const r = mulberry32(Math.floor(ax * 31 + az * 17 + bx * 7));
+    // Each section's centre, length and top, so climbable ivy can be grown to the height it really has.
+    const segs: { cx: number; cz: number; len: number; top: number }[] = [];
     for (let i = 0; i < n; i++) {
       const t0 = i / n, t1 = (i + 1) / n;
       const hh = h * (1 - (opts.ruin ?? 0.25) * r());
+      segs.push({ cx: ax + (bx - ax) * (t0 + t1) / 2, cz: az + (bz - az) * (t0 + t1) / 2, len: len / n, top: base - 0.15 + hh });
       const g = new THREE.BoxGeometry(len / n + 0.02, hh, t * (0.95 + r() * 0.1));
       g.translate(0, hh / 2, 0);
       const m = shadow(new THREE.Mesh(g, mat));
@@ -78,6 +82,12 @@ export function createStructures(physics: PhysicsWorld) {
       }
     }
     if (opts.collide !== false) physics.addWall(ax, az, bx, bz, t, -100, 100, opts.mask ?? MASK.all, opts.id);
+    return segs;
+  };
+  // Climbable ivy: the face for the kitten to climb, and the ivy that shows the player where it is.
+  const ivyFace = (f: IvyFace & { exit: 'over' | 'ledge' | 'none'; depth?: number; ledgeTop?: number }, seed: number, density = 1) => {
+    physics.addClimbable(f);
+    root.add(createIvy(f, seed, density));
   };
 
   // ---- Courtyard enclosure.
@@ -85,7 +95,15 @@ export function createStructures(physics: PhysicsWorld) {
   const gx0 = GATE.x - GATE.width / 2, gx1 = GATE.x + GATE.width / 2;
   const cx0 = CULVERT.x - CULVERT.width / 2, cx1 = CULVERT.x + CULVERT.width / 2;
   wall(W.minX, W.maxZ, gx0 - 0.35, W.maxZ, H, T, stone, yardY);
-  wall(gx1 + 0.35, W.maxZ, cx0, W.maxZ, H, T, stone, yardY);
+  const southEast = wall(gx1 + 0.35, W.maxZ, cx0, W.maxZ, H, T, stone, yardY);
+  // Ivy on both faces of one section between the gate and the drain: the kitten's other way over the wall.
+  {
+    const seg = southEast.reduce((a, b) => (Math.abs(b.cx - 9.6) < Math.abs(a.cx - 9.6) ? b : a));
+    const x0 = seg.cx - seg.len / 2 + 0.14, x1 = seg.cx + seg.len / 2 - 0.14;
+    const zo = W.maxZ + T / 2, zi = W.maxZ - T / 2;
+    ivyFace({ ax: x0, az: zo, bx: x1, bz: zo, nx: 0, nz: 1, y0: heightAt(seg.cx, zo + 0.3) - 0.05, y1: seg.top, exit: 'over', depth: T }, 71);
+    ivyFace({ ax: x1, az: zi, bx: x0, bz: zi, nx: 0, nz: -1, y0: yardY - 0.05, y1: seg.top, exit: 'over', depth: T }, 72, 0.8);
+  }
   wall(cx1, W.maxZ, W.maxX, W.maxZ, H, T, stone, yardY);
   wall(W.minX, W.minZ, W.maxX, W.minZ, H, T, stone, yardY, { ruin: 0.1 });
   wall(W.minX, W.minZ, W.minX, W.maxZ, H, T, stone, yardY);
@@ -351,7 +369,15 @@ export function createStructures(physics: PhysicsWorld) {
     m.position.set(s.x, y + s.h / 2 - 0.25, s.z);
     m.rotation.set(s.lean, i * 1.3, s.lean * 0.5);
     root.add(m);
-    physics.addCircle(s.x, s.z, s.r * 0.85, -100, 100);
+    // (The perch stone's collider stops at its top, so the kitten can stand up there.)
+    physics.addCircle(s.x, s.z, s.r * 0.85, -100, i === 2 ? y + s.h - 0.33 : 100);
+    // The tall stone east of the start is ivied on its west face: a perch for a cat, with a view of the moor.
+    if (i === 2) {
+      const nx = -0.96, nz = -0.28, d = s.r * 0.62, top = y + s.h - 0.3;
+      const cx = s.x + nx * d, cz = s.z + nz * d, tx = -nz, tz = nx;
+      ivyFace({ ax: cx - tx * 0.24, az: cz - tz * 0.24, bx: cx + tx * 0.24, bz: cz + tz * 0.24, nx, nz, y0: y - 0.05, y1: top, exit: 'ledge', ledgeTop: top }, 73, 1.2);
+      physics.platforms.push({ id: 'stoneTop', kind: 'circle', x: s.x, z: s.z, r: s.r * 0.6, top, mask: MASK.kitten });
+    }
   });
   const rocks: { x: number; z: number; r: number }[] = [];
   const rr3 = mulberry32(42);

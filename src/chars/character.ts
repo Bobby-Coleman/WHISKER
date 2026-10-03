@@ -2,6 +2,14 @@
 // Shared character body + procedural biped presentation. Gameplay owns `body`; visuals read it.
 import * as THREE from 'three/webgpu';
 import { Gait, GaitParams, orientBone, solveTwoBone } from './rig';
+import type { Climbable } from '../game/physics';
+
+// On a climbable face: where along it (u) and how high the feet are (v); `exit` animates a vault or a mantle at the
+// top. Gameplay (game/climb.ts) owns it; the pose reads it.
+export type ClimbState = {
+  panel: Climbable; u: number; v: number; phase: number; speed: number;
+  exit: null | { t: number; dur: number; from: THREE.Vector3; top: THREE.Vector3; to: THREE.Vector3 };
+};
 
 export type Kind = 'kitten' | 'knight';
 
@@ -14,6 +22,7 @@ export class CharacterBody {
   grounded = true; vy = 0;
   // Strength of the last landing (0..1), eased off by the pose: a dip in the knees and pelvis.
   landing = 0;
+  climb: ClimbState | null = null;
   constructor(radius: number, height: number) { this.radius = radius; this.height = height; }
 }
 
@@ -48,6 +57,8 @@ export abstract class Character {
   carriedBy: Character | null = null;
   holding: Character | null = null;
   override: ((c: Character, ctx: PoseContext) => void) | null = null;
+  // 0 on the ground .. 1 on a climbing face (eased by the pose).
+  climbBlend = 0;
 
   constructor(kind: Kind, body: CharacterBody, gait: GaitParams, dims: Character['dims']) {
     this.kind = kind; this.body = body; this.gait = new Gait(gait); this.dims = dims;
@@ -91,6 +102,8 @@ export abstract class Character {
     const tuck = this.gait.p.hipY * 0.42;
     const ground = b.grounded ? ctx.ground : (_x: number, _z: number) => this.renderPos.y + tuck;
     this.gait.update(dt, this.renderPos, b.vel, this.renderYaw, b.turnRate, ground);
+    this.climbBlend += ((b.climb ? 1 : 0) - this.climbBlend) * Math.min(1, dt * 7);
+    if (this.climbBlend > 0.001) this.climbFeet(ctx);
     b.landing = Math.max(0, b.landing - dt * 3.5);
     this.poseLegs(ctx);
     this.poseUpper(ctx);
@@ -140,6 +153,8 @@ export abstract class Character {
   }
 
   protected crouchAmount(_speed: number) { return 0; }
+  // Climbing characters place their feet on the face here (after the gait, before the legs are solved).
+  protected climbFeet(_ctx: PoseContext) {}
   protected leanScale() { return 0.12; }
 
   protected abstract poseUpper(ctx: PoseContext): void;

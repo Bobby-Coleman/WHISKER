@@ -66,7 +66,7 @@ export class Puzzles {
       },
       {
         id: 'lift', label: 'Lift the kitten', who: 'knight', range: 1.15, pos: () => this.kitten.body.pos.clone(),
-        available: () => !this.knight.holding && !this.busy.has(this.kitten) && !this.kitten.carriedBy && Math.abs(this.kitten.body.pos.y - this.knight.body.pos.y) < 0.4,
+        available: () => !this.knight.holding && !this.busy.has(this.kitten) && !this.kitten.carriedBy && !this.kitten.body.climb && Math.abs(this.kitten.body.pos.y - this.knight.body.pos.y) < 0.4,
         run: () => {
           if (!this.liftAllowed) { this.say('The kitten steps out of reach. Not yet.'); this.sfx('clank', this.kitten.body.pos, 0.12); return; }
           this.start(this.liftSeq());
@@ -385,7 +385,7 @@ export class Puzzles {
   // Choose the best interaction for the active character this frame.
   findFor(c: Character): Interactable | null {
     let best: Interactable | null = null, bd = 1e9;
-    if (this.busy.has(c)) return null;
+    if (this.busy.has(c) || c.body.climb) return null;
     for (const it of this.items) {
       if (it.who !== c.kind || !it.available(c)) continue;
       const p = it.pos();
