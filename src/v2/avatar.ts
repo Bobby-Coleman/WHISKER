@@ -42,6 +42,7 @@ export type AvatarSpec = {
   // Ground speeds (m/s) of walk, jog and sprint at normal playback, for this character's size.
   speeds?: { walk: number; jog: number; sprint: number };
   setup?: (model: THREE.Object3D) => void;
+  body?: CharacterBody; // share another visual's gameplay body (driven.ts)
 };
 
 type Layered = { lower: THREE.AnimationAction; upper: THREE.AnimationAction; dur: number; offset: number };
@@ -73,7 +74,7 @@ export class SkinnedAvatar {
 
   constructor(public spec: AvatarSpec) {
     this.kind = spec.kind;
-    this.body = new CharacterBody(spec.radius, spec.height);
+    this.body = spec.body ?? new CharacterBody(spec.radius, spec.height);
     this.speeds = spec.speeds ?? { walk: 1.4, jog: 3.6, sprint: 5.8 };
     this.group.name = spec.kind;
   }

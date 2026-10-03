@@ -370,6 +370,116 @@ def mirror_x(ob):
     return o2
 
 
+def rescale_rig(arm, scale_of):
+    """New proportions on the same skeleton: each bone keeps its rest orientation (so the library's rotations still
+    fit) while the offsets between joints are scaled. scale_of(bone, child) is the factor for the offset from `bone`
+    to `child`'s head; scale_of(bone, None) for the bone's own length."""
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = arm.data.edit_bones
+    orig = {b.name: (b.head.copy(), b.tail.copy(), b.roll) for b in eb}
+    new_head = {}
+
+    def visit(b):
+        p = b.parent
+        if p is None:
+            new_head[b.name] = orig[b.name][0].copy()
+        else:
+            new_head[b.name] = new_head[p.name] + (orig[b.name][0] - orig[p.name][0]) * scale_of(p.name, b.name)
+        for c in b.children:
+            visit(c)
+
+    for b in eb:
+        if b.parent is None:
+            visit(b)
+    for b in eb:
+        h0, t0, roll = orig[b.name]
+        b.head = new_head[b.name]
+        b.tail = new_head[b.name] + (t0 - h0) * scale_of(b.name, None)
+        b.roll = roll
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+
+
+def add_bones(arm, chain):
+    """Extra bones the library does not animate (a tail): [(name, parent, head, tail)], posed in the game."""
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = arm.data.edit_bones
+    for name, parent, h, t in chain:
+        b = eb.new(name)
+        b.head = Vector(h); b.tail = Vector(t)
+        b.parent = eb[parent]
+        b.use_deform = True
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def metaballs(name, elements, resolution=0.004, voxel=0.0035, smooth=2):
+    """An organic mesh from blended metaball elements: (kind, centre, size, rotation quaternion or None, radius,
+    stiffness), kinds 'BALL', 'ELLIPSOID', 'CAPSULE'. Remeshed to an even surface and lightly smoothed."""
+    mb = bpy.data.metaballs.new(name)
+    mb.resolution = resolution
+    mb.render_resolution = resolution
+    mb.threshold = 0.6
+    ob = bpy.data.objects.new(name, mb)
+    bpy.context.scene.collection.objects.link(ob)
+    for kind, c, size, rot, radius, stiff in elements:
+        el = mb.elements.new()
+        el.type = kind
+        el.co = Vector(c)
+        el.radius = radius
+        el.stiffness = stiff
+        if size is not None:
+            el.size_x, el.size_y, el.size_z = size
+        if rot is not None:
+            el.rotation = rot
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.context.view_layer.update()
+    bpy.ops.object.convert(target='MESH')
+    me_ob = bpy.context.view_layer.objects.active
+    me_ob.name = name
+    m = me_ob.modifiers.new('remesh', 'REMESH'); m.mode = 'VOXEL'; m.voxel_size = voxel; m.adaptivity = 0.0
+    if smooth:
+        s = me_ob.modifiers.new('smooth', 'SMOOTH'); s.factor = 0.5; s.iterations = smooth
+    for mod in list(me_ob.modifiers):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    for p in me_ob.data.polygons:
+        p.use_smooth = True
+    return me_ob
+
+
+def paint(ob, fn, attr='COLOR'):
+    """Per-vertex colour (linear RGB) from fn(position, normal) on a byte colour attribute the glTF exporter
+    writes as COLOR_0."""
+    me = ob.data
+    if attr in me.color_attributes:
+        me.color_attributes.remove(me.color_attributes[attr])
+    ca = me.color_attributes.new(attr, 'BYTE_COLOR', 'POINT')
+    for v in me.vertices:
+        c = fn(v.co, v.normal)
+        ca.data[v.index].color = (c[0], c[1], c[2], 1.0)
+    me.color_attributes.active_color = ca
+    try:
+        me.color_attributes.render_color_index = me.color_attributes.active_color_index
+    except Exception:
+        pass
+
+
+def auto_weights(arm, ob):
+    """Skin an organic mesh with Blender's bone-heat weights."""
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+    ob.parent = None
+    for m in list(ob.modifiers):
+        if m.type == 'ARMATURE':
+            ob.modifiers.remove(m)
+
+
 def assemble(arm, obs, name):
     """Joins pieces into one skinned mesh on the armature."""
     bpy.ops.object.select_all(action='DESELECT')

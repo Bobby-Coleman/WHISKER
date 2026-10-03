@@ -31,6 +31,7 @@ import { LevelBuilder } from './level';
 import { prepareField, buildPlayground } from './levels/playground';
 import { Game, Avatar } from './game';
 import { SkinnedAvatar } from './avatar';
+import { DrivenAvatar, KITTEN_PROPS, KNIGHT_PROPS } from './driven';
 import { Timeline } from './timeline';
 
 const W = window as any;
@@ -119,16 +120,30 @@ export async function run(params: URLSearchParams) {
 
   // ---- Characters.
   const [kittenAssets, knightAssets] = await heroAssets;
-  const kitten = new Kitten(tier.furShells, kittenAssets as any);
-  load.progress('characters', 0.6);
+  // The original kitten and knight (every mesh, material, fur layer and accessory as built in v1), their bodies
+  // driven by the shared animation library. ?proc keeps v1's own procedural gait; ?ual puts the stylized test
+  // knight in his place (?ual=m: the bare mannequin).
+  const kittenV1 = new Kitten(tier.furShells, kittenAssets as any);
+  load.progress('characters', 0.5);
   await nextPaint();
-  // ?ual: the knight as a skinned character on the shared animation library (the new pipeline, under test).
+  const knightV1 = new Knight(knightAssets as any);
+  const proc = params.has('proc');
   let skinned: SkinnedAvatar | null = null;
-  if (params.has('ual')) {
-    skinned = new SkinnedAvatar({ kind: 'knight', url: params.get('ual') === 'm' ? 'chars/mannequin.glb' : 'chars/knight.glb', radius: 0.3, height: 1.8, scale: 1.8 / 1.88 });
-    await skinned.load();
+  let kitten: Avatar = kittenV1, knight: Avatar = knightV1;
+  if (!proc) {
+    const dk = new DrivenAvatar(kittenV1, KITTEN_PROPS);
+    await dk.load();
+    kitten = dk;
+    if (params.has('ual')) {
+      skinned = new SkinnedAvatar({ kind: 'knight', url: params.get('ual') === 'm' ? 'chars/mannequin.glb' : 'chars/knight.glb', radius: 0.3, height: 1.8, scale: 1.8 / 1.88 });
+      await skinned.load();
+      knight = skinned;
+    } else {
+      const dn = new DrivenAvatar(knightV1, KNIGHT_PROPS);
+      await dn.load();
+      knight = dn;
+    }
   }
-  const knight: Avatar = skinned ?? new Knight(knightAssets as any);
   scene.add(kitten.group, knight.group);
   // The knight dissolves while he stands between the camera and the kitten (his shadow stays).
   const knightVis = uniform(1);
@@ -142,7 +157,7 @@ export async function run(params: URLSearchParams) {
       o.material = m;
     });
   }
-  kitten.attachCloth(scene);
+  kittenV1.attachCloth(scene);
   const game = new Game(physics, kitten, knight, level, innerWidth / innerHeight);
   const camera = game.camera.cam;
   const input = new KeyboardMouseGamepad(renderer.domElement);
@@ -173,7 +188,7 @@ export async function run(params: URLSearchParams) {
   // Prime poses and cloth.
   const ctx0 = (a: typeof game.kitten | typeof game.knight): PoseContext => ({ dt: H, time: 0, ground: a.ground, lookAt: null, active: true });
   for (let i = 0; i < 3; i++) { kitten.updateVisual(1, ctx0(game.kitten)); knight.updateVisual(1, ctx0(game.knight)); }
-  kitten.resetCloth();
+  kittenV1.resetCloth();
 
   // ---- Final image.
   const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof, ssr: false });
@@ -184,7 +199,7 @@ export async function run(params: URLSearchParams) {
     LOOK.resolution.value.set(innerWidth * pr, innerHeight * pr);
   };
   addEventListener('resize', resize);
-  const KP = kitten.parts, NP = (knight as any).parts;
+  const KP = kittenV1.parts, NP = knightV1.parts;
   const kittenOcc: OccSpec = [
     [KP.pelvis, 0, -0.005, -0.004, 0.042], [KP.chest, 0, 0.045, 0, 0.048], [KP.head, 0, 0, 0, 0.05],
     [KP.thighL, 0, -0.025, 0, 0.02], [KP.thighR, 0, -0.025, 0, 0.02], [KP.shinL, 0, -0.03, 0, 0.014], [KP.shinR, 0, -0.03, 0, 0.014],
@@ -237,8 +252,8 @@ export async function run(params: URLSearchParams) {
     const alpha = acc / H;
     physics.sync(alpha);
     // Visuals.
-    const kHead = kitten.parts.head.getWorldPosition(new THREE.Vector3());
-    const nHead = (skinned ? skinned.headPos(new THREE.Vector3()) : (knight as any).parts.head.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, 0.12, 0));
+    const kHead = kittenV1.parts.head.getWorldPosition(new THREE.Vector3());
+    const nHead = (skinned ? skinned.headPos(new THREE.Vector3()) : knightV1.parts.head.getWorldPosition(new THREE.Vector3())).add(new THREE.Vector3(0, 0.12, 0));
     kitten.updateVisual(alpha, { dt, time: clockT, ground: game.kitten.ground, lookAt: nHead, active: game.active === game.kitten });
     knight.updateVisual(alpha, { dt, time: clockT, ground: game.knight.ground, lookAt: kHead, active: game.active === game.knight });
     kitten.update(dt, { dt, time: clockT, ground: game.kitten.ground, lookAt: null, active: true });
@@ -265,7 +280,7 @@ export async function run(params: URLSearchParams) {
       let want = 1;
       const cp = camera.position, np = knight.body.pos;
       if (game.active === game.kitten) {
-        const kp = kitten.group.position;
+        const kp = kitten.renderPos;
         const sx = kp.x - cp.x, sz = kp.z - cp.z, sl2 = sx * sx + sz * sz || 1;
         const t = ((np.x - cp.x) * sx + (np.z - cp.z) * sz) / sl2;
         if (t > 0 && t < 1.05) {

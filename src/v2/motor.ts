@@ -10,7 +10,8 @@ import { RAPIER, Physics, Platform, L, groups, Surface, SOLID, DOWN } from './ph
 import { CharacterBody } from '../chars/character';
 
 export const MOVE = {
-  run: 4.4, walk: 1.7, // m/s, both characters
+  // The pace v1 settled on: brisk for the knight, and not a blur for the kitten a fifth of his height.
+  run: 3.5, walk: 1.45, // m/s, both characters
   accel: 30, decel: 38, skid: 60, // on the ground, m/s²
   airAccel: 12, airDrag: 0.6, // steering in the air; momentum is kept without input
   turn: 15, airTurn: 6, // facing, rad/s

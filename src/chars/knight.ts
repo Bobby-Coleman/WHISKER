@@ -322,6 +322,16 @@ export class Knight extends Character {
     this.poseSkirt(ctx);
   }
 
+  // Driven by the animation library (engine v2): his body comes from the bones; the skirt still swings clear of
+  // his legs, and his sword rides across his back.
+  protected poseSecondary(ctx: PoseContext) {
+    const P = this.parts;
+    P.chest.updateMatrix();
+    this.sword.position.copy(new THREE.Vector3(0.05, 0.0, -0.215).applyMatrix4(P.chest.matrix));
+    this.sword.quaternion.copy(P.chest.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.12, 0, -0.45)));
+    this.poseSkirt(ctx);
+  }
+
   // Skirt panels and tassets swing out of the way of the thighs and lift a little in the wind.
   private poseSkirt(ctx: PoseContext) {
     const P = this.parts;

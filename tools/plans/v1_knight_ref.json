@@ -1,0 +1,18 @@
+[
+  { "label": "lab", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __kk.skip(); __kk.mode('lab'); __kk.labYaw(0); const V = __kk.kitten.body.pos.constructor; const add = (name, p, l, mm) => __kk.labViews.push({ name, pos: new V(...p), look: new V(...l), mm }); add('Knight front', [-0.45, 1.1, 4.4], [-0.45, 0.98, 0], 50); add('Knight side', [3.8, 1.1, -0.1], [-0.45, 0.98, -0.1], 50); add('Knight back', [-0.45, 1.15, -4.4], [-0.45, 0.98, 0], 50); add('Knight helm', [-0.15, 1.7, 1.25], [-0.45, 1.62, 0], 50); add('Kitten front', [0.25, 0.2, 1.25], [0.25, 0.17, 0], 50); add('Kitten side', [1.25, 0.2, 0.0], [0.25, 0.17, 0], 50); add('Kitten back', [0.25, 0.22, -1.25], [0.25, 0.17, 0], 50); add('Kitten face', [0.25, 0.29, 0.45], [0.25, 0.28, 0], 60); __kk.labView(__kk.labViews.length - 8); return __kk.labViews.length; })()", "wait": 3500 },
+  { "js": "1", "out": "v1kn_front.png", "wait": 100 },
+  { "label": "side", "js": "(() => { __kk.labView(__kk.labViews.length - 7); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kn_side.png", "wait": 100 },
+  { "label": "back", "js": "(() => { __kk.labView(__kk.labViews.length - 6); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kn_back.png", "wait": 100 },
+  { "label": "helm", "js": "(() => { __kk.labView(__kk.labViews.length - 5); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kn_helm.png", "wait": 100 },
+  { "label": "kitten front", "js": "(() => { __kk.labView(__kk.labViews.length - 4); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kt_front.png", "wait": 100 },
+  { "label": "kitten side", "js": "(() => { __kk.labView(__kk.labViews.length - 3); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kt_side.png", "wait": 100 },
+  { "label": "kitten back", "js": "(() => { __kk.labView(__kk.labViews.length - 2); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kt_back.png", "wait": 100 },
+  { "label": "kitten face", "js": "(() => { __kk.labView(__kk.labViews.length - 1); return 1; })()", "wait": 1500 },
+  { "js": "1", "out": "v1kt_face.png", "wait": 100 }
+]

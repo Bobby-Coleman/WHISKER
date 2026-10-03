@@ -1,0 +1,5 @@
+[
+  { "label": "start", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __kk.skip(); return JSON.stringify(__kk.state().kpos); })()", "wait": 2500 },
+  { "label": "walk", "js": "(() => { __kk.simMove(0, 1, 1.5); return 1; })()", "wait": 1600 },
+  { "js": "JSON.stringify(__kk.state().kpos)", "out": "v1_smoke.png", "wait": 100 }
+]

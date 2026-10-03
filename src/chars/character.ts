@@ -117,6 +117,35 @@ export abstract class Character {
     this.solveArms();
   }
 
+  // Driven by an animated skeleton (engine v2, src/v2/driven.ts): `mats` holds each part's world transform, taken
+  // from the bones; the character then adds only its own secondary motion (ears, tail, skirt, sword, cape anchors).
+  poseDriven(pos: THREE.Vector3, yaw: number, ctx: PoseContext, mats: Partial<Record<PartName, THREE.Matrix4>>) {
+    const b = this.body, dt = Math.max(1e-4, ctx.dt);
+    this.renderPos.copy(pos); this.renderYaw = yaw;
+    this.group.position.copy(pos);
+    this.group.rotation.set(0, yaw, 0);
+    this.group.updateMatrixWorld();
+    this.accel.subVectors(b.vel, this.lastVel).divideScalar(dt);
+    this.lastVel.copy(b.vel);
+    const inv = new THREE.Matrix4().copy(this.group.matrixWorld).invert();
+    const l = new THREE.Matrix4(), s = new THREE.Vector3();
+    for (const n of PART_NAMES) {
+      const m = mats[n];
+      if (!m) continue;
+      const p = this.parts[n];
+      l.multiplyMatrices(inv, m).decompose(p.position, p.quaternion, s);
+      p.updateMatrix();
+    }
+    this.breath += dt;
+    const sp = Math.hypot(b.vel.x, b.vel.z);
+    this.gait.moving += ((sp > 0.08 ? Math.min(1, 0.35 + 0.65 * sp / 3.5) : 0) - this.gait.moving) * Math.min(1, dt * 6);
+    this.climbBlend += ((b.climb ? 1 : 0) - this.climbBlend) * Math.min(1, dt * 7);
+    b.landing = Math.max(0, b.landing - dt * 3.5);
+    this.poseSecondary(ctx);
+  }
+
+  protected poseSecondary(_ctx: PoseContext) {}
+
   protected poseLegs(ctx: PoseContext) {
     const g = this.gait, p = g.p;
     const P = this.parts;

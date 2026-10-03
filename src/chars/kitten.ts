@@ -576,19 +576,7 @@ export class Kitten extends Character {
     this.lookPitch += (tPitch - this.lookPitch) * Math.min(1, dt * 2.0);
     P.head.position.copy(new THREE.Vector3(0, 0.122, 0.008).applyMatrix4(P.chest.matrix));
     P.head.quaternion.setFromEuler(new THREE.Euler(this.lookPitch + this.lean * 0.4, this.lookYaw - P.chest.rotation.y, 0, 'YXZ'));
-    // Ear twitch: one ear at a time, brief.
-    this.twitchT -= dt;
-    if (this.twitchT < 0) { this.twitchT = 2.5 + Math.random() * 5; this.twitchSide = Math.random() < 0.5 ? -1 : 1; this.twitchAmt = 1; }
-    this.twitchAmt = Math.max(0, this.twitchAmt - dt * 4);
-    const tw = Math.sin(this.twitchAmt * Math.PI) * 0.3;
-    // Set low on the sides and tilted out and a little forward, as the reference kitten carries them.
-    this.earL.rotation.set(-0.16 - (this.twitchSide > 0 ? tw : 0) - g.moving * 0.12, 0.36 + (this.twitchSide > 0 ? tw * 0.6 : 0), -0.64);
-    this.earR.rotation.set(-0.16 - (this.twitchSide < 0 ? tw : 0) - g.moving * 0.12, -0.36 - (this.twitchSide < 0 ? tw * 0.6 : 0), 0.64);
-    // Bow: barely moves with the wind.
-    this.bow.rotation.z = -0.32 + Math.sin(this.breath * 3.1) * 0.03;
-    // Tail: slow sway, lifted a little when moving.
-    this.tailPhase += dt * (1.1 + g.moving * 2.5);
-    this.tail.rotation.set(-0.25 + g.moving * 0.35 + Math.sin(this.tailPhase * 0.5) * 0.05, Math.sin(this.tailPhase) * 0.25, Math.sin(this.tailPhase * 0.7) * 0.08);
+    this.poseAccessories(dt);
     // Sword: upright before its right shoulder with the guard at chin height, as in the reference: the right paw grips
     // under the guard and the left forearm crosses the chest to grip below it. A lagging spring shows its weight.
     const c = Math.cos(this.renderYaw), s = Math.sin(this.renderYaw);
@@ -646,6 +634,36 @@ export class Kitten extends Character {
       this.sword.position.lerp(backPos, s);
       this.sword.quaternion.slerp(backQ, s);
     }
+    this.shield.visible = this.hasShield;
+  }
+
+  // Ears, bow and tail: their own small motions over whatever the body does.
+  private poseAccessories(dt: number) {
+    const g = this.gait;
+    // Ear twitch: one ear at a time, brief.
+    this.twitchT -= dt;
+    if (this.twitchT < 0) { this.twitchT = 2.5 + Math.random() * 5; this.twitchSide = Math.random() < 0.5 ? -1 : 1; this.twitchAmt = 1; }
+    this.twitchAmt = Math.max(0, this.twitchAmt - dt * 4);
+    const tw = Math.sin(this.twitchAmt * Math.PI) * 0.3;
+    // Set low on the sides and tilted out and a little forward, as the reference kitten carries them.
+    this.earL.rotation.set(-0.16 - (this.twitchSide > 0 ? tw : 0) - g.moving * 0.12, 0.36 + (this.twitchSide > 0 ? tw * 0.6 : 0), -0.64);
+    this.earR.rotation.set(-0.16 - (this.twitchSide < 0 ? tw : 0) - g.moving * 0.12, -0.36 - (this.twitchSide < 0 ? tw * 0.6 : 0), 0.64);
+    // Bow: barely moves with the wind.
+    this.bow.rotation.z = -0.32 + Math.sin(this.breath * 3.1) * 0.03;
+    // Tail: slow sway, lifted a little when moving.
+    this.tailPhase += dt * (1.1 + g.moving * 2.5);
+    this.tail.rotation.set(-0.25 + g.moving * 0.35 + Math.sin(this.tailPhase * 0.5) * 0.05, Math.sin(this.tailPhase) * 0.25, Math.sin(this.tailPhase * 0.7) * 0.08);
+  }
+
+  // Driven by the animation library (engine v2): her body comes from the bones; she keeps her ears, bow and tail,
+  // and her sword rides sheathed across her back, as when she climbs.
+  protected poseSecondary(ctx: PoseContext) {
+    const P = this.parts;
+    this.poseAccessories(ctx.dt);
+    this.sheathe = 1;
+    P.chest.updateMatrix();
+    this.sword.position.copy(new THREE.Vector3(0.03, -0.012, -0.062).applyMatrix4(P.chest.matrix));
+    this.sword.quaternion.copy(P.chest.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, 0, 0.5)));
     this.shield.visible = this.hasShield;
   }
 

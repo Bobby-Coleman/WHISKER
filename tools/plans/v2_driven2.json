@@ -1,0 +1,8 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.setActive('kitten'); __v2.teleport('kitten', 0.9, 0.436, -11.9, Math.PI); __v2.camYaw(0.6, 0.12); __v2.game.camera.zoom = 0.7; __v2.simMove(0, 1, 2.0); return 1; })()", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "dr_6_climb.png", "wait": 100 },
+  { "label": "carry", "js": "(() => { __v2.simMove(0,0,0.1); __v2.teleport('kitten', 4.2, 0.436, -3.0, 0); __v2.teleport('knight', 4.2, 0.436, -3.6, 0); __v2.setActive('knight'); __v2.camYaw(2.0, 0.1); __v2.game.camera.zoom = 0.75; __v2.act(); return 1; })()", "wait": 1800 },
+  { "js": "JSON.stringify(__v2.state().holding)", "out": "dr_7_carry.png", "wait": 100 },
+  { "label": "throw", "js": "(() => { __v2.act(); return 1; })()", "wait": 350 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "dr_8_thrown.png", "wait": 100 }
+]
