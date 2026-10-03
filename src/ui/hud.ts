@@ -13,6 +13,8 @@ export type HudCallbacks = {
   onSkipReveal: () => void;
   onStats: (on: boolean) => void;
   onAdaptive: (on: boolean) => void;
+  onAO: (on: boolean) => void;
+  onLook: (look: string) => void;
 };
 
 const CSS = `
@@ -95,9 +97,11 @@ export class Hud {
           <tr><td>Touch</td><td>Left thumb moves, right thumb looks; Switch, Act and Wait buttons</td></tr>
         </table>
         <h3>Image</h3>
+        <label>Look <select data-k="look"><option value="vintage">Vintage</option><option value="modern">Modern</option></select></label>
         <label>Treatment strength <input type="range" min="0" max="1.5" step="0.05" value="0.6" data-k="treat"></label>
         <label>Clean render <input type="checkbox" data-k="clean"></label>
         <label>4:3 framing <input type="checkbox" data-k="aspect"></label>
+        <label>Ambient occlusion <input type="checkbox" data-k="ao"></label>
         <label>Adaptive resolution <input type="checkbox" checked data-k="drs"></label>
         <label>Performance stats (P) <input type="checkbox" data-k="stats"></label>
         <label>Quality <select data-k="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
@@ -142,6 +146,8 @@ export class Hud {
         if (k === 'mute') cb.onMute(i.checked);
         if (k === 'stats') cb.onStats(i.checked);
         if (k === 'drs') cb.onAdaptive(i.checked);
+        if (k === 'ao') cb.onAO(i.checked);
+        if (k === 'look') cb.onLook(i.value);
         if (l) cb.onLabToggle(l, i.checked);
       });
     });
@@ -176,6 +182,7 @@ export class Hud {
   togglePanel(force?: boolean) { this.panel.classList.toggle('open', force); }
 
   setChecked(key: string, on: boolean) { const i = this.root.querySelector(`[data-k="${key}"]`) as HTMLInputElement; if (i) i.checked = on; }
+  setValue(key: string, v: string) { const i = this.root.querySelector(`[data-k="${key}"]`) as HTMLSelectElement; if (i) i.value = v; }
 
   say(text: string, seconds = 4.5) {
     this.msgEl.textContent = text;

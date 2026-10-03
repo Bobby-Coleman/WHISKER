@@ -6,11 +6,11 @@ export type QualityTier = 'high' | 'medium' | 'low';
 
 export const TIERS: Record<QualityTier, {
   pixelRatioCap: number; renderScale: number; grassDensity: number; grassRadius: number;
-  shadowMap: number; furShells: number; dof: boolean; msaa: boolean; mistCards: number;
+  shadowMap: number; furShells: number; dof: boolean; msaa: boolean; mistCards: number; ao: boolean;
 }> = {
-  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 46 },
-  medium: { pixelRatioCap: 1.25, renderScale: 0.85, grassDensity: 0.6, grassRadius: 55, shadowMap: 2048, furShells: 9, dof: true, msaa: true, mistCards: 30 },
-  low: { pixelRatioCap: 1.0, renderScale: 0.7, grassDensity: 0.32, grassRadius: 40, shadowMap: 1024, furShells: 5, dof: false, msaa: false, mistCards: 16 },
+  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 46, ao: true },
+  medium: { pixelRatioCap: 1.25, renderScale: 0.85, grassDensity: 0.6, grassRadius: 55, shadowMap: 2048, furShells: 9, dof: true, msaa: true, mistCards: 30, ao: false },
+  low: { pixelRatioCap: 1.0, renderScale: 0.7, grassDensity: 0.32, grassRadius: 40, shadowMap: 1024, furShells: 5, dof: false, msaa: false, mistCards: 16, ao: false },
 };
 
 // Wind shared by grass, reeds, capes, the bow and drifting mist.
@@ -36,9 +36,11 @@ export const LOOK = {
   exposure: 0.95,
   treatment: uniform(0.6), // 0 = clean render; kept lighter than the reference clip's softness
   grade: uniform(1.0),
+  modern: uniform(0.0), // 0 = vintage archive look, 1 = modern look (deeper blacks, more colour, sharpened)
   dofAmount: uniform(0.0), // 0 = broad gameplay focus, 1 = reveal softness
   focusDistance: uniform(4.0),
   bloomStrength: uniform(0.12),
+  aoAmount: uniform(0.0), // screen-space ambient occlusion; 0 also skips its passes
   resolution: uniform(new Vector2(1280, 960)),
   frame: uniform(0),
 };

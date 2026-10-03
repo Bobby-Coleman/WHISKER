@@ -49,6 +49,12 @@ function readPref(key: string, fallback: boolean) {
 function writePref(key: string, on: boolean) {
   try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* not remembered */ }
 }
+function readPrefString(key: string, fallback: string) {
+  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+function writePrefString(key: string, v: string) {
+  try { localStorage.setItem(key, v); } catch { /* not remembered */ }
+}
 
 async function main() {
   const phone = matchMedia('(pointer: coarse) and (max-width: 900px)').matches;
@@ -173,7 +179,7 @@ async function main() {
   kitten.resetCloth();
 
   // ---- Final image.
-  const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof });
+  const { pipeline, scenePass } = createPipeline(renderer, scene, camera, { dof: tier.dof, aoView: params.has('aoview') });
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -218,6 +224,14 @@ async function main() {
   let started = params.has('noreveal') || params.has('still');
   let adaptive = readPref('kk-drs', true);
   hud.setChecked('drs', adaptive);
+  const AO_ON = 1.0;
+  let aoOn = params.has('ao') ? params.get('ao') !== '0' : readPref('kk-ao', tier.ao);
+  LOOK.aoAmount.value = aoOn ? AO_ON : 0;
+  hud.setChecked('ao', aoOn);
+  const setLook = (look: string) => { LOOK.modern.value = look === 'modern' ? 1 : 0; };
+  let look = params.get('look') ?? readPrefString('kk-look', 'vintage');
+  setLook(look);
+  hud.setValue('look', look);
   let cleanMode = false;
   let treatment = 0.6;
   Object.assign(hudCb, {
@@ -233,6 +247,8 @@ async function main() {
     onMode: (m: 'field' | 'lab') => setMode(m),
     onStats: (on: boolean) => { statsPanel.setVisible(on); writePref('kk-stats', on); },
     onAdaptive: (on: boolean) => { adaptive = on; writePref('kk-drs', on); if (!on) setRenderScale(1); },
+    onAO: (on: boolean) => { aoOn = on; LOOK.aoAmount.value = on ? AO_ON : 0; writePref('kk-ao', on); },
+    onLook: (v: string) => { look = v; setLook(v); writePrefString('kk-look', v); },
     onLabToggle: (k: string, on: boolean) => {
       if (k === 'normals') CHAR_TOGGLES.detailNormals.value = on ? 1 : 0;
       if (k === 'rough') CHAR_TOGGLES.roughnessMaps.value = on ? 1 : 0;
@@ -310,6 +326,7 @@ async function main() {
       else if (k === 'terrain') set(terrain.near);
       else if (k === 'far') set(terrain.far);
       else if (k === 'shadows') renderer.shadowMap.enabled = on;
+      else if (k === 'ao') LOOK.aoAmount.value = on && aoOn ? AO_ON : 0;
       else if (k === 'kitten') set(kitten.group);
       else if (k === 'knight') set(knight.group);
       else if (k === 'fur') kitten.group.traverse((o) => { if (/fur|whisk/i.test(o.name)) o.visible = on; });

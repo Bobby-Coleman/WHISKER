@@ -21,7 +21,12 @@ Play it at https://bobby-coleman.github.io/WHISKER/. It runs best on WebGPU and 
 | P | | Settings | Performance stats |
 | 1-4, 0 | | | Review camera presets, 0 returns to play |
 
-The settings panel also has the treatment-strength slider (default 0.6), quality (high, medium, low), adaptive resolution, volume and a material lab.
+The settings panel also has the look (Vintage or Modern), the treatment-strength slider (default 0.6), ambient occlusion, quality (high, medium, low), adaptive resolution, volume and a material lab.
+
+## Image
+
+- **Ambient occlusion.** Creases, contact points, the feet of walls and the depths of the grass darken the way they do under a real overcast sky. It is three.js's ground-truth ambient occlusion (GTAO) at half resolution, smoothed by a depth-aware blur and faded out by 35 m, where the fog takes over. It is on by default at high quality and off at medium and low; the settings panel switches it, and its passes are skipped while it is off.
+- **Two looks.** *Vintage* (the default) keeps the reference clip's archive feel: lifted blacks, muted colour, softened luma and chroma, faint compression breakup, grain and lens falloff. *Modern* keeps the palette and the grain but lifts the blacks less, keeps more colour, adds a gentle S-curve, sharpens instead of softening and drops the compression breakup. The treatment slider scales either one, and C turns both off.
 
 ## Performance
 

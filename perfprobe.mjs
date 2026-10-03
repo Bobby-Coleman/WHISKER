@@ -77,7 +77,7 @@ if (measure) {
       return `${label}: ${t.join(',')} ms  draws ${info.drawCalls} tris ${info.triangles}`;
     };
     const out = [await m('all')];
-    for (const k of ['grass', 'mist', 'veg', 'terrain', 'structures', 'fur', 'kitten', 'knight', 'shadows', 'far']) { kk.perf(k, false); out.push(await m('-' + k)); kk.perf(k, true); }
+    for (const k of ['grass', 'mist', 'veg', 'terrain', 'structures', 'fur', 'kitten', 'knight', 'shadows', 'far', 'ao']) { kk.perf(k, false); out.push(await m('-' + k)); kk.perf(k, true); }
     return out.join('\n');
   });
   console.log(res);
