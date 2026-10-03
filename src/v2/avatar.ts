@@ -60,7 +60,7 @@ export class SkinnedAvatar {
   mixer!: THREE.AnimationMixer;
   bones = new Map<string, THREE.Bone>();
   private clips = new Map<string, Layered>();
-  private phase = 0;
+  phase = 0; // the gait loops' shared cycle, 0..1
   private air = 0; // 0 on the ground .. 1 in the air (eased)
   private land = 0; // a landing's remaining weight
   private carry = 0; // the upper-body carrying layer
@@ -168,6 +168,8 @@ export class SkinnedAvatar {
     add('foot_l', 0.07); add('foot_r', 0.07); add('ball_l', 0.05); add('ball_r', 0.05);
     return out;
   }
+
+  get busy() { return this.oneShot !== null; }
 
   // A one-shot upper-body action (a throw, a pick-up) over the legs' motion.
   play(name: string, fade = 0.12) {

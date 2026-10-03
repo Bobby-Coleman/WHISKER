@@ -262,6 +262,15 @@ export class Knight extends Character {
     P.head.position.copy(new THREE.Vector3(0, 0.445, 0.0).applyMatrix4(P.chest.matrix));
     P.head.quaternion.setFromEuler(new THREE.Euler(this.lookPitch + this.lean * 0.3, this.lookYaw - P.chest.rotation.y, 0, 'YXZ'));
 
+    this.poseSword(ctx, speed);
+    this.poseSkirt(ctx);
+  }
+
+  // The sword and the arms that hold it: presented at rest, on the shoulder while moving, slung on the back while
+  // the arms hold the kitten (or reach for a handle).
+  private poseSword(ctx: PoseContext, speed: number) {
+    const P = this.parts, g = this.gait;
+    const dt = ctx.dt;
     // Sword: presented point-up before the chest at rest; carried on the right shoulder while moving;
     // slung across the back while the arms hold the kitten. Poses are in chest space so they ride the torso.
     if (speed > 0.25) this.moveTimer = Math.min(this.moveTimer + dt, 1); else this.moveTimer = Math.max(this.moveTimer - dt * 0.8, 0);
@@ -319,16 +328,21 @@ export class Knight extends Character {
       this.armL.pole.lerp(new THREE.Vector3(1, -0.7, -0.3), c);
       this.armR.pole.lerp(new THREE.Vector3(-1, -0.7, -0.3), c);
     }
-    this.poseSkirt(ctx);
   }
 
-  // Driven by the animation library (engine v2): his body comes from the bones; the skirt still swings clear of
-  // his legs, and his sword rides across his back.
+  // Driven by the animation library (engine v2): his body comes from the bones; he holds his sword as he always has
+  // (presented at rest, shouldered on the move, slung while he carries the kitten), and the skirt swings clear.
   protected poseSecondary(ctx: PoseContext) {
     const P = this.parts;
     P.chest.updateMatrix();
-    this.sword.position.copy(new THREE.Vector3(0.05, 0.0, -0.215).applyMatrix4(P.chest.matrix));
-    this.sword.quaternion.copy(P.chest.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.12, 0, -0.45)));
+    this.idleShift += ctx.dt;
+    if (this.armsDriven) {
+      this.sword.position.copy(new THREE.Vector3(0.05, 0.0, -0.215).applyMatrix4(P.chest.matrix));
+      this.sword.quaternion.copy(P.chest.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.12, 0, -0.45)));
+    } else {
+      this.poseSword(ctx, Math.hypot(this.body.vel.x, this.body.vel.z));
+      this.solveArms();
+    }
     this.poseSkirt(ctx);
   }
 

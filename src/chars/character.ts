@@ -61,6 +61,8 @@ export abstract class Character {
   override: ((c: Character, ctx: PoseContext) => void) | null = null;
   // 0 on the ground .. 1 on a climbing face (eased by the pose).
   climbBlend = 0;
+  // Driven mode: while the animation plays an arm action (a throw), the arms keep the bones' pose.
+  armsDriven = false;
 
   constructor(kind: Kind, body: CharacterBody, gait: GaitParams, dims: Character['dims']) {
     this.kind = kind; this.body = body; this.gait = new Gait(gait); this.dims = dims;

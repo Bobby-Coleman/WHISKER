@@ -124,7 +124,7 @@ export class DrivenAvatar {
   // The v1 character hears of it too: its own carried pose takes over (below).
   set carriedBy(v: any) { this.anim.carriedBy = v; this.char.carriedBy = v ? (v.char ?? v) : null; }
   get holding() { return this.anim.holding; }
-  set holding(v: any) { this.anim.holding = v; }
+  set holding(v: any) { this.anim.holding = v; this.char.holding = v ? (v.char ?? v) : null; }
 
   load() { return this.anim.load(); }
 
@@ -191,6 +191,8 @@ export class DrivenAvatar {
     if (this.procW < 0.002) this.procW = 0;
     this.anim.updateVisual(alpha, ctx);
     for (const [part, o] of this.offsets) this.mats[part]!.multiplyMatrices(o.bone.matrixWorld, o.m);
+    this.char.armsDriven = this.anim.busy;
+    this.char.gait.phase = this.anim.phase;
     if (this.procW === 0) { this.char.poseDriven(this.anim.renderPos, this.anim.renderYaw, ctx, this.mats); return; }
     // The procedural pose first; remembered; then the driven one; then a blend of the two.
     this.char.updateVisual(alpha, ctx);
@@ -211,7 +213,8 @@ export class DrivenAvatar {
   }
 
   update(dt: number, ctx: PoseContext) { this.char.update(dt, ctx); }
-  holdPoint(out: THREE.Vector3) { return this.anim.holdPoint(out); }
+  // Where v1's arms hold the kitten (its own carry pose holds her there).
+  holdPoint(out: THREE.Vector3) { return (this.char as any).holdPoint ? (this.char as any).holdPoint(out) : this.anim.holdPoint(out); }
   resetCloth() { (this.char as any).resetCloth?.(); }
   play(name: string) { this.anim.play(name); }
   headPos(out: THREE.Vector3) { return this.anim.headPos(out); }
