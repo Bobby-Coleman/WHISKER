@@ -13,7 +13,7 @@ export const fogFactorAt = Fn(([wp]: any[]) => {
   const d = length(wp.sub(cameraPosition));
   const base = float(1).sub(exp(pow(d.div(LOOK.fogDistance), 1.25).negate()));
   // Low mist patches drifting downwind through world space, slower than grass gusts.
-  const drift = vec2(WIND.dir.x, WIND.dir.y).mul(WIND.time).mul(0.55);
+  const drift = vec2(WIND.dir.x, WIND.dir.y).mul(WIND.time).mul(2.6);
   const p = wp.xz.mul(0.022).sub(drift.mul(0.022));
   // Baked fBm: r is the original fog noise (its window starts at MX_ORIGIN). Two independent fields turned slowly
   // against each other stand in for the noise's slow third axis (the mix keeps the same spread at every angle).
@@ -22,7 +22,7 @@ export const fogFactorAt = Fn(([wp]: any[]) => {
   const patch = smoothstep(0.0, 0.55, nz.r.mul(cos(th)).add(nz.g.mul(sin(th))).add(0.15));
   const h = mix(cameraPosition.y, wp.y, 0.65);
   const low = exp(max(h.add(0.5), 0).div(1.5).negate());
-  const mist = patch.mul(low).mul(float(1).sub(exp(d.div(16).negate()))).mul(0.6).mul(LOOK.mistAmount);
+  const mist = patch.mul(low).mul(float(1).sub(exp(d.div(11).negate()))).mul(0.72).mul(LOOK.mistAmount);
   const f = float(1).sub(float(1).sub(base).mul(float(1).sub(mist)));
   return clamp(f.mul(LOOK.fogEnabled), 0, 0.995);
 });
@@ -43,11 +43,12 @@ function skyColorNode(dir: any) {
   return c;
 }
 
-export function createSky(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(4000, 48, 24);
+// The visible sky: a photographed sky from the weather when one is given, otherwise the procedural fallback.
+export function createSky(colorNode?: any): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(4000, 64, 32);
   const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false });
   mat.fog = false;
-  mat.colorNode = skyColorNode(normalize(positionLocal));
+  mat.colorNode = colorNode ?? skyColorNode(normalize(positionLocal));
   const m = new THREE.Mesh(geo, mat);
   m.name = 'Sky';
   m.renderOrder = -10;
@@ -123,12 +124,12 @@ export function createMistCards(count: number) {
     const edge = smoothstep(0.5, 0.05, r);
     const wp = positionWorld;
     // Baked 3-octave fBm, projected from world space so the pattern holds still as the cards turn to the camera.
-    const q = vec2(wp.x.mul(0.18).add(wp.z.mul(0.07)).sub(WIND.time.mul(0.05)), wp.z.mul(0.18).add(wp.y.mul(0.3)));
+    const q = vec2(wp.x.mul(0.18).add(wp.z.mul(0.07)).sub(WIND.time.mul(0.32)), wp.z.mul(0.18).add(wp.y.mul(0.3)));
     const n = bakedNoise(q).g.mul(0.5).add(0.5);
     const d = length(wp.sub(cameraPosition));
     const nearFade = smoothstep(2.5, 9.0, d);
     const farFade = float(1).sub(smoothstep(70, 120, d));
-    const a: any = edge.mul(n).mul(nearFade).mul(farFade).mul(0.16).mul(LOOK.mistAmount).mul(LOOK.fogEnabled);
+    const a: any = edge.mul(n).mul(nearFade).mul(farFade).mul(0.2).mul(LOOK.mistAmount).mul(LOOK.fogEnabled);
     return vec4(LOOK.fogColor.mul(1.06), a);
   });
   mat.colorNode = tex();
@@ -142,7 +143,7 @@ export function createMistCards(count: number) {
   const cards: { base: THREE.Vector3; speed: number; scale: number }[] = [];
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2, rr = 8 + Math.random() * 80;
-    cards.push({ base: new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr), speed: 0.35 + Math.random() * 0.3, scale: 10 + Math.random() * 16 });
+    cards.push({ base: new THREE.Vector3(Math.cos(a) * rr, 0, Math.sin(a) * rr), speed: 2.2 + Math.random() * 1.8, scale: 10 + Math.random() * 16 });
   }
   const frustum = new THREE.Frustum(), vp = new THREE.Matrix4(), m = new THREE.Matrix4();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3(), camPos = new THREE.Vector3(), sphere = new THREE.Sphere();

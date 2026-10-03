@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, instanceIndex, positionGeometry, uniform, uniformArray, vec2, vec3, vec4, float, floor, fract, mix, smoothstep, clamp,
   max, min, abs, length, normalize, cross, dot, sin, cos, select, texture, uint, hash, cameraPosition, cameraViewMatrix,
-  faceDirection, sign, pow, If,
+  faceDirection, sign, pow, If, positionPrevious,
 } from 'three/tsl';
 import { windOffset } from './vegetation';
 import { LOOK } from '../render/settings';
@@ -24,7 +24,7 @@ type Ring = {
 
 const RINGS: Ring[] = [
   { name: 'near', cell: 0.035, n: 286, segs: 5, width: 0.0048, ahead: 2.6, salt: 0x51ed27, thin: [2.0, 4.6, 0.25], fadeIn: null, fadeOut: [4.6, 5.4] },
-  { name: 'mid', cell: 0.1, n: 340, segs: 2, width: 0.0066, ahead: 11, salt: 0x2c1b3c, thin: [9, 20, 0.45], fadeIn: [4.6, 5.4], fadeOut: [17, 23] },
+  { name: 'mid', cell: 0.084, n: 404, segs: 2, width: 0.0066, ahead: 11, salt: 0x2c1b3c, thin: [9, 20, 0.5], fadeIn: [4.6, 5.4], fadeOut: [17, 23] },
 ];
 
 // Review switch: 0 = normal, 1 = up-facing normals, 2 = unlit albedo.
@@ -124,7 +124,7 @@ function ringMaterial(ring: Ring, maps: FieldMaps, center: any, proj: any) {
         const dead = rnd(7).lessThan(deadFrac.mul(mix(float(1), float(0.55), wet))).toVar();
         const tuft = mix(float(0.7), float(1.35), clumpR).mul(mix(float(1.15), float(0.8), smoothstep(0.0, 0.22, clumpD)));
         const pathShort = mix(float(0.35), float(1), smoothstep(0.15, 1.2, pathD));
-        const h = float(0.14).mul(mix(float(0.55), float(1.3), vigour)).mul(mix(float(0.6), float(1.4), rnd(3))).mul(tuft).mul(pathShort)
+        const h = float(0.2).mul(mix(float(0.5), float(1.35), vigour)).mul(mix(float(0.6), float(1.4), rnd(3))).mul(tuft).mul(pathShort)
           .mul(mix(float(1), float(1.45), wet)).mul(select(dead, float(1.1), float(1))).mul(show).toVar();
         const ang = rnd(4).mul(6.2832);
         const out = root.sub(clumpC);
@@ -162,6 +162,9 @@ function ringMaterial(ring: Ring, maps: FieldMaps, center: any, proj: any) {
         const halfW = w.mul(float(1).sub(pow(t, 1.4)));
         const p = root3.add(spine).add(off).add(wd.mul(side.mul(halfW)));
         oPos.assign(p);
+        // Blades are anchored in the world: their previous position is where they are now (camera motion only),
+        // so TAA reprojects them correctly instead of reading the blade template as a huge motion.
+        positionPrevious.assign(p);
 
         // Shading normal: rounded across the blade, eased toward the turf's up vector with distance. Under an overcast
         // sky a turf reads as one surface: shade mostly with the ground's up vector and let the rounded blade normal
@@ -171,9 +174,9 @@ function ringMaterial(ring: Ring, maps: FieldMaps, center: any, proj: any) {
         oUp.assign(float(0.55).add(smoothstep(2.0, 14.0, dist).mul(0.33)));
 
         // Colour: olive living blades with sage tufts, straw-coloured dead ones; darker toward the root.
-        const livingBase = mix(vec3(0.036, 0.048, 0.016), vec3(0.05, 0.058, 0.03), clumpR2);
-        const livingTip = mix(vec3(0.19, 0.25, 0.085), vec3(0.225, 0.275, 0.16), clumpR2);
-        const deadBase = vec3(0.075, 0.056, 0.03), deadTip = vec3(0.37, 0.3, 0.17);
+        const livingBase = mix(vec3(0.03, 0.042, 0.014), vec3(0.042, 0.05, 0.025), clumpR2);
+        const livingTip = mix(vec3(0.16, 0.23, 0.075), vec3(0.2, 0.25, 0.13), clumpR2);
+        const deadBase = vec3(0.07, 0.052, 0.028), deadTip = vec3(0.28, 0.22, 0.12);
         const tint = mix(float(0.8), float(1.12), rnd(8)).mul(mix(float(0.88), float(1.08), clumpR));
         const ct = pow(t, 0.75);
         const col = mix(select(dead, deadBase, livingBase), select(dead, deadTip, livingTip), ct).mul(tint);
@@ -183,7 +186,7 @@ function ringMaterial(ring: Ring, maps: FieldMaps, center: any, proj: any) {
         oAO.assign(turfAO.mul(characterAO(p, vec3(0, 1, 0))));
         oRough.assign(select(dead, float(0.72), float(0.5)).sub(wet.mul(0.12)));
         // Sky light transmitted through the thin blades (strongest at the tips), restrained so nothing glows.
-        oEm.assign(col.mul(LOOK.skyHorizon).mul(float(0.06).add(pow(t, 2).mul(0.14))));
+        oEm.assign(col.mul(LOOK.skyHorizon).mul(float(0.04).add(pow(t, 2).mul(0.08))));
       });
     });
     return oPos;

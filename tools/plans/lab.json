@@ -1,0 +1,4 @@
+[
+  { "label": "setup", "js": "(() => { document.getElementById('hud').style.display = 'none'; __kk.mode('lab'); const v = __kk.labViews; const P = __kk.rig.cam.position.clone(); v.push({ name: 'spheres', pos: P.clone().set(1.05, 0.22, 0.55), look: P.clone().set(1.05, 0.12, -0.3), mm: 45 }); __kk.labView(v.length - 1); __kk.labYaw(0.6); return v.length; })()", "wait": 2500, "out": "lab_spheres.png" },
+  { "js": "(() => { __kk.labView(3); return 'helmet view'; })()", "wait": 2000, "out": "lab_helmet.png" }
+]

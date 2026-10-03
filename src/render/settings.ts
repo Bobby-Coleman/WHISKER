@@ -8,10 +8,14 @@ export const TIERS: Record<QualityTier, {
   pixelRatioCap: number; renderScale: number; grassDensity: number; grassRadius: number;
   shadowMap: number; furShells: number; dof: boolean; msaa: boolean; mistCards: number; ao: boolean;
 }> = {
-  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 46, ao: true },
-  medium: { pixelRatioCap: 1.25, renderScale: 0.85, grassDensity: 0.6, grassRadius: 55, shadowMap: 2048, furShells: 9, dof: true, msaa: true, mistCards: 30, ao: false },
-  low: { pixelRatioCap: 1.0, renderScale: 0.7, grassDensity: 0.32, grassRadius: 40, shadowMap: 1024, furShells: 5, dof: false, msaa: false, mistCards: 16, ao: false },
+  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 84, ao: true },
+  medium: { pixelRatioCap: 1.25, renderScale: 0.85, grassDensity: 0.6, grassRadius: 55, shadowMap: 2048, furShells: 9, dof: true, msaa: true, mistCards: 54, ao: false },
+  low: { pixelRatioCap: 1.0, renderScale: 0.7, grassDensity: 0.32, grassRadius: 40, shadowMap: 1024, furShells: 5, dof: false, msaa: false, mistCards: 26, ao: false },
 };
+
+// Anti-aliasing: 'taa' (temporal reprojection, default where WebGPU or WebGL 2 is fast enough), 'msaa' (4x MSAA
+// plus FXAA, the earlier pipeline) or 'fxaa' (phones). Chosen once at load; materials that depend on it read it.
+export const RENDER = { aa: 'taa' as 'taa' | 'msaa' | 'fxaa' };
 
 // Wind shared by grass, reeds, capes, the bow and drifting mist.
 export const WIND = {

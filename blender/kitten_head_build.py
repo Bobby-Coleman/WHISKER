@@ -83,7 +83,7 @@ def wobble(p, f):
 def head_color(p):
     x, y, z = p[:, 0], p[:, 1], p[:, 2]
     c = np.tile(COAT, (len(p), 1))
-    muzzle = ss(z, 0.016, 0.032) * (1 - ss(y, -0.011, -0.004))
+    muzzle = ss(z, 0.016, 0.032) * (1 - ss(y, -0.0145, -0.0075))
     c = mix(c, CREAM, muzzle * 0.9)
     c = mix(c, CREAM, ss(-y, 0.024, 0.04) * 0.75)
     c = mix(c, CREAM, ss(np.abs(x), 0.022, 0.04) * (1 - ss(y, -0.012, 0.006)) * 0.45)
@@ -91,16 +91,16 @@ def head_color(p):
     brk = 0.5 + 0.5 * wobble(p, 260.0)
     crown = ss(y, 0.014, 0.03) * (1 - muzzle)
     stripe = (0.5 + 0.5 * np.cos(x * 190 + np.sin(z * 90) * 0.9 + 0.8 * wobble(p, 120.0))) ** 4
-    c = mix(c, COAT_DARK, crown * stripe * 0.2 * (0.4 + 0.6 * brk))
-    fore = ss(y, 0.004, 0.016) * ss(z, -0.01, 0.02) * (1 - ss(np.abs(x), 0.014, 0.026))
+    c = mix(c, COAT_DARK, crown * stripe * 0.34 * (0.4 + 0.6 * brk))
+    fore = ss(y, 0.001, 0.013) * ss(z, -0.01, 0.02) * (1 - ss(np.abs(x), 0.015, 0.028))
     fan = x * (1.0 + 18.0 * np.maximum(y - 0.01, 0)) + 0.0009 * wobble(p, 150.0)
     lines = (0.5 + 0.5 * np.cos(2 * np.pi * fan / 0.0085)) ** 4
-    c = mix(c, COAT_DARK * 0.9, fore * lines * 0.32 * (0.35 + 0.65 * brk))
+    c = mix(c, COAT_DARK * 0.85, fore * lines * 0.5 * (0.35 + 0.65 * brk))
     c = mix(c, COAT_DARK, ss(y, 0.02, 0.045) * ss(-z, -0.02, 0.03) * 0.35)  # warmer back of the head
     # Cheek lines running back from the outer corner of each eye.
     for sgn in (-1, 1):
         for a, off, k in ((0.0, 0.0, 0.5), (0.0045, -0.0055, 0.3)):
-            c0 = np.array([sgn * (0.0265 + a), -0.0025 + off, 0.0225 - a])
+            c0 = np.array([sgn * (0.0245 + a), -0.006 + off, 0.0225 - a])
             d = np.array([sgn * 0.55, -0.28, -0.79]); d /= np.linalg.norm(d)
             q = p - c0
             along = q @ d

@@ -1,0 +1,57 @@
+[
+ {
+  "label": "setup",
+  "js": "(() => { document.getElementById('hud').style.display = 'none'; const sp = document.querySelector('.kk-stats, #stats'); if (sp) sp.style.display = 'none'; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; return 'ok'; })()",
+  "wait": 1500
+ },
+ {
+  "js": "__kk.preset(0)",
+  "out": "01_kitten_closeup.png",
+  "wait": 2500
+ },
+ {
+  "js": "__kk.preset(1)",
+  "out": "02_paired.png",
+  "wait": 2000
+ },
+ {
+  "js": "__kk.preset(2)",
+  "out": "03_field_wide.png",
+  "wait": 2000
+ },
+ {
+  "js": "__kk.preset(3)",
+  "out": "04_knight_helmet.png",
+  "wait": 2000
+ },
+ {
+  "js": "__view(1.2, 1.55, 0.5, 0.2, 0.0, -9, 40)",
+  "out": "05_mud_path.png",
+  "wait": 2000
+ },
+ {
+  "js": "__view(5.5, 2.1, -31, 6.5, 1.4, -44, 38)",
+  "out": "06_yard_gate.png",
+  "wait": 2000
+ },
+ {
+  "js": "__view(12.5, 1.65, -45.5, 7, 1.3, -55, 38)",
+  "out": "07_chapel.png",
+  "wait": 2000
+ },
+ {
+  "js": "__view(-22.5, 1.9, -13.5, -33, 3.2, -22, 38)",
+  "out": "08_tower.png",
+  "wait": 2000
+ },
+ {
+  "js": "__view(9.5, 1.5, 0.5, 19, 1.0, 8, 45)",
+  "out": "09_stones.png",
+  "wait": 2000
+ },
+ {
+  "js": "(() => { const k = __kk.kitten.body.pos; __view(k.x - 0.55, k.y + 0.3, k.z - 0.9, k.x + 0.5, k.y + 0.02, k.z - 2.6, 40); })()",
+  "out": "10_ground_close.png",
+  "wait": 2000
+ }
+]

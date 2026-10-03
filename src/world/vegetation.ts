@@ -98,20 +98,21 @@ function buildCluster(def: KitDef, seed: number) {
 export const windOffset = Fn(([p, tip, height, stiffness]: any[]) => {
   const dir = vec2(WIND.dir.x, WIND.dir.y);
   const t = WIND.time;
-  const travel = p.xz.mul(0.045).sub(dir.mul(t).mul(0.16));
+  const travel = p.xz.mul(0.045).sub(dir.mul(t).mul(0.34));
   // Baked gradient noise (two texture reads per vertex instead of two 3D noise evaluations). Each read returns two
   // independent fields; turning one against the other over time stands in for the noise's slow third axis.
   const g = bakedNoise(travel, true), ga = t.mul(0.08);
   const gust = smoothstep(-0.25, 0.75, g.b.mul(cos(ga)).add(g.a.mul(sin(ga))));
-  const r = bakedNoise(p.xz.mul(0.35).sub(dir.mul(t).mul(0.6)).add(vec2(3.7, 1.3)), true), ra = t.mul(0.3);
+  const r = bakedNoise(p.xz.mul(0.35).sub(dir.mul(t).mul(1.1)).add(vec2(3.7, 1.3)), true), ra = t.mul(0.45);
   const ripple = r.b.mul(cos(ra)).add(r.a.mul(sin(ra))).mul(0.5).add(0.5);
-  const flutter = sin(t.mul(7.3).add(p.x.mul(5.1)).add(p.z.mul(3.7))).mul(0.035);
-  const bend = float(0.14).add(gust.mul(0.42)).add(ripple.mul(0.08)).mul(WIND.strength).div(stiffness);
+  const flutter = sin(t.mul(9.4).add(p.x.mul(5.1)).add(p.z.mul(3.7))).mul(0.055).mul(gust.mul(0.8).add(0.4));
+  const bend = float(0.2).add(gust.mul(0.78)).add(ripple.mul(0.12)).mul(WIND.strength).div(stiffness);
+  // Bend as an angle so a gale lays blades over without stretching them: the tip swings on an arc of the blade's
+  // own length (horizontal sin, vertical 1 - cos), weighted toward the tip.
   const w = pow(tip, 1.7).mul(height);
-  const off = vec3(dir.x, 0, dir.y).mul(bend.mul(w)).add(vec3(dir.y.negate(), 0, dir.x).mul(flutter.mul(w)));
-  // Keep blade length roughly constant.
-  const drop = off.x.mul(off.x).add(off.z.mul(off.z)).div(height.mul(2.0).add(0.001));
-  return off.sub(vec3(0, drop, 0));
+  const ang = bend.min(1.15);
+  const off = vec3(dir.x, 0, dir.y).mul(ang.sin().mul(w)).add(vec3(dir.y.negate(), 0, dir.x).mul(flutter.mul(w)));
+  return off.sub(vec3(0, float(1).sub(ang.cos()).mul(w), 0));
 });
 
 function vegetationMaterial() {

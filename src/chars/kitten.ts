@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { Character, CharacterBody, PoseContext } from './character';
 import { lathe, smoothProfile, bladeGeometry, capGeometry, transformed } from './shapes';
-import { armorMaterial, clothMaterial, leatherMaterial, furBaseMaterial, furShellMaterial, eyeMaterial, heroShellMaterial, heroEyeMaterial, brassMaterial, capeMaterial } from './materials';
+import { armorMaterial, clothMaterial, leatherMaterial, furBaseMaterial, furShellMaterial, eyeMaterial, heroShellMaterial, heroEyeMaterial, brassMaterial, capeMaterial, mailMaterial } from './materials';
 import { makePart, solveTwoBone, orientBone } from './rig';
 import { VerletCloth } from './cloth';
 import type { KittenAssets, BodyFur } from './assets';
@@ -20,11 +20,11 @@ const ss = THREE.MathUtils.smoothstep;
 
 // Face landmarks (head space, +Z forward), shared by the SDF, colors and fur length.
 // Kept in step with blender/kitten_head.py, which sculpts the hero head around the same eyes.
-const EYE = { x: 0.0172, y: -0.0015, z: 0.0279, r: 0.0102 };
-const SOCK = { x: 0.0173, y: -0.0012, z: 0.0318, rx: 0.0121, ry: 0.011, rz: 0.0094 };
-const NOSEP = { x: 0, y: -0.0112, z: 0.0424, rx: 0.0058, ry: 0.004, rz: 0.0038 };
+const EYE = { x: 0.0158, y: -0.005, z: 0.0277, r: 0.0084 };
+const SOCK = { x: 0.0159, y: -0.0048, z: 0.0311, rx: 0.0099, ry: 0.0091, rz: 0.0077 };
+const NOSEP = { x: 0, y: -0.0148, z: 0.0404, rx: 0.0047, ry: 0.0034, rz: 0.0035 };
 const CAPE_COLS = 11, CAPE_ROWS = 13;
-const CAPE_W = 0.11, CAPE_H = 0.15;
+const CAPE_W = 0.16, CAPE_H = 0.235;
 
 export class Kitten extends Character {
   sword = new THREE.Group();
@@ -55,7 +55,7 @@ export class Kitten extends Character {
     this.shellCount = shells;
     this.build(shells);
     const capeMat = capeMaterial('#e6e2d8');
-    this.cape = new VerletCloth(CAPE_COLS, CAPE_ROWS, CAPE_W, CAPE_H, capeMat, { windResponse: 1.3, drag: 0.985, taper: 0.5, subdiv: 3, aero: 0.55 });
+    this.cape = new VerletCloth(CAPE_COLS, CAPE_ROWS, CAPE_W, CAPE_H, capeMat, { windResponse: 1.9, drag: 0.985, taper: 0.45, subdiv: 3, aero: 0.7 });
     for (let i = 0; i < CAPE_COLS; i++) this.cape.pin(i, new THREE.Vector3());
     this.cape.mesh.name = 'KittenCape';
   }
@@ -183,9 +183,13 @@ export class Kitten extends Character {
     };
     for (const [name, geo] of body.skins) {
       const part = name.split('__')[0];
-      const n = geo.getAttribute('furLen') ? Math.max(2, Math.round((layers[part] ?? 4) * Math.min(1, this.shellCount / 14))) : 0;
+      // In the reference the legs are plated from thigh to toe: no fur shows below the mail skirt.
+      if (part === 'shin' || part === 'foot') continue;
+      const covered = part === 'thigh';
+      const n = covered ? 0 : geo.getAttribute('furLen') ? Math.max(2, Math.round((layers[part] ?? 4) * Math.min(1, this.shellCount / 14))) : 0;
       for (const t of targets[part] ?? []) {
         t.add(makePart(geo, skin));
+        if (covered) continue;
         for (let i = 1; i <= n; i++) {
           const m = new THREE.Mesh(geo, shellMat(i, n));
           m.castShadow = false; m.receiveShadow = true;
@@ -231,8 +235,8 @@ export class Kitten extends Character {
     const P = this.parts;
     const mats: Record<string, THREE.Material> = {
       // Procedural dents, scratches and grime are sized for human plate; scale them to kitten plate.
-      plate: armorMaterial({ mud: 0.05, wear: 0.45, masks: true, scale: 3 }),
-      legplate: armorMaterial({ mud: 0.3, wear: 0.6, masks: true, scale: 3 }),
+      plate: armorMaterial({ mud: 0.05, wear: 0.55, masks: true, scale: 3, tint: '#c2c1ba', engrave: true }),
+      legplate: armorMaterial({ mud: 0.22, wear: 0.6, masks: true, scale: 3, engrave: true }),
       steel: armorMaterial({ mud: 0.0, wear: 0.25, tint: '#cfd0cb', masks: true, scale: 3 }),
       brass: brassMaterial(true),
       leather: leatherMaterial('#3a2a1d'),
@@ -241,10 +245,47 @@ export class Kitten extends Character {
       chest: [P.chest], pelvis: [P.pelvis], uarm: [P.uarmL, P.uarmR], farm: [P.farmL, P.farmR], hand: [P.handL, P.handR],
       thigh: [P.thighL, P.thighR], shin: [P.shinL, P.shinR], sword: [this.sword],
     };
-    for (const [name, geo] of pieces) {
+    for (const [name, geo0] of pieces) {
       const [part, mat] = name.split('__');
       const m = part === 'thigh' || part === 'shin' ? (mat === 'plate' ? mats.legplate : mats[mat]) : mats[mat];
+      // The reference sword is slimmer and a little shorter: a narrow arming blade, about as long as its bearer.
+      let geo = geo0;
+      if (name === 'sword__steel__blade') geo = geo0.clone().scale(0.5, 0.74, 0.85);
+      if (name === 'sword__brass__guard') geo = geo0.clone().scale(0.78, 1, 1);
       for (const t of targets[part] ?? []) t.add(makePart(geo, m ?? mats.plate));
+    }
+    // Code-built details carry no baked masks, so they get mask-free plate.
+    this.buildHeroDetails(armorMaterial({ mud: 0.22, wear: 0.6, scale: 3, engrave: true }), armorMaterial({ mud: 0.05, wear: 0.5, scale: 3, tint: '#c2c1ba' }));
+  }
+
+  // Pieces from the reference photo that the Blender set lacks: a mail skirt under the faulds, a diagonal leather
+  // sword belt with a steel buckle, caps closing the greaves under the knees, and plated sabatons over the paws.
+  private buildHeroDetails(legplate: THREE.Material, plate: THREE.Material) {
+    const P = this.parts;
+    const mail = makePart(new THREE.CylinderGeometry(0.0505, 0.0565, 0.027, 48, 1, true).scale(1, 1, 0.86), mailMaterial(), true);
+    mail.position.set(0, -0.0345, 0.003);
+    P.pelvis.add(mail);
+    const beltMat = leatherMaterial('#5c3b24'); beltMat.side = THREE.DoubleSide;
+    const belt = makePart(new THREE.CylinderGeometry(0.0572, 0.0572, 0.0072, 56, 1, true).scale(1, 1, 0.9), beltMat);
+    belt.position.set(0, -0.012, 0.004);
+    belt.rotation.set(0, 0, -0.34);
+    P.pelvis.add(belt);
+    const buckle = makePart(new THREE.BoxGeometry(0.0085, 0.0095, 0.0024), plate);
+    buckle.position.set(-0.012, -0.0165, 0.0548);
+    buckle.rotation.set(0, 0.22, -0.34);
+    P.pelvis.add(buckle);
+    for (const [shin, foot] of [[P.shinL, P.footL], [P.shinR, P.footR]] as const) {
+      const cap = makePart(new THREE.CircleGeometry(0.0168, 24).rotateX(-Math.PI / 2).scale(1, 1, 1.08), legplate);
+      cap.position.set(0, -0.0075, 0);
+      shin.add(cap);
+      const toe = makePart(new THREE.SphereGeometry(0.0165, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.62, 1.55), legplate);
+      toe.position.set(0, -0.0125, 0.012);
+      foot.add(toe);
+      for (let i = 0; i < 2; i++) {
+        const lame = makePart(new THREE.TorusGeometry(0.0158 - i * 0.0012, 0.0011, 6, 24, Math.PI).rotateX(Math.PI / 2).scale(1, 1, 1.4), legplate);
+        lame.position.set(0, -0.0095 - i * 0.0005, 0.004 + i * 0.008);
+        foot.add(lame);
+      }
     }
   }
 
@@ -314,11 +355,15 @@ export class Kitten extends Character {
   private buildFace(shells: number, fur: THREE.Material) {
     const P = this.parts;
     // Eyes: large, dark and wet, set in sockets and angled slightly outward.
-    const eyeMat = this.assets ? heroEyeMaterial(EYE.r) : eyeMaterial();
+    const codeEye = this.assets ? null : eyeMaterial();
     const lidMat = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color('#2a201a'), roughness: 0.55 });
     for (const s of [-1, 1]) {
+      // Hero eyes carry their own lids (almond opening, rim, upper-lid shadow), mirrored per side.
+      const eyeMat = this.assets ? heroEyeMaterial(EYE.r, s) : codeEye!;
       const eye = makePart(new THREE.SphereGeometry(EYE.r, this.assets ? 48 : 28, this.assets ? 32 : 18), eyeMat, false);
       eye.position.set(s * EYE.x, EYE.y, EYE.z);
+      // Hero eyes: a slightly larger ball sunk a little deeper, so its fur-coloured lid covers the sculpt's round,
+      // dark socket edge and only the almond opening reads as eye.
       eye.rotation.set(-0.05, s * 0.32, 0);
       // The code-built head needs a dark lid ring for the almond outline; the hero head has sculpted lids.
       if (!this.assets) {
@@ -371,8 +416,10 @@ export class Kitten extends Character {
       return mixc(lin('#e3a9b2'), lin('#c98793'), Math.min(1, crease * 0.6 + (z < 0 ? 0.25 : 0)));
     });
     this.bow.add(makePart(bowGeo, bowMat));
-    this.bow.position.set(-0.016, 0.051, 0.01);
-    this.bow.rotation.set(-0.55, 0.3, 0.32);
+    // On the kitten's left, near the ear, small and pale, as in the reference photo.
+    this.bow.position.set(0.021, 0.047, 0.004);
+    this.bow.scale.setScalar(0.82);
+    this.bow.rotation.set(-0.55, -0.3, -0.32);
     P.head.add(this.bow);
 
   }
@@ -525,7 +572,7 @@ export class Kitten extends Character {
     this.earL.rotation.set(-0.18 - (this.twitchSide > 0 ? tw : 0) - g.moving * 0.12, 0.45 + (this.twitchSide > 0 ? tw * 0.6 : 0), -0.66);
     this.earR.rotation.set(-0.18 - (this.twitchSide < 0 ? tw : 0) - g.moving * 0.12, -0.45 - (this.twitchSide < 0 ? tw * 0.6 : 0), 0.66);
     // Bow: barely moves with the wind.
-    this.bow.rotation.z = 0.32 + Math.sin(this.breath * 3.1) * 0.03;
+    this.bow.rotation.z = -0.32 + Math.sin(this.breath * 3.1) * 0.03;
     // Tail: slow sway, lifted a little when moving.
     this.tailPhase += dt * (1.1 + g.moving * 2.5);
     this.tail.rotation.set(-0.25 + g.moving * 0.35 + Math.sin(this.tailPhase * 0.5) * 0.05, Math.sin(this.tailPhase) * 0.25, Math.sin(this.tailPhase * 0.7) * 0.08);
@@ -538,7 +585,7 @@ export class Kitten extends Character {
     this.swordTiltV.y += ((target.y - this.swordTilt.y) * k - this.swordTiltV.y * damp) * dt;
     this.swordTilt.x += this.swordTiltV.x * dt; this.swordTilt.y += this.swordTiltV.y * dt;
     const bounce = g.bob * 0.6;
-    const guard = new THREE.Vector3(-0.024, 0.162 + bounce - this.pelvisDrop, 0.056 + this.lean * 0.05).applyMatrix4(new THREE.Matrix4().makeRotationY(-pe.rotation.y * 0.5));
+    const guard = new THREE.Vector3(-0.041, 0.158 + bounce - this.pelvisDrop, 0.052 + this.lean * 0.05).applyMatrix4(new THREE.Matrix4().makeRotationY(-pe.rotation.y * 0.5));
     this.sword.position.copy(guard);
     this.sword.rotation.set(0.08 + this.swordTilt.x, 0, this.swordTilt.y + 0.07);
     this.sword.updateMatrix();

@@ -5,3 +5,4 @@ blender/out/
 __pycache__/
 *.blend
 *.blend1
+assets-src/

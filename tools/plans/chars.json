@@ -1,0 +1,7 @@
+[
+  { "label": "setup", "js": "(() => { document.getElementById('hud').style.display = 'none'; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; return 'ok'; })()", "wait": 1500 },
+  { "js": "__kk.preset(0)", "out": "c1_kitten_closeup.png", "wait": 2500 },
+  { "js": "(() => { const k = __kk.kitten; const h = k.parts.head.getWorldPosition(k.group.position.clone()); const f = { x: Math.sin(k.body.yaw), z: Math.cos(k.body.yaw) }; __view(h.x + f.x * 0.2 + f.z * 0.08, h.y + 0.01, h.z + f.z * 0.2 - f.x * 0.08, h.x, h.y - 0.005, h.z, 85); })()", "out": "c2_kitten_face.png", "wait": 2500 },
+  { "js": "__kk.preset(3)", "out": "c3_knight_helmet.png", "wait": 2000 },
+  { "js": "__kk.preset(1)", "out": "c4_paired.png", "wait": 2000 }
+]

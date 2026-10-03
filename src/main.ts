@@ -1,13 +1,16 @@
 // Whisker: first field prototype. Bootstraps rendering, world, characters and play.
 import * as THREE from 'three/webgpu';
 import { createSky, createEnvironment, createLights, setupFog, createMistCards } from './world/atmosphere';
-import { createTerrain, createDistantWater, terrainMaterial } from './world/terrain';
+import { createTerrain, createDistantWater, terrainMaterial, photoTerrainMaterial } from './world/terrain';
+import { preloadSurfaces } from './world/surfaces';
 import { bakeFieldMaps } from './world/ground';
 import { createGrass, GRASS_PUSHERS, GRASS_DEBUG } from './world/grass';
 import { createVegetation } from './world/vegetation';
-import { createStructures } from './world/structures';
+import { createStructures, FIELD_MATERIALS } from './world/structures';
+import { Weather, WeatherId } from './world/weather';
+import { createSpray } from './world/spray';
 import { createPipeline } from './render/pipeline';
-import { LOOK, WIND, GAME, TIERS, QualityTier } from './render/settings';
+import { LOOK, WIND, GAME, TIERS, QualityTier, RENDER } from './render/settings';
 import { Kitten } from './chars/kitten';
 import { loadKittenAssets, loadKnightAssets } from './chars/assets';
 import { Knight } from './chars/knight';
@@ -61,6 +64,10 @@ async function main() {
   const tierName = (params.get('q') as QualityTier) || (phone ? 'low' : matchMedia('(max-width: 800px), (pointer: coarse)').matches ? 'medium' : 'high');
   const tier = TIERS[tierName] ?? TIERS.high;
   const forceWebGL = params.has('webgl');
+  // Anti-aliasing: TAA wherever MSAA was used before (the hero fur's coverage resolves over frames instead), FXAA on
+  // phones; ?aa=msaa brings back the earlier MSAA + FXAA pipeline for comparison.
+  RENDER.aa = (params.get('aa') as any) || (tier.msaa ? 'taa' : 'fxaa');
+  const heroOK = RENDER.aa !== 'fxaa';
 
   // ---- Loading. Model downloads start first and overlap building the world; preparing shaders is the long
   // tail on many machines, so it gets its own share of the bar.
@@ -84,11 +91,14 @@ async function main() {
   };
   // Hero head (Blender sculpt, baked maps, groomed strand fur) needs MSAA for its alpha-to-coverage strands.
   const heroAssets: Promise<[Awaited<ReturnType<typeof loadKittenAssets>>, Awaited<ReturnType<typeof loadKnightAssets>>]> =
-    tier.msaa ? Promise.all([loadKittenAssets(), loadKnightAssets()]) : Promise.resolve([null, null]);
-  heroAssets.then(() => load.done('files'));
+    heroOK ? Promise.all([loadKittenAssets(), loadKnightAssets()]) : Promise.resolve([null, null]);
+  // Photo-scanned ground, stone, rock and timber (Poly Haven, CC0) download alongside the characters.
+  const surfacesReady = preloadSurfaces(['leafy_grass', 'brown_mud_02', 'castle_wall_varriation', 'castle_wall_slates', 'mossy_rock', 'weathered_planks', 'roof_slates_02'])
+    .then(() => true, (e) => { console.warn('Scanned textures unavailable; using procedural materials.', e); return false; });
+  Promise.all([heroAssets, surfacesReady]).then(() => load.done('files'));
   await nextPaint();
 
-  const renderer = new THREE.WebGPURenderer({ antialias: tier.msaa, forceWebGL, trackTimestamp: true });
+  const renderer = new THREE.WebGPURenderer({ antialias: RENDER.aa === 'msaa', forceWebGL, trackTimestamp: true });
   const basePixelRatio = Math.min(devicePixelRatio, tier.pixelRatioCap) * tier.renderScale;
   renderer.setPixelRatio(basePixelRatio);
   renderer.setSize(innerWidth, innerHeight);
@@ -99,6 +109,10 @@ async function main() {
   await renderer.init();
   const backend = (renderer.backend as any).isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
   W.__backend = backend;
+  const weather = new Weather(renderer);
+  const startWeather = (params.get('weather') as WeatherId) || 'morning';
+  const weatherReady = weather.load(startWeather);
+  weatherReady.catch(() => { /* reported where it is awaited */ });
 
   hud.setBackend(backend);
   const gpuTiming = (renderer.backend as any).trackTimestamp === true;
@@ -113,7 +127,22 @@ async function main() {
   const envWarm = createEnvironment(renderer, 'interior');
   scene.environment = envOvercast;
   scene.environmentIntensity = 1.0;
-  scene.add(createSky());
+  // Photographed overcast skies light the moor (procedural sky if they cannot be loaded).
+  let envField: THREE.Texture = envOvercast;
+  let photoSky = false;
+  try {
+    if (params.get('env') === 'proc') throw new Error('procedural sky requested');
+    await weatherReady;
+    await weather.init(startWeather, scene);
+    envField = scene.environment as THREE.Texture;
+    photoSky = true;
+  } catch (e) {
+    console.warn('Photographed sky unavailable; using the procedural sky.', e);
+    scene.environment = envOvercast;
+  }
+  weather.onEnvironment = (e) => { envField = e; };
+  W.__weather = weather;
+  scene.add(createSky(photoSky ? weather.skyNode() : undefined));
   setupFog(scene);
   load.progress('world', 0.15);
   await nextPaint();
@@ -123,7 +152,8 @@ async function main() {
   fieldRoot.add(terrain.near, terrain.far, createDistantWater());
   // Baked field maps drive the ground detail and the blade carpet from the same data as the vegetation.
   const fieldMaps = bakeFieldMaps(terrain.near, FIELD.nearHalf, 0.8);
-  terrain.near.material = terrainMaterial(fieldMaps);
+  FIELD_MATERIALS.photo = await surfacesReady;
+  terrain.near.material = FIELD_MATERIALS.photo ? photoTerrainMaterial(fieldMaps) : terrainMaterial(fieldMaps);
   load.progress('world', 0.45);
   await nextPaint();
   const grass = createGrass(fieldMaps, tier.grassDensity);
@@ -136,6 +166,9 @@ async function main() {
   let veg = createVegetation(tier.grassDensity, tier.grassRadius);
   fieldRoot.add(veg.group);
   const mist = createMistCards(tier.mistCards);
+  // Drizzle and spindrift racing downwind past the camera.
+  const spray = createSpray(tierName === 'low' ? 700 : tierName === 'medium' ? 1500 : 2400);
+  fieldRoot.add(spray.mesh);
   fieldRoot.add(mist.group);
   const { sun, hemi } = createLights(scene, tier.shadowMap);
   load.done('world');
@@ -222,7 +255,7 @@ async function main() {
 
   // ---- HUD callbacks.
   let started = params.has('noreveal') || params.has('still');
-  let adaptive = readPref('kk-drs', true);
+  let adaptive = params.has('drs') ? params.get('drs') !== '0' : readPref('kk-drs', true);
   hud.setChecked('drs', adaptive);
   const AO_ON = 1.0;
   let aoOn = params.has('ao') ? params.get('ao') !== '0' : readPref('kk-ao', tier.ao);
@@ -256,7 +289,7 @@ async function main() {
       if (k === 'direct') { sun.visible = on; hemi.visible = on; }
       if (k === 'shadows') renderer.shadowMap.enabled = on;
       if (k === 'fuzz') CHAR_TOGGLES.fuzz.value = on ? 1 : 0;
-      if (k === 'env2') scene.environment = on ? envWarm : envOvercast;
+      if (k === 'env2') scene.environment = on ? envWarm : envField;
       if (k === 'turn') turntable = on;
     },
   });
@@ -385,7 +418,7 @@ async function main() {
   function frame(dt: number, render = true) {
     clockT += dt;
     WIND.time.value = clockT;
-    WIND.gust = THREE.MathUtils.smoothstep(gustNoise.noise(clockT * 0.11, 0.5) * 0.5 + 0.5 + 0.15 * Math.sin(clockT * 0.7), 0.25, 0.85);
+    WIND.gust = THREE.MathUtils.smoothstep(gustNoise.noise(clockT * 0.19, 0.5) * 0.5 + 0.55 + 0.18 * Math.sin(clockT * 1.1), 0.2, 0.8);
     LOOK.frame.value = (LOOK.frame.value + 1) % 4096;
     let inp = input.poll(dt);
     if (sim.until > clockT) { inp = { ...inp, move: sim.move.clone(), walk: sim.walk }; }
@@ -452,13 +485,22 @@ async function main() {
     const focus = mode === 'lab' ? new THREE.Vector3(0, 0, 0) : active.group.position;
     const sd = sun.shadow.camera.right * 2 / sun.shadow.mapSize.x;
     const fx = Math.round(focus.x / sd) * sd, fz = Math.round(focus.z / sd) * sd;
-    sun.position.set(fx - 18, focus.y + 26, fz - 24);
+    // The hidden sun follows the weather's photographed sky: direction, colour and strength.
+    weather.update(dt, scene);
+    if (photoSky) {
+      const sd = weather.sunDir;
+      sun.position.set(fx + sd.x * 40, focus.y + sd.y * 40, fz + sd.z * 40);
+      sun.color.copy(weather.sunColor);
+      sun.intensity = weather.sunIntensity;
+      hemi.intensity = 0;
+    } else sun.position.set(fx - 18, focus.y + 26, fz - 24);
     sun.target.position.set(fx, focus.y, fz);
     sun.target.updateMatrixWorld();
     if (mode === 'field') {
       veg.update(camera);
       grass.update(camera);
       mist.update(clockT, camera, heightAt, active.group.position);
+      spray.update(WIND.gust);
     }
     audio.listener.copy(camera.position);
     audio.listenerYaw = Math.atan2(-(camera.getWorldDirection(new THREE.Vector3()).x), -(camera.getWorldDirection(new THREE.Vector3()).z)) + Math.PI;
@@ -506,13 +548,17 @@ async function main() {
     const unhidden: THREE.Object3D[] = [];
     for (const g of [veg.group, mist.group]) g.traverse((o) => { if (!o.visible) { o.visible = true; unhidden.push(o); } });
     const prev = renderer.getRenderTarget();
+    const prevMRT = renderer.getMRT();
     renderer.setRenderTarget(rt);
+    // Compile with the pass's outputs (colour plus velocity under TAA), as PassNode.compileAsync does.
+    renderer.setMRT((scenePass as any).getMRT());
     try {
       await renderer.compileAsync(scene, camera, null, (e: ProgressEvent) => load.progress('shaders', e.loaded / Math.max(1, e.total), `${e.loaded} of ${e.total}`));
     } catch (e) {
       console.warn('Shader precompile failed; shaders will compile on first use.', e);
     } finally {
       renderer.setRenderTarget(prev);
+      renderer.setMRT(prevMRT);
       for (const o of unculled) o.frustumCulled = true;
       for (const o of unhidden) o.visible = false;
     }
@@ -570,6 +616,7 @@ async function main() {
     }
   }
 
+  W.__perf = { panel: statsPanel, scale: () => renderScale, stats };
   const still = params.has('still');
   let stillFrames = 0;
   let frameNo = 0;

@@ -7,9 +7,9 @@ import bpy
 from kk_sdf import ellipsoid, capsule, torus, union, smin, smax, polygonize
 import kk_blender as kb
 
-EYE = dict(x=0.0172, y=-0.0015, z=0.0279, r=0.0102)
-SOCK = dict(x=0.0173, y=-0.0012, z=0.0318, rx=0.0121, ry=0.011, rz=0.0094)
-NOSEP = dict(x=0.0, y=-0.0112, z=0.0424, rx=0.0052, ry=0.0038, rz=0.0038)
+EYE = dict(x=0.0158, y=-0.005, z=0.0277, r=0.0084)
+SOCK = dict(x=0.0159, y=-0.0048, z=0.0311, rx=0.0099, ry=0.0091, rz=0.0077)
+NOSEP = dict(x=0.0, y=-0.0148, z=0.0404, rx=0.0047, ry=0.0034, rz=0.0035)
 
 
 def eye_axis(s):
@@ -34,7 +34,7 @@ def eye_ap(du, dv, dw):
     return th * np.cos(ph), th * np.sin(ph)
 
 
-APERTURE = dict(a_h=0.98, a_v=0.9, tilt=0.06)
+APERTURE = dict(a_h=0.92, a_v=0.6, tilt=-0.09)
 
 
 def lid_solid(s, gap=0.00035, a_h=APERTURE['a_h'], a_v=APERTURE['a_v'], tilt=APERTURE['tilt']):
@@ -60,14 +60,14 @@ def lid_solid(s, gap=0.00035, a_h=APERTURE['a_h'], a_v=APERTURE['a_v'], tilt=APE
 def head_sdf():
     base = union(0.01,
                  ellipsoid((0, 0.006, -0.004), (0.044, 0.04, 0.042)),            # cranium
-                 ellipsoid((0.02, -0.014, 0.008), (0.028, 0.024, 0.027)),        # cheeks
-                 ellipsoid((-0.02, -0.014, 0.008), (0.028, 0.024, 0.027)),
-                 ellipsoid((0, -0.006, 0.03), (0.011, 0.011, 0.012)),            # nose bridge
-                 ellipsoid((0.0075, -0.0195, 0.0335), (0.011, 0.009, 0.0102)),   # whisker pads
-                 ellipsoid((-0.0075, -0.0195, 0.0335), (0.011, 0.009, 0.0102)),
-                 ellipsoid((0, -0.0275, 0.027), (0.0095, 0.007, 0.009)),         # chin
-                 ellipsoid((0.016, 0.006, 0.027), (0.014, 0.009, 0.011)),        # brows
-                 ellipsoid((-0.016, 0.006, 0.027), (0.014, 0.009, 0.011)),
+                 ellipsoid((0.02, -0.0158, 0.008), (0.028, 0.024, 0.027)),       # cheeks
+                 ellipsoid((-0.02, -0.0158, 0.008), (0.028, 0.024, 0.027)),
+                 ellipsoid((0, -0.008, 0.0305), (0.0105, 0.0108, 0.0118)),       # nose bridge
+                 ellipsoid((0.0072, -0.0222, 0.0342), (0.0108, 0.0089, 0.0104)),  # whisker pads
+                 ellipsoid((-0.0072, -0.0222, 0.0342), (0.0108, 0.0089, 0.0104)),
+                 ellipsoid((0, -0.0302, 0.0262), (0.0092, 0.0068, 0.0088)),      # chin
+                 ellipsoid((0.0152, 0.0028, 0.0266), (0.0135, 0.0086, 0.0106)),  # brows
+                 ellipsoid((-0.0152, 0.0028, 0.0266), (0.0135, 0.0086, 0.0106)),
                  ellipsoid((0, -0.038, -0.01), (0.028, 0.028, 0.028)))           # neck
     N = NOSEP
 

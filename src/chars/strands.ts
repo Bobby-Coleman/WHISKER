@@ -8,6 +8,8 @@ import {
   diffuseColor, positionViewDirection,
 } from 'three/tsl';
 import { CHAR_TOGGLES } from './materials';
+import { RENDER } from '../render/settings';
+import { temporalAlphaThreshold } from '../render/temporal';
 import { fetchBinary } from './binfile';
 
 export type StrandData = {
@@ -186,7 +188,10 @@ export function strandMaterial(look: StrandLook = {}, msaa = true) {
   m.opacityNode = vCov.mul(float(1).sub(smoothstep(0.55, 1.0, abs(vSide)).mul(0.6)));
   m.model = new HairLightingModel(Tv, Nv, vT, varying(c.a), k);
   m.side = THREE.DoubleSide;
-  if (msaa) m.alphaToCoverage = true;
+  // Coverage: under TAA each pixel keeps the strand when its coverage beats a threshold that changes every frame,
+  // so a few frames of history average to the true coverage; with MSAA the hardware does it (alpha to coverage).
+  if (RENDER.aa === 'taa') m.alphaTestNode = temporalAlphaThreshold;
+  else if (msaa) m.alphaToCoverage = true;
   else m.alphaTest = 0.4;
   return m;
 }

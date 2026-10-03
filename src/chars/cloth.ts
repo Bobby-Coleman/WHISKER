@@ -115,7 +115,7 @@ export class VerletCloth {
     const dt2 = dt * dt;
     if (this.aero > 0) this.computeNormals();
     // Air speed for the aerodynamic model (m/s): a steady breeze plus the shared gust envelope.
-    const speed = (2.2 + WIND.gust * 3.6) * this.windResponse;
+    const speed = (3.4 + WIND.gust * 6.2) * this.windResponse;
     for (let k = 0; k < n; k++) {
       if (this.inv[k] === 0) continue;
       const o = k * 3;

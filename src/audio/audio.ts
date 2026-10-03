@@ -65,9 +65,9 @@ export class Soundscape {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const g = WIND.gust;
-    this.windGain.gain.setTargetAtTime(0.16 + g * 0.3, t, 0.4);
-    this.windFilter.frequency.setTargetAtTime(320 + g * 700, t, 0.5);
-    this.windHi.gain.setTargetAtTime(0.008 + g * 0.035, t, 0.3);
+    this.windGain.gain.setTargetAtTime(0.2 + g * 0.55, t, 0.35);
+    this.windFilter.frequency.setTargetAtTime(340 + g * 1100, t, 0.4);
+    this.windHi.gain.setTargetAtTime(0.012 + g * 0.07, t, 0.25);
     this.birdT -= dt;
     if (this.birdT < 0) { this.birdT = 7 + Math.random() * 14; this.bird(); }
   }

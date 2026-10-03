@@ -8,6 +8,80 @@ import { FIELD, heightAt, pathDist, wetness } from './layout';
 import { characterAO } from '../render/occlusion';
 import { procBump } from '../render/bump';
 import { FieldMaps, MASK_HALF, PATH_RANGE } from './ground';
+import { surface, groundSample, toViewNormal } from './surfaces';
+import { bakedNoise } from '../render/noisetex';
+import { min, clamp, dot, normalize } from 'three/tsl';
+
+// Playable ground from photo-scanned turf and mud (Poly Haven leafy_grass and brown_mud_02, CC0), laid out by the
+// same field maps as the grass blades: the muddy path, wet hollows, thin and dead patches. Near the camera the scans
+// carry the detail; with distance the turf takes on the canopy colour the blade carpet shows, so the carpet's edge
+// cannot be seen. Wet ground darkens, smooths and holds water in the low parts of each scan's relief.
+export function photoTerrainMaterial(maps: FieldMaps) {
+  const m = new THREE.MeshStandardNodeMaterial();
+  const wp = positionWorld;
+  const inside = step(abs(wp.x), MASK_HALF - 1).mul(step(abs(wp.z), MASK_HALF - 1));
+  const muv = wp.xz.add(MASK_HALF).div(2 * MASK_HALF);
+  const m1: any = texture(maps.mask, muv), m2: any = texture(maps.mask2, muv);
+  const pathD = mix(float(1.4), m1.x.mul(PATH_RANGE), inside);
+  const wet = mix(float(0.25), max(m1.y, smoothstep(1.6, 0.4, pathD).mul(0.6)), inside);
+  const excl = m1.z.mul(inside);
+  const vigour = mix(float(0.5), m1.w, inside);
+  const dead = mix(float(0.25), m2.x, inside);
+  const pud = m2.y.mul(inside);
+
+  // Broad, slow mixers for breaking up the repeat (baked tiling noise, metres-wide patches).
+  const nA = bakedNoise(wp.xz.mul(1 / 5.5)).b.mul(0.9).add(0.5);
+  const nB = bakedNoise(wp.xz.mul(1 / 4.2).add(vec2(3.7, 1.9))).a.mul(0.9).add(0.5);
+  const turf = groundSample(surface('leafy_grass'), wp, normalWorld, 2.3, nA);
+  const mud = groundSample(surface('brown_mud_02'), wp, normalWorld, 1.9, nB);
+
+  // Canopy: the colour of grassed ground seen from a few metres up and beyond (as the blades read at distance).
+  const broadB = mx_fractal_noise_float(wp.xz.mul(1 / 13).add(7.3), 2, 2.0, 0.5).mul(0.5).add(0.5);
+  const living = mix(color('#5a6339'), color('#6c7552'), smoothstep(0.55, 0.85, broadB).mul(0.7));
+  let canopy: any = mix(living, color('#85765a'), dead.mul(0.85));
+  canopy = canopy.mul(mix(float(0.84), float(1.04), vigour));
+
+  // Turf scan graded to the moor: living olive, with the scan's own straw and leaf litter where grass is dead.
+  const lum = dot(turf.albedo, vec3(0.2126, 0.7152, 0.0722));
+  const liveTint = vec3(0.285, 0.474, 0.34), deadTint = vec3(0.6, 0.62, 0.72);
+  let turfCol: any = turf.albedo.mul(mix(liveTint, deadTint, clamp(dead.mul(0.9), 0, 1)));
+  turfCol = turfCol.mul(mix(float(0.86), float(1.04), vigour));
+  // Seen from far enough that single leaves blur, the ground reads as canopy modulated by the scan's light and shade.
+  const camD = length(wp.sub(cameraPosition));
+  const detail = float(1).sub(smoothstep(7.0, 28.0, camD));
+  const farTurf = canopy.mul(lum.div(0.235).mul(0.35).add(0.65));
+  const grassGround = mix(farTurf, turfCol, detail.mul(0.92));
+
+  // Mud: the trodden path, the bare courtyard and the floors of puddles. Where the two meet, the higher relief wins.
+  const pathCore = float(1).sub(smoothstep(0.12, 0.62, pathD));
+  const bareMask = max(max(pathCore, excl.mul(0.8)), pud);
+  const mudW = smoothstep(0.42, 0.58, bareMask.add(mud.height.sub(turf.height).mul(0.35)).sub(0.12));
+  const mudCol = mud.albedo.mul(vec3(1.12, 1.0, 0.86));
+  let c: any = mix(grassGround, mudCol, mudW);
+  let rough: any = mix(mix(float(0.9), turf.rough, detail.mul(0.6)), mud.rough, mudW);
+  let nW: any = normalize(mix(normalWorld, mix(turf.nWorld, mud.nWorld, mudW), mix(float(0.35), float(1), detail)));
+  const height = mix(turf.height, mud.height, mudW);
+
+  // Wet ground: darker, smoother; water lies in the low parts of the relief and flattens the normal there.
+  const wetMix = smoothstep(0.2, 0.9, wet.add(float(0.5).sub(height).mul(0.35)));
+  const pooled = smoothstep(0.5, 0.75, wet.add(pud.mul(0.5))).mul(smoothstep(0.42, 0.22, height)).mul(mudW);
+  c = c.mul(mix(float(1), float(0.66), wetMix)).mul(mix(float(1), float(0.82), pooled));
+  rough = mix(rough, mix(float(0.42), float(0.3), mudW), wetMix.mul(0.85));
+  rough = mix(rough, float(0.06), pooled);
+  nW = normalize(mix(nW, normalWorld, pooled.mul(0.9).add(wetMix.mul(0.15))));
+  // Slope: exposed soil on the steeper faces of hollows and banks.
+  const slope = float(1).sub(normalWorld.y);
+  c = mix(c, mudCol.mul(0.85), smoothstep(0.1, 0.32, slope).mul(0.45));
+
+  m.colorNode = c;
+  m.roughnessNode = clamp(rough, 0.04, 1);
+  m.metalnessNode = float(0);
+  m.normalNode = toViewNormal(nW);
+  const texAO = mix(turf.ao, mud.ao, mudW);
+  m.aoNode = characterAO(positionWorld, normalWorld).mul(mix(float(1), texAO, detail.mul(0.7)));
+  void min; void vec4;
+  return m;
+}
 
 function buildGrid(half: number, step: number, sink: (x: number, z: number) => number) {
   const n = Math.round((half * 2) / step) + 1;

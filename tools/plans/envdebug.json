@@ -1,0 +1,6 @@
+[
+  { "label": "setup", "js": "(() => { document.getElementById('hud').style.display = 'none'; const s = __kk.scene; s.getObjectByName('Sky').visible = false; s.background = s.environment; s.backgroundBlurriness = 0; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; __kk.LOOK.fogEnabled.value = 0; return 'ok'; })()", "wait": 1000 },
+  { "js": "__view(0, 1.6, 0, 0, 1.6, -10, 14)", "out": "env_north_horizon.png", "wait": 1500 },
+  { "js": "__view(0, 1.6, 0, 0.01, 11.6, -1, 14)", "out": "env_up.png", "wait": 1500 },
+  { "js": "__view(0, 1.6, 0, 0.01, -8.4, -1, 14)", "out": "env_down.png", "wait": 1500 }
+]

@@ -1,0 +1,5 @@
+[
+  { "label": "setup", "js": "(() => { document.getElementById('hud').style.display = 'none'; const sp = document.querySelector('#hud ~ div'); window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; return 'ok'; })()", "wait": 1500 },
+  { "js": "(() => { const k = __kk.kitten; const p = k.body.pos; const f = { x: Math.sin(k.body.yaw), z: Math.cos(k.body.yaw) }; __view(p.x + f.x * 0.85 - f.z * 0.12, p.y + 0.2, p.z + f.z * 0.85 + f.x * 0.12, p.x, p.y + 0.21, p.z, 50); })()", "out": "k_full_front.png", "wait": 2500 },
+  { "js": "(() => { const k = __kk.kitten; const p = k.body.pos; const f = { x: Math.sin(k.body.yaw), z: Math.cos(k.body.yaw) }; __view(p.x + f.x * 0.45 - f.z * 0.05, p.y + 0.29, p.z + f.z * 0.45 + f.x * 0.05, p.x, p.y + 0.28, p.z, 60); })()", "out": "k_head_front.png", "wait": 2500 }
+]

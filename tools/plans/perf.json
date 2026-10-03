@@ -1,0 +1,8 @@
+[
+  { "label": "settle", "js": "(() => { __kk.preset(-1); __kk.camYaw(0, 0.2); return 'play cam'; })()", "wait": 4000 },
+  { "label": "spawn view", "js": "(() => { const p = __perf.panel; return { fps: __perf.stats.fps, gpuMs: p.gpuMs && +p.gpuMs.toFixed(2), scale: __perf.scale(), calls: __kk.renderer.info.render.drawCalls, tris: __kk.renderer.info.render.triangles, px: [innerWidth * __kk.renderer.getPixelRatio(), innerHeight * __kk.renderer.getPixelRatio()] }; })()", "out": "perf_spawn.png", "wait": 300 },
+  { "label": "toward yard", "js": "(() => { __kk.teleport('kitten', 3, -26, Math.PI); __kk.teleport('knight', 2, -24, Math.PI); __kk.camYaw(0, 0.18); return 'moved'; })()", "wait": 4000 },
+  { "label": "yard view", "js": "(() => { const p = __perf.panel; return { fps: __perf.stats.fps, gpuMs: p.gpuMs && +p.gpuMs.toFixed(2), scale: __perf.scale(), calls: __kk.renderer.info.render.drawCalls, tris: __kk.renderer.info.render.triangles }; })()", "out": "perf_yard.png", "wait": 300 },
+  { "label": "switch to knight", "js": "(() => { __kk.setActive('knight'); return 'knight'; })()", "wait": 4000 },
+  { "label": "knight view", "js": "(() => { const p = __perf.panel; return { fps: __perf.stats.fps, gpuMs: p.gpuMs && +p.gpuMs.toFixed(2), scale: __perf.scale(), calls: __kk.renderer.info.render.drawCalls, tris: __kk.renderer.info.render.triangles }; })()", "out": "perf_knight.png", "wait": 300 }
+]

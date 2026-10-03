@@ -7,6 +7,10 @@ import {
 } from './layout';
 import { PhysicsWorld, MASK } from '../game/physics';
 import { stoneMaterial, rockMaterial, timberMaterial, ironMaterial, waterMaterial, silhouetteMaterial } from './materials';
+import { photoMaterial } from './surfaces';
+
+// Photo-scanned stone, rock and timber when their textures loaded; the procedural materials otherwise.
+export const FIELD_MATERIALS = { photo: true };
 import { Simplex2, mulberry32 } from './noise';
 import { LOOK } from '../render/settings';
 
@@ -34,11 +38,16 @@ export type Structures = ReturnType<typeof createStructures>;
 export function createStructures(physics: PhysicsWorld) {
   const root = new THREE.Group();
   root.name = 'Environment';
-  const stone = stoneMaterial();
-  const stoneDark = stoneMaterial({ tint: '#5f5d57', mossy: 1.2 });
-  const rock = rockMaterial();
-  const wood = timberMaterial();
-  const woodDark = timberMaterial('#2c251e');
+  const PH = FIELD_MATERIALS.photo;
+  // Dry-stone sheepfold walls (castle_wall_varriation), cooled and darkened toward wet grey stone; the tower in
+  // coursed slate (castle_wall_slates); boulders in mossy rock; doors, posts and boards in weathered planks.
+  const stone = PH ? photoMaterial('castle_wall_varriation', { scale: 3.0, desat: 0.45, tint: [0.74, 0.77, 0.82], mossy: 1.0, damp: 1.0, dampLocal: true }) : stoneMaterial();
+  const stoneDark = PH ? photoMaterial('castle_wall_varriation', { scale: 3.0, desat: 0.5, tint: [0.6, 0.62, 0.66], mossy: 1.3, damp: 1.0, dampLocal: true }) : stoneMaterial({ tint: '#5f5d57', mossy: 1.2 });
+  const towerStone = PH ? photoMaterial('castle_wall_slates', { scale: 2.6, desat: 0.4, tint: [0.62, 0.66, 0.72], mossy: 0.7, damp: 1.0, dampLocal: true }) : stone;
+  const rock = PH ? photoMaterial('mossy_rock', { scale: 1.7, desat: 0.15, tint: [0.92, 0.96, 0.98], mossy: 0.25, damp: 0.8, dampLocal: true }) : rockMaterial();
+  const wood = PH ? photoMaterial('weathered_planks', { scale: 1.3, tint: [1.25, 1.18, 1.1] }) : timberMaterial();
+  const woodDark = PH ? photoMaterial('weathered_planks', { scale: 1.3, tint: [0.8, 0.76, 0.72] }) : timberMaterial('#2c251e');
+  const roofMat = PH ? photoMaterial('roof_slates_02', { scale: 1.6, desat: 0.35, tint: [0.66, 0.69, 0.74], mossy: 0.8 }) : timberMaterial('#2a241d');
   const iron = ironMaterial();
 
   const shadow = (m: THREE.Mesh) => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -164,7 +173,7 @@ export function createStructures(physics: PhysicsWorld) {
         p.setZ(i, -0.28 * Math.sin(Math.PI * (x / roofW + 0.5)) * Math.sin(Math.PI * (y / L + 0.5)));
       }
       g.computeVertexNormals();
-      const roof = shadow(new THREE.Mesh(g, timberMaterial('#2a241d')));
+      const roof = shadow(new THREE.Mesh(g, roofMat));
       (roof.material as THREE.Material).side = THREE.DoubleSide;
       roof.position.set(xc, yardY + ridgeY - (L / 2) * Math.sin(pitch), zc + s * (L / 2) * Math.cos(pitch));
       roof.rotation.set(-Math.PI / 2 + s * pitch, 0, 0);
@@ -219,7 +228,7 @@ export function createStructures(physics: PhysicsWorld) {
   flame.position.copy(lantern.position); flame.visible = false; root.add(flame);
 
   // ---- Pressure stones.
-  const plateMat = stoneMaterial({ tint: '#77746a', mossy: 0.4 });
+  const plateMat = PH ? photoMaterial('castle_wall_slates', { scale: 1.4, desat: 0.3, tint: [0.85, 0.86, 0.88], mossy: 0.3 }) : stoneMaterial({ tint: '#77746a', mossy: 0.4 });
   const heavy = shadow(new THREE.Mesh(new THREE.CylinderGeometry(HEAVY_PLATE.r, HEAVY_PLATE.r + 0.05, 0.12, 7), plateMat));
   heavy.position.set(HEAVY_PLATE.x, yardY + 0.02, HEAVY_PLATE.z);
   root.add(heavy);
@@ -274,7 +283,7 @@ export function createStructures(physics: PhysicsWorld) {
     for (const [y0, y1] of pieces) {
       const g = new THREE.BoxGeometry(segW, y1 - y0, TOWER.wallT);
       g.translate(0, (y1 - y0) / 2, 0);
-      const m = shadow(new THREE.Mesh(g, stone));
+      const m = shadow(new THREE.Mesh(g, towerStone));
       const rr2 = TOWER.r - TOWER.wallT / 2;
       // Angle convention: a=0 -> +X (east), a=pi/2 -> +Z (south).
       m.position.set(Math.cos(a) * rr2, y0, Math.sin(a) * rr2);
@@ -314,7 +323,7 @@ export function createStructures(physics: PhysicsWorld) {
   physics.platforms.push({ id: 'sill', kind: 'box', x: TOWER.x, z: TOWER.z + TOWER.r - TOWER.wallT / 2, hx: 0.38, hz: TOWER.wallT / 2 + 0.05, rot: 0, top: sillY });
   physics.platforms.push({ id: 'upperFloor', kind: 'circle', x: TOWER.x, z: TOWER.z, r: TOWER.r - TOWER.wallT + 0.02, top: sillY });
   const floorG = new THREE.CylinderGeometry(TOWER.r - TOWER.wallT + 0.05, TOWER.r - TOWER.wallT + 0.05, 0.12, 24);
-  const floor = shadow(new THREE.Mesh(floorG, timberMaterial('#3a3026')));
+  const floor = shadow(new THREE.Mesh(floorG, PH ? woodDark : timberMaterial('#3a3026')));
   floor.position.set(0, TOWER.floorY - 0.06, 0);
   tower.add(floor);
   // Beams and the bell high in the ruined top.

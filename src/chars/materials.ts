@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, positionLocal, positionGeometry, normalLocal, mx_noise_float, mx_fractal_noise_float, vec3, float, mix, smoothstep, abs, fract, sin, dot,
   uniform, attribute, color, floor, step, clamp, pow, length, max, bumpMap, vec2, uv, positionView,
-  texture, normalize, refract, atan, cos, min, vec4, modelWorldMatrixInverse, cameraPosition, normalWorld,
+  texture, normalize, refract, atan, cos, min, vec4, modelWorldMatrixInverse, cameraPosition, normalWorld, fwidth,
 } from 'three/tsl';
 import { WIND, LOOK } from '../render/settings';
 import { procBump } from '../render/bump';
@@ -24,7 +24,7 @@ const armorCache = new Map<string, THREE.Material>();
 // mud is non-metallic and concentrated by the per-part `mud` amount (lower greaves and sabatons get the most).
 // masks: the mesh carries baked per-vertex masks in its colour attribute (R ambient occlusion, G convex edges,
 // B cavities), as the Blender hero armour does: edges read polished, cavities collect grime.
-export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string; scale?: number; emblem?: boolean; side?: THREE.Side; masks?: boolean } = {}) {
+export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string; scale?: number; emblem?: boolean; side?: THREE.Side; masks?: boolean; engrave?: boolean } = {}) {
   const key = JSON.stringify(opts);
   if (armorCache.has(key)) return armorCache.get(key)!;
   // Amounts, scale and tint are uniforms rather than constants, so plates that differ only in those share a shader.
@@ -39,7 +39,9 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
   const grime = smoothstep(0.45, 0.9, mx_fractal_noise_float(p.mul(19.0).add(3.1), 3, 2.0, 0.6).mul(0.5).add(0.5));
   const mudN = mx_fractal_noise_float(p.mul(17.0).add(9.0), 4, 2.0, 0.55).mul(0.5).add(0.5);
   const mudMask = smoothstep(float(1.0).sub(mud), float(1.0).sub(mud).add(0.18), mudN.add(normalLocal.y.mul(-0.08)));
-  const silver = uniform(new THREE.Color(opts.tint ?? '#b8b7b0'));
+  // Steel reflects about 55-60% of light at normal incidence: a pale base, so the plate reads silver under a bright
+  // overcast sky rather than charcoal.
+  const silver = uniform(new THREE.Color(opts.tint ?? '#c7c6bf'));
   let base = silver.mul(mix(float(1.0), float(0.8), grime.mul(0.5))).mul(mid.mul(0.05).add(0.96));
   base = mix(base, color('#4a3f31'), mudMask);
   // Optional painted cross on the breastplate: worn, chipped, non-metallic paint.
@@ -55,25 +57,62 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
     base = mix(base, color('#1e1d1b').mul(mid.mul(0.2).add(0.85)), paint);
   }
   if (opts.side !== undefined) m.side = opts.side;
+  // Etched scrollwork, as on the reference kitten's breastplate, pauldrons and tassets: thin recessed lines that
+  // follow the contours of a slow swirl field, laid in broad decorated panels. They darken a little and rough up;
+  // lines finer than a pixel fade to their average instead of sparkling.
+  let etch: any = float(0);
+  if (opts.engrave) {
+    const q = positionLocal.mul(sc).mul(95.0);
+    const swirl = mx_noise_float(q.mul(0.55)).add(mx_noise_float(q.mul(1.25).add(vec3(4.1, 1.7, 2.3))).mul(0.45));
+    const k = swirl.mul(2.6);
+    const dist = abs(fract(k).sub(0.5));
+    const w = fwidth(k).mul(1.0).add(0.014);
+    const line = float(1).sub(smoothstep(w.mul(0.5), w, float(0.5).sub(dist)));
+    const panel = smoothstep(0.05, 0.35, mx_noise_float(q.mul(0.06).add(vec3(9.0, 3.0, 1.0))));
+    const fadeFine = float(1).sub(smoothstep(0.25, 0.6, fwidth(k)));
+    etch = line.mul(panel).mul(fadeFine).mul(float(1).sub(mudMask));
+    base = base.mul(mix(float(1), float(0.8), etch));
+  }
   let edge: any = float(0), cav: any = float(0);
   if (opts.masks) {
     const mk = attribute('color', 'vec4');
     edge = mk.g; cav = mk.b;
-    m.aoNode = mix(float(1), mk.r, 0.85);
+    // Baked occlusion also occludes the sky's reflection (specular occlusion), so keep it to the real creases.
+    m.aoNode = mix(float(1), mk.r, 0.55);
     // Dark grime settles in creases and under overlapping lames; worn edges are a touch brighter.
     base = base.mul(float(1).sub(cav.mul(0.35).mul(wear.add(0.4)))).mul(edge.mul(0.07).add(1));
   }
   m.colorNode = base;
   m.metalnessNode = mix(float(1.0), float(0.0), clamp(mudMask.add(paint), 0, 1));
-  // Dirty silver rather than chrome: broad overcast reflections with regional breakup (about 0.22-0.45).
-  const rough = float(0.22).add(broad.mul(0.12)).add(grime.mul(0.12).mul(wear)).add(scratch.mul(0.1)).add(mid.mul(0.04))
+  // Worked steel rather than chrome: polished faces carry clear reflections of the sky, rubbed and grimy regions
+  // break them up (about 0.15-0.4).
+  const rough = float(0.15).add(broad.mul(0.11)).add(grime.mul(0.12).mul(wear)).add(scratch.mul(0.1)).add(mid.mul(0.04))
     .sub(edge.mul(0.06)).add(cav.mul(0.16).mul(wear.add(0.3)));
-  m.roughnessNode = mix(mix(mix(float(0.4), rough, CHAR_TOGGLES.roughnessMaps), float(0.92), mudMask), float(0.68), paint);
-  // Subtle hammered dents and scratch grooves in the normal.
-  // Real scale: dents about 0.15 mm deep over ~2.5 cm, scratches a few hundredths of a millimetre.
-  const bumpH = mx_noise_float(p.mul(42.0)).mul(0.00015).sub(scratch.mul(0.00004)).mul(CHAR_TOGGLES.detailNormals);
+  m.roughnessNode = mix(mix(mix(float(0.4), rough, CHAR_TOGGLES.roughnessMaps), float(0.92), mudMask), float(0.68), paint).add(etch.mul(0.22));
+  // Subtle hammered dents in the normal (about 0.15 mm deep over ~2.5 cm). Scratches stay in the roughness only:
+  // grooves narrower than a pixel turn into bright aliased specks in a derivative bump.
+  const bumpH = mx_noise_float(p.mul(42.0)).mul(0.00015).sub(etch.mul(0.00004)).mul(CHAR_TOGGLES.detailNormals);
   m.normalNode = procBump(bumpH.div(sc), float(0.006).div(sc));
   armorCache.set(key, m);
+  return m;
+}
+
+// Riveted mail at kitten scale (rings about 2.5 mm across) on a cylinder's UVs: bright ring crowns, dark gaps
+// between them, rows offset by half a ring. Rings finer than a pixel blend to their average instead of shimmering.
+export function mailMaterial() {
+  const m = new THREE.MeshPhysicalNodeMaterial({ side: THREE.DoubleSide });
+  const st = uv().mul(vec2(128, 11));
+  const row = floor(st.y);
+  const cell = vec2(fract(st.x.add(row.mul(0.5))), fract(st.y)).sub(0.5).mul(vec2(1, 1.25));
+  const r = length(cell);
+  const ring = smoothstep(0.47, 0.38, r).mul(smoothstep(0.13, 0.22, r));
+  const fine = smoothstep(0.35, 0.8, fwidth(st.x));
+  const cov = mix(ring, float(0.55), fine);
+  const grime = mx_fractal_noise_float(positionLocal.mul(180), 3, 2.0, 0.5).mul(0.5).add(0.5);
+  m.colorNode = mix(color('#2b2b2c'), color('#b4b3ad').mul(grime.mul(0.25).add(0.8)), cov);
+  m.metalnessNode = mix(float(0.3), float(1), cov);
+  m.roughnessNode = mix(float(0.75), float(0.32).add(grime.mul(0.15)), cov);
+  m.normalNode = procBump(ring.mul(0.0004).mul(float(1).sub(fine)), float(0.003));
   return m;
 }
 
@@ -277,10 +316,26 @@ export function heroShellMaterial(layer: number, layers: number, density: number
 
 // Kitten eye with depth: the iris sits on a plane inside a clear cornea, looked up through a refracted view ray so it
 // shifts with parallax, under a glossy wet clear coat that mirrors the sky. Local +Z is the eye's forward axis.
-export function heroEyeMaterial(radius: number) {
+// `side` is +1 for the kitten's left eye and -1 for its right, so the almond's outer corner sits on the outside.
+export function heroEyeMaterial(radius: number, side = 1) {
   const m = new THREE.MeshPhysicalNodeMaterial();
   const p = positionLocal;
   const n = normalize(p);
+  // Eyelids. A real cat shows an almond-shaped opening, not a round ball: the upper lid is flatter and casts a soft
+  // shadow over the top of the iris, the outer corner sits a little higher, and a thin dark rim (cats' natural
+  // "eyeliner") borders it. Outside the opening the sphere is lid skin: dark and matt, with no wet coat.
+  // (u, v): across and up the front of the eyeball, as seen face-on; the socket shows roughly |u|, |v| < 0.75.
+  // The reference kitten's eyes are dark ovals, wider than tall, with the outer corners drooping a little (the
+  // solemn look); the fur makes the lids.
+  const u = n.x.mul(side), v = n.y.add(0.04);
+  const tW = clamp(u.div(1.02), -1, 1);
+  const span = float(1).sub(tW.mul(tW));
+  const upper = pow(span, 0.45).mul(0.7).sub(tW.mul(0.08));
+  const lower = pow(span, 0.7).mul(-0.64).sub(tW.mul(0.08));
+  const dLid = min(upper.sub(v), v.sub(lower)).mul(step(0.0, n.z));
+  const open = smoothstep(0.0, 0.035, dLid);
+  const rim = smoothstep(-0.11, -0.015, dLid).mul(float(1).sub(open));
+  const lidShadow = mix(float(0.42), float(1), smoothstep(0.0, 0.22, upper.sub(v)));
   const camL = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
   const view = normalize(camL.sub(p));
   const r = refract(view.negate(), n, 1 / 1.336);
@@ -293,18 +348,25 @@ export function heroEyeMaterial(radius: number) {
   // Big, round kitten pupil; a dark brown-grey iris with radial fibres and a soft darker limbal ring.
   const fib = mx_noise_float(vec3(ang.mul(9.0), rho.mul(3.0), 0.0)).mul(0.5).add(0.5);
   const fib2 = mx_noise_float(vec3(cos(ang).mul(14.0), rho.mul(12.0), ang.mul(2.0))).mul(0.5).add(0.5);
-  const irisCol = mix(color('#33281f'), color('#8a7056'), fib.mul(0.6).add(fib2.mul(0.4)).mul(smoothstep(0.55, 0.9, rho).mul(0.6).add(0.4)));
-  const pupil = smoothstep(0.5, 0.54, rho);
+  const irisCol = mix(color('#1c1511'), color('#55443a'), fib.mul(0.6).add(fib2.mul(0.4)).mul(smoothstep(0.55, 0.9, rho).mul(0.6).add(0.4)));
+  const pupil = smoothstep(0.56, 0.61, rho);
   const limbus = smoothstep(0.86, 1.0, rho);
   let c: any = mix(color('#030303'), irisCol, pupil);
   c = mix(c, color('#120d0b'), limbus);
   // Behind the limbus (rarely visible) the sclera is dark in a kitten.
   c = mix(c, color('#2b231f'), smoothstep(1.02, 1.1, rho));
+  c = c.mul(lidShadow);
+  // Lid rim, then fur-coloured lid: the cream of the face with fine combed streaks, so the round socket of the
+  // sculpted head blends into the coat instead of reading as a ring.
+  const streak = mx_noise_float(vec3(atan(n.y, n.x).mul(40.0), length(n.xy).mul(6.0), 1.7)).mul(0.5).add(0.5);
+  const lidFur = mix(color('#6e5644'), color('#c2a487'), smoothstep(-0.05, -0.32, dLid)).mul(streak.mul(0.22).add(0.86));
+  c = mix(mix(lidFur, color('#120c09'), rim), c, open);
   m.colorNode = c;
-  m.roughness = 0.45;
+  m.roughnessNode = mix(float(0.8), float(0.45), open);
   m.metalness = 0;
-  m.clearcoat = 1;
-  m.clearcoatRoughness = 0.045;
+  // The wet cornea covers only the opening; it carries the broad sky catchlight.
+  m.clearcoatNode = open.mul(0.7);
+  m.clearcoatRoughness = 0.09;
   m.ior = 1.336;
   m.specularIntensity = 0.6;
   return m;

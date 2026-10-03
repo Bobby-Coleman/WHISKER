@@ -3,14 +3,15 @@
 import * as THREE from 'three/webgpu';
 import {
   pass, Fn, vec2, vec3, vec4, float, uv, mix, dot, clamp, smoothstep, fract, sin, floor, renderOutput, convertToTexture,
-  max, min, length, rtt, reference, perspectiveDepthToViewZ,
+  max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity,
 } from 'three/tsl';
 import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
 import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
-import { LOOK } from './settings';
+import { LOOK, RENDER } from './settings';
+import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 const hash = Fn(([p]: any[]) => fract(sin(dot(p, vec2(12.9898, 78.233))).mul(43758.5453)));
 
@@ -89,18 +90,13 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   pipeline.outputColorTransform = false;
 
   const scenePass = pass(scene, camera);
+  const taa = RENDER.aa === 'taa';
+  // TAA needs each pixel's screen motion: every material writes its velocity beside its colour.
+  if (taa) scenePass.setMRT(mrt({ output, velocity }));
   const sceneColor = scenePass.getTextureNode('output');
   const viewZ = scenePass.getViewZNode();
 
   let hdr: any = sceneColor;
-  if (opts.dof) {
-    const blurred: any = dof(sceneColor, viewZ, LOOK.focusDistance, float(2.6), float(1.6));
-    // Its seven passes run only while the look asks for softness (the reveal, some presets). In play the mix weight
-    // is 0, so the skipped, stale result is never seen.
-    const runDof = blurred.updateBefore.bind(blurred);
-    blurred.updateBefore = (frame: any) => (LOOK.dofAmount.value > 0.002 ? runDof(frame) : undefined);
-    hdr = mix(sceneColor, blurred, LOOK.dofAmount);
-  }
   // Occlusion darkens the lit image (in this overcast light nearly all of it is sky light). Values above 0.9 count
   // as open (GTAO shades tilted open surfaces slightly), and it fades out by 35 m, where single grass blades
   // would turn into dark specks and the fog takes over anyway.
@@ -108,6 +104,23 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   const aoWeight = LOOK.aoAmount.mul(float(1).sub(smoothstep(12, 35, viewZ.negate())));
   const aoTerm = mix(float(1), occlusion.r.div(0.9).min(1), aoWeight);
   hdr = hdr.mul(aoTerm);
+  // Temporal anti-aliasing on the linear HDR image: the camera is jittered by a sub-pixel Halton offset each
+  // frame and the history is reprojected with the velocity buffer, clipped to the current neighbourhood and
+  // reset where depth says the surface is new. Depth of field and bloom then work on the stable image.
+  let traaNode: any = null;
+  if (taa) {
+    traaNode = traa(hdr, scenePass.getTextureNode('depth'), scenePass.getTextureNode('velocity'), camera);
+    hdr = traaNode;
+  }
+  if (opts.dof) {
+    const src: any = taa ? convertToTexture(hdr) : sceneColor;
+    const blurred: any = dof(src, viewZ, LOOK.focusDistance, float(2.6), float(1.6));
+    // Its seven passes run only while the look asks for softness (the reveal, some presets). In play the mix weight
+    // is 0, so the skipped, stale result is never seen.
+    const runDof = blurred.updateBefore.bind(blurred);
+    blurred.updateBefore = (frame: any) => (LOOK.dofAmount.value > 0.002 ? runDof(frame) : undefined);
+    hdr = taa ? mix(src, blurred, LOOK.dofAmount) : mix(sceneColor, blurred, LOOK.dofAmount).mul(aoTerm);
+  }
   const bloomPass = bloom(hdr, 1.0, 0.5, 0.82);
   bloomPass.strength = LOOK.bloomStrength as any;
   // Halation: highlight glow pushed slightly warm.
@@ -115,7 +128,8 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
 
   const display = renderOutput(hdr, THREE.ACESFilmicToneMapping, THREE.SRGBColorSpace);
   const graded = vec4(grade(display.rgb), 1.0);
-  const aa = fxaa(graded);
+  // FXAA only where TAA is off (MSAA and phone tiers); TAA has already resolved the edges.
+  const aa = taa ? graded : fxaa(graded);
   const tex = convertToTexture(aa);
 
   const treated = Fn(() => {
@@ -154,5 +168,5 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
 
   // Review aid (?aoview): show the occlusion buffer itself, faded as it is applied.
   pipeline.outputNode = opts.aoView ? vec4(vec3(aoTerm), 1) : treated();
-  return { pipeline, scenePass, bloomPass };
+  return { pipeline, scenePass, bloomPass, traaNode };
 }
