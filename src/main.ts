@@ -167,6 +167,40 @@ async function main() {
   fieldRoot.add(structures.root);
   const causeway = createCauseway(physics);
   fieldRoot.add(causeway.root);
+  // Review of the stylized kit (?kit): a tower and two wall sections on the moor north of the start.
+  if (params.has('kit')) {
+    const { kitPiece } = await import('./world/kit');
+    const place = async (name: string, x: number, z: number, ry = 0) => {
+      const o = await kitPiece(name);
+      o.position.set(x, heightAt(x, z) - 0.3, z); o.rotation.y = ry;
+      fieldRoot.add(o);
+    };
+    await Promise.all([place('castle_tower', 5, -7), place('castle_wall', 0.8, -7), place('castle_wall', -3.2, -7)]);
+  }
+  // Review of CC0 packs (?packs, local only: public/packs-review is not committed): a line-up on the moor.
+  if (params.has('packs')) {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const gl = new GLTFLoader();
+    const items = [
+      'village/Wall_UnevenBrick_Straight', 'village/Wall_Plaster_Window_Wide_Round', 'village/Wall_UnevenBrick_Door_Round', 'village/Roof_RoundTiles_4x4',
+      'village/Stairs_Exterior_Straight', 'village/Prop_Wagon', 'nature/TwistedTree_1', 'nature/DeadTree_2', 'nature/CommonTree_3', 'nature/Rock_Medium_1',
+      'nature/Rock_Medium_3', 'nature/Bush_Common_Flowers', 'props/Banner_1', 'props/Barrel', 'props/Crate_Wooden', 'props/Shield_Wooden', 'props/WeaponStand', 'props/Torch_Metal',
+    ];
+    let x = -14;
+    for (const it of items) {
+      try {
+        const g = await gl.loadAsync(`${import.meta.env.BASE_URL}packs-review/${it}.gltf`);
+        const o = g.scene;
+        o.traverse((m: any) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        const bb = new THREE.Box3().setFromObject(o), w = Math.max(0.6, bb.max.x - bb.min.x);
+        x += w / 2 + 0.6;
+        o.position.set(x - (bb.max.x + bb.min.x) / 2, heightAt(x, -7) - 0.05 - bb.min.y, -7);
+        x += w / 2;
+        fieldRoot.add(o);
+        console.log('pack', it, 'size', (bb.max.x - bb.min.x).toFixed(2), (bb.max.y - bb.min.y).toFixed(2), (bb.max.z - bb.min.z).toFixed(2));
+      } catch (e) { console.warn('pack missing', it, e); }
+    }
+  }
   causeway.setWater(MARSH.floorY + MARSH.flood);
   load.progress('world', 0.7);
   await nextPaint();

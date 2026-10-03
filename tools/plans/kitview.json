@@ -1,0 +1,7 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; document.querySelector('#hud').style.display = 'none'; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; __kk.rig.handheldAmount = 0; __kk.teleport('kitten', 1.2, -3.2, Math.PI); __kk.teleport('knight', -0.4, -2.6, Math.PI); return 'ok'; })()", "wait": 2000 },
+  { "js": "__view(3.2, 1.6, 6.5, 2.2, 2.8, -7, 38)", "out": "k1_front.png", "wait": 2500 },
+  { "js": "__view(10.5, 1.4, -1.5, 3.5, 3.5, -7, 35)", "out": "k2_three_quarter.png", "wait": 2500 },
+  { "js": "__view(1.0, 0.45, -1.6, 1.6, 0.9, -7, 40)", "out": "k3_kitten_low.png", "wait": 2500 },
+  { "js": "__view(6.5, 2.0, -3.0, 5, 2.2, -7, 45)", "out": "k4_close.png", "wait": 2500 }
+]
