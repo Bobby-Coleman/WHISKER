@@ -35,14 +35,21 @@ export class StatsPanel {
     const canvas = document.createElement('canvas'); canvas.width = N; canvas.height = 30;
     this.ctx = canvas.getContext('2d');
     this.el.append(this.textEl, canvas);
+    // Hidden until the first frame gives it something to show, so loading has no empty box.
+    this.el.style.visibility = 'hidden';
     document.body.appendChild(this.el);
   }
 
   setVisible(on: boolean) { this.visible = on; this.el.style.display = on ? 'block' : 'none'; }
 
-  setLoad(report: { totalMs: number; stages: { label: string; ms: number }[] }) {
+  setLoad(report: { totalMs: number; stages: { key: string; label: string; ms: number }[] }) {
     const s = (ms: number) => (ms / 1000).toFixed(1);
-    this.loadLine = `Loaded in ${s(report.totalMs)} s\n  ` + report.stages.filter((x) => x.ms > 0).map((x) => `${x.label.toLowerCase()} ${s(x.ms)}`).join(' · ');
+    const short: Record<string, string> = { files: 'download', world: 'moor', characters: 'characters', shaders: 'shaders', warmup: 'first frame' };
+    const parts = report.stages.filter((x) => x.ms > 0).map((x) => `${short[x.key] ?? x.key} ${s(x.ms)}`);
+    // Three stages a line keeps the panel narrow enough for a phone.
+    const lines = [];
+    for (let i = 0; i < parts.length; i += 3) lines.push('  ' + parts.slice(i, i + 3).join('  '));
+    this.loadLine = [`Loaded in ${s(report.totalMs)} s`, ...lines].join('\n');
   }
 
   // One rendered frame: time since the previous frame and main-thread time spent producing it (ms).
@@ -73,6 +80,7 @@ export class StatsPanel {
       `${info.backend} · ${info.tier}`,
       this.loadLine,
     ].filter(Boolean).join('\n');
+    this.el.style.visibility = 'visible';
     this.drawGraph();
   }
 
