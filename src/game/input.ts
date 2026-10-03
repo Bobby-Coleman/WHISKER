@@ -10,6 +10,8 @@ export type InputFrame = {
   waitPressed: boolean;
   resetPressed: boolean;
   skipPressed: boolean;
+  jumpPressed: boolean;
+  hintPressed: boolean;
   zoom: number;
   any: boolean;
 };
@@ -102,7 +104,7 @@ export class KeyboardMouseGamepad {
     this.stickEl = document.createElement('div'); this.stickEl.className = 'kk-stick';
     this.knobEl = document.createElement('div'); this.knobEl.className = 'kk-knob';
     const pad = document.createElement('div'); pad.className = 'kk-pad';
-    pad.innerHTML = '<span></span><button data-c="Tab" aria-label="Switch character">Switch</button><button data-c="KeyQ" aria-label="Companion waits or follows">Wait</button><button class="act" data-c="KeyE" aria-label="Interact">Act</button>';
+    pad.innerHTML = '<button data-c="KeyG" aria-label="Hint">Hint</button><button data-c="Tab" aria-label="Switch character">Switch</button><button data-c="KeyQ" aria-label="Companion waits or follows">Wait</button><button class="act" data-c="KeyE" aria-label="Interact">Act</button><span></span><button class="act" data-c="Space" aria-label="Jump">Jump</button>';
     pad.querySelectorAll('button').forEach((b) => b.addEventListener('pointerdown', (e) => {
       e.stopPropagation(); e.preventDefault();
       this.pressed.add((b as HTMLElement).dataset.c!);
@@ -138,9 +140,11 @@ export class KeyboardMouseGamepad {
     this.lookDelta.set(0, 0);
     const p = this.pressed;
     let sw = p.has('Tab'), inter = p.has('KeyE') || p.has('Enter'), wait = p.has('KeyQ'), reset = p.has('KeyR');
+    let jump = p.has('Space'), hint = p.has('KeyG');
     let skip = p.has('Space') || p.has('Escape') || p.has('Enter') || p.has('Pointer');
     let walk = k.has('ShiftLeft') || k.has('ShiftRight');
-    // Gamepad: left stick move, right stick camera, Y/Triangle switch, A/Cross interact, X/Square wait, B hold to walk, Back reset.
+    // Gamepad: left stick move, right stick camera, A/Cross jump, X/Square interact, Y/Triangle switch,
+    // B/Circle companion waits or follows, LB hint, hold RB to walk, Back reset.
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = pads && Array.from(pads).find((x) => x && x.connected);
     if (gp) {
@@ -152,16 +156,18 @@ export class KeyboardMouseGamepad {
       const b = gp.buttons.map((x) => x.pressed);
       const edge = (i: number) => b[i] && !this.padPrev[i];
       if (edge(3)) sw = true;
-      if (edge(0)) { inter = true; skip = true; }
-      if (edge(2)) wait = true;
+      if (edge(0)) { jump = true; skip = true; }
+      if (edge(2)) inter = true;
+      if (edge(1)) wait = true;
+      if (edge(4)) hint = true;
       if (edge(8)) reset = true;
       if (edge(9)) skip = true;
-      if (b[1]) walk = true;
+      if (b[5]) walk = true;
       this.padPrev = b;
     }
     const zoom = this.zoomDelta; this.zoomDelta = 0;
     const any = p.size > 0 || mv.lengthSq() > 0;
     p.clear();
-    return { move: mv, look, walk, switchPressed: sw, interactPressed: inter, waitPressed: wait, resetPressed: reset, skipPressed: skip, zoom, any };
+    return { move: mv, look, walk, switchPressed: sw, interactPressed: inter, waitPressed: wait, resetPressed: reset, skipPressed: skip, jumpPressed: jump, hintPressed: hint, zoom, any };
   }
 }

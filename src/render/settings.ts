@@ -37,7 +37,7 @@ export const LOOK = {
   fogDistance: uniform(115),
   mistAmount: uniform(1.0),
   fogEnabled: uniform(1.0),
-  exposure: 0.95,
+  exposure: 1.08,
   treatment: uniform(0.6), // 0 = clean render; kept lighter than the reference clip's softness
   grade: uniform(1.0),
   modern: uniform(0.0), // 0 = vintage archive look, 1 = modern look (deeper blacks, more colour, sharpened)
@@ -45,13 +45,16 @@ export const LOOK = {
   focusDistance: uniform(4.0),
   bloomStrength: uniform(0.12),
   aoAmount: uniform(0.0), // screen-space ambient occlusion; 0 also skips its passes
+  aoRadius: uniform(0.45), // its reach in metres (smaller around the kitten)
   resolution: uniform(new Vector2(1280, 960)),
   frame: uniform(0),
 };
 
 export const GAME = {
-  runSpeed: 2.9, // shared normal sustained running speed (m/s), used by player and companion
-  walkSpeed: 1.3,
+  // Shared normal sustained running speed (m/s), used by player and companion. Brisk enough that neither character
+  // holds up the other in traversal or puzzles (as in It Takes Two); the difference is in the gait, not the pace.
+  runSpeed: 4.2,
+  walkSpeed: 1.6,
   followGap: { knight: 2.1, kitten: 1.7 },
   arriveTolerance: 0.35,
   catchUpMax: 1.18, // bounded multiplier on run speed for path detours

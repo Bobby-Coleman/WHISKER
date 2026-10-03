@@ -1,6 +1,6 @@
 // Fixed-step kinematic character physics against simplified static collision (separate from visual meshes).
 // Colliders carry a mask so scale matters: a culvert blocks the knight but admits the kitten.
-import { heightAt } from '../world/layout';
+import { heightAt, MARSH_BOUNDS, waterDepthAt } from '../world/layout';
 import { CharacterBody, Kind } from '../chars/character';
 
 // `camera` colliders (low ceilings, overhangs) only stop the camera; characters ignore them.
@@ -18,6 +18,10 @@ export class PhysicsWorld {
   colliders: Collider[] = [];
   platforms: Platform[] = [];
   boundsRadius = 92;
+  // Water standing in the marsh (world height); deep water turns characters back like a wall.
+  waterLevel = -1e9;
+  // How deep each may wade: water over the kitten's chest is too deep for it, waist-deep for the knight.
+  wadeDepth = { kitten: 0.12, knight: 0.45 };
 
   addBox(x: number, z: number, hx: number, hz: number, rot: number, yMin: number, yMax: number, mask = MASK.all, id?: string) {
     const c: Collider = { id, kind: 'box', x, z, hx, hz, rot, yMin, yMax, mask, enabled: true };
@@ -80,7 +84,16 @@ export class PhysicsWorld {
     }
     // Soft outer boundary of the playable field.
     const d = Math.hypot(px, pz);
-    if (d > this.boundsRadius) { px *= this.boundsRadius / d; pz *= this.boundsRadius / d; hit = true; }
+    const B = MARSH_BOUNDS;
+    const inMarsh = px > B.minX && px < B.maxX && pz > B.minZ && pz < B.maxZ;
+    if (d > this.boundsRadius && !inMarsh) {
+      // Past the field's edge only the marsh and its causeway stay open (the marsh box reaches past the circle).
+      const cx = Math.min(B.maxX, Math.max(B.minX, px)), cz = Math.min(B.maxZ, Math.max(B.minZ, pz));
+      const kx = px * this.boundsRadius / d, kz = pz * this.boundsRadius / d;
+      if (Math.hypot(px - cx, pz - cz) < Math.hypot(px - kx, pz - kz)) { px = cx; pz = cz; } else { px = kx; pz = kz; }
+      hit = true;
+    }
+    if (inMarsh) { px = Math.min(B.maxX - 0.05, Math.max(B.minX + 0.05, px)); pz = Math.max(B.minZ + 0.05, pz); }
     out.x = px; out.z = pz;
     return hit;
   }
@@ -101,14 +114,21 @@ export class PhysicsWorld {
     // Step height and slope limit: refuse moves onto ground that rises too sharply.
     const gNew = this.groundAt(out.x, out.z, body.pos.y, step);
     if (gNew - body.pos.y > step) { out.x = body.pos.x; out.z = body.pos.z; }
+    // Deep water: refuse a step that goes deeper than this character can wade (stepping back out is always allowed).
+    if (this.waterLevel > -1e8) {
+      const depthNew = waterDepthAt(out.x, out.z, this.waterLevel, gNew);
+      const depthNow = waterDepthAt(body.pos.x, body.pos.z, this.waterLevel, body.pos.y);
+      if (depthNew > this.wadeDepth[kind] && depthNew > depthNow) { out.x = body.pos.x; out.z = body.pos.z; }
+    }
     // Keep velocity consistent with the resolved motion so animation matches travel.
     if (dt > 0) { body.vel.x = (out.x - body.pos.x) / dt; body.vel.z = (out.z - body.pos.z) / dt; }
     body.pos.x = out.x; body.pos.z = out.z;
     const g = this.groundAt(body.pos.x, body.pos.z, body.pos.y, step);
-    if (body.pos.y > g + 0.02) {
+    // Airborne when above the ground or launched upward (a jump); otherwise snapped to it.
+    if (body.pos.y > g + 0.02 || body.vy > 0.01) {
       body.vy -= 9.8 * dt;
       body.pos.y += body.vy * dt;
-      if (body.pos.y <= g) { body.pos.y = g; body.vy = 0; }
+      if (body.pos.y <= g) { body.landing = Math.min(1, Math.max(0, -body.vy) / 4); body.pos.y = g; body.vy = 0; }
       body.grounded = body.pos.y <= g + 0.001;
     } else {
       // Ground snap.

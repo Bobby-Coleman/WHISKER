@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import {
   pass, Fn, vec2, vec3, vec4, float, uv, mix, dot, clamp, smoothstep, fract, sin, floor, renderOutput, convertToTexture,
-  max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity,
+  max, min, length, rtt, reference, perspectiveDepthToViewZ, mrt, output, velocity, metalness,
 } from 'three/tsl';
 import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
 import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
@@ -71,7 +71,9 @@ function createAO(scenePass: any, camera: THREE.Camera) {
   const node: any = gtao(aoDepth, null, camera);
   node.resolutionScale = 0.5;
   node.samples.value = 12;
-  node.radius.value = 0.45; // metres: contact shade under paws and boots, corners of stone, folds of the cape
+  // Metres: contact shade under paws and boots, corners of stone, folds of the cape. Scaled with the active
+  // character (LOOK.aoRadius), so kitten-scale detail is not swallowed by knight-scale occlusion.
+  node.radius = LOOK.aoRadius;
   node.thickness.value = 0.6; // thin things (grass blades) shade less than solid ones
   const raw = node.getTextureNode();
   const step = vec2(1).div(vec2(raw.size()));
@@ -92,7 +94,9 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   const scenePass = pass(scene, camera);
   const taa = RENDER.aa === 'taa';
   // TAA needs each pixel's screen motion: every material writes its velocity beside its colour.
-  if (taa) scenePass.setMRT(mrt({ output, velocity }));
+  // Velocity for TAA, and each pixel's metalness so occlusion spares polished steel: ambient occlusion darkens the
+  // light a surface receives from the sky, but a mirror-like plate shows the sky's reflection, which barely dims.
+  scenePass.setMRT(taa ? mrt({ output, velocity, metal: metalness }) : mrt({ output, metal: metalness }));
   const sceneColor = scenePass.getTextureNode('output');
   const viewZ = scenePass.getViewZNode();
 
@@ -101,7 +105,8 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
   // as open (GTAO shades tilted open surfaces slightly), and it fades out by 35 m, where single grass blades
   // would turn into dark specks and the fog takes over anyway.
   const occlusion = createAO(scenePass, camera);
-  const aoWeight = LOOK.aoAmount.mul(float(1).sub(smoothstep(12, 35, viewZ.negate())));
+  const metalTex: any = scenePass.getTextureNode('metal');
+  const aoWeight = LOOK.aoAmount.mul(float(1).sub(smoothstep(12, 35, viewZ.negate()))).mul(float(1).sub(metalTex.r.mul(0.8)));
   const aoTerm = mix(float(1), occlusion.r.div(0.9).min(1), aoWeight);
   hdr = hdr.mul(aoTerm);
   // Temporal anti-aliasing on the linear HDR image: the camera is jittered by a sub-pixel Halton offset each

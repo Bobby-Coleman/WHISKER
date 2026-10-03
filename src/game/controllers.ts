@@ -8,8 +8,9 @@ import { InputFrame } from './input';
 import { regionOf, nextWaypoint, NavState } from './nav';
 
 export const PROFILES = {
-  knight: { accel: 4.6, decel: 6.5, turn: 5.0, turnAtRun: 3.4 },
-  kitten: { accel: 10.5, decel: 15, turn: 11, turnAtRun: 8.5 },
+  // Both respond at once; the knight carries a little more momentum through stops and turns, the kitten less.
+  knight: { accel: 11, decel: 14, turn: 10, turnAtRun: 7.5 },
+  kitten: { accel: 15, decel: 20, turn: 14, turnAtRun: 11 },
 };
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -52,6 +53,8 @@ export class PlayerController {
     if (mag > 0) dir.normalize();
     const speed = (input.walk ? GAME.walkSpeed : GAME.runSpeed) * mag;
     drive(c, dir, speed, dt);
+    // Jump: the knight a heavy half-metre, the kitten a quick hop of about the same, light on its feet.
+    if (input.jumpPressed && c.body.grounded && !c.carriedBy) c.body.vy = c.kind === 'knight' ? 3.4 : 3.2;
   }
 }
 

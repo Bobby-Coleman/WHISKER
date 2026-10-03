@@ -174,8 +174,9 @@ function ringMaterial(ring: Ring, maps: FieldMaps, center: any, proj: any) {
         oUp.assign(float(0.55).add(smoothstep(2.0, 14.0, dist).mul(0.33)));
 
         // Colour: olive living blades with sage tufts, straw-coloured dead ones; darker toward the root.
-        const livingBase = mix(vec3(0.03, 0.042, 0.014), vec3(0.042, 0.05, 0.025), clumpR2);
-        const livingTip = mix(vec3(0.16, 0.23, 0.075), vec3(0.2, 0.25, 0.13), clumpR2);
+        // Lush, wet green as in the reference: living blades are mostly green, sage in places.
+        const livingBase = mix(vec3(0.024, 0.045, 0.012), vec3(0.036, 0.054, 0.022), clumpR2);
+        const livingTip = mix(vec3(0.11, 0.24, 0.06), vec3(0.16, 0.26, 0.1), clumpR2);
         const deadBase = vec3(0.07, 0.052, 0.028), deadTip = vec3(0.28, 0.22, 0.12);
         const tint = mix(float(0.8), float(1.12), rnd(8)).mul(mix(float(0.88), float(1.08), clumpR));
         const ct = pow(t, 0.75);

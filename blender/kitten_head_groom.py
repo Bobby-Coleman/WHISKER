@@ -18,20 +18,24 @@ def len_map(p):
     nd, ed = nose_dist(p), eye_dist(p)
     tissue = 1 - ss(nd, 0.95, 1.25)
     L = np.ones(len(p))
-    L *= 0.14 + 0.86 * ss(ed, 1.05, 1.8)
+    # After a professional groom (short face, long ruff): fur grows out of the lid margin very short and lies flat,
+    # the nose bridge and muzzle carry 2-4 mm fur so the nose leather and whisker pads read, and length builds
+    # toward the cheek and neck ruff that makes a longhair kitten's round silhouette.
+    L *= 0.42 + 0.58 * ss(ed, 0.7, 1.8)
     L *= 1 - tissue
-    L *= 0.22 + 0.78 * ss(nd, 1.15, 2.6)
+    L *= 0.12 + 0.88 * ss(nd, 1.1, 3.4)
     face = ss(z, 0.012, 0.03) * (1 - ss(np.abs(x), 0.02, 0.036))
-    L *= 1 - 0.5 * face
-    L *= np.where((z > 0.024) & (y < 0.002), 0.62, 1.0)
-    L *= 1 + 0.7 * ss(np.abs(x), 0.026, 0.046) * (1 - ss(y, -0.008, 0.012))   # cheek fluff
-    L *= 1 + 0.7 * ss(-y, 0.026, 0.05)                                          # ruff
-    L *= 1 + 0.2 * ss(y, 0.02, 0.04)                                            # crown
+    L *= 1 - 0.62 * face
+    L *= np.where((z > 0.022) & (y < -0.0098), 0.45, 1.0)                       # muzzle
+    L *= 1 + 0.55 * ss(np.abs(x), 0.026, 0.046) * (1 - ss(y, -0.012, 0.01))   # cheek ruff
+    L *= 1 + 0.3 * ss(-y, 0.026, 0.05)                                          # neck (short above the gorget)
+    L *= 1 + 0.25 * ss(y, 0.02, 0.04)                                           # crown
     return L
 
 
 def flow(p, n):
-    nose = np.array([0.0, -0.010, 0.046])
+    # Fur flows away from just above the nose leather (kept in step with the sculpt's NOSEP).
+    nose = np.array([NOSEP['x'], NOSEP['y'] + 0.0012, NOSEP['z'] + 0.0045])
     r = p - nose
     d = r / np.linalg.norm(r, axis=1, keepdims=True)
     wg = 0.2 + 0.45 * ss(-p[:, 2], -0.01, 0.03) + 0.45 * ss(-p[:, 1], -0.01, 0.03)
@@ -49,7 +53,7 @@ def flow(p, n):
 def lift_map(p):
     x, y, z = p[:, 0], p[:, 1], p[:, 2]
     a = 30 + 14 * ss(np.abs(x), 0.02, 0.045) + 10 * ss(y, 0.01, 0.04) + 16 * ss(-y, 0.02, 0.05)
-    a *= 0.4 + 0.6 * ss(eye_dist(p), 1.1, 1.8)
+    a *= 0.62 + 0.38 * ss(eye_dist(p), 1.1, 1.8)
     face = ss(z, 0.014, 0.032) * (1 - ss(np.abs(x), 0.02, 0.034))
     a *= 1 - 0.55 * face
     return np.radians(a + rng.normal(0, 5, len(p)))
@@ -58,7 +62,8 @@ def lift_map(p):
 def mask(p):
     m = ss(nose_dist(p), 1.08, 1.22)
     m *= 1 - ss(lid_margin(p), 0.35, 0.8)
-    m *= ss(eye_dist(p), 0.9, 0.97)
+    # Fur runs right up to the lid margin: no bald ring around the eye.
+    m *= ss(eye_dist(p), 0.42, 0.5)
     m *= 1 - ss(mouth_mask(p), 0.2, 0.6)
     m *= ss(p[:, 1], -0.066, -0.055)   # nothing on the hidden underside of the neck
     return m
@@ -84,7 +89,7 @@ def shell_mask(p):
     # Undercoat everywhere except the eye apertures, lid margins, nose leather and mouth line.
     m = ss(nose_dist(p), 1.0, 1.14)
     m *= 1 - ss(lid_margin(p), 0.2, 0.6)
-    m *= ss(eye_dist(p), 0.86, 0.94)
+    m *= ss(eye_dist(p), 0.44, 0.52)
     m *= 1 - ss(mouth_mask(p), 0.15, 0.5)
     return m
 
@@ -97,16 +102,19 @@ def groom_head(count):
     p, nn, ti, bary = G.sample_roots(v, n, tris, density, mask, count, rng)
     uv = (tri_uv[ti] * bary[:, :, None]).sum(1)
     L = 0.0155 * len_map(p) * rng.uniform(0.72, 1.15, len(p))
-    fly = rng.random(len(p)) < 0.02
+    fly = rng.random(len(p)) < 0.035
     L[fly] *= rng.uniform(1.15, 1.45, fly.sum())
     d = flow(p, nn)
     lift = lift_map(p) * 0.8
     face = ss(p[:, 2], 0.014, 0.032) * (1 - ss(np.abs(p[:, 0]), 0.02, 0.034))
-    pts = G.grow(p, nn, d, L, lift, NP, rng, droop=0.3, lay=0.72, frizz=np.where(fly, 0.1, 0.025), frizz_freq=1.3,
+    pts = G.grow(p, nn, d, L, lift, NP, rng, droop=0.3, lay=0.72, frizz=np.where(fly, 0.16, 0.03), frizz_freq=1.3,
                  wave=np.where(fly, 0.22, 0.1 * (1 - 0.6 * face)), waves=rng.uniform(0.5, 1.2, len(p)))
     amt = 0.72 * (1 - 0.55 * face) + 0.15 * ss(-p[:, 1], 0.02, 0.05)
     amt[fly] = 0.1
-    pts = G.clump(pts, p, amt, rng, guide_frac=0.035, radius=0.0055, power=1.25)
+    # Clumping in three levels, coarse to fine (large locks, clumps, small tufts), as in a production groom.
+    pts = G.clump(pts, p, amt * 0.4, rng, guide_frac=0.008, radius=0.011, power=1.7)
+    pts = G.clump(pts, p, amt * 0.75, rng, guide_frac=0.035, radius=0.0055, power=1.25)
+    pts = G.clump(pts, p, amt * 0.4, rng, guide_frac=0.12, radius=0.0022, power=1.05)
     sdf = head_sdf()
     pts = G.collide(pts, sdf, lambda q: gradient(sdf, q), 0.00035)
     # Trim strands that would cover the eyes or the nose leather.
@@ -151,7 +159,7 @@ def whiskers():
                 dirs.append((s * np.cos(ang) * 0.9, np.sin(ang) - 0.12, 0.42 - 0.05 * row))
                 lens.append(0.046 - 0.004 * row + rng.normal(0, 0.002))
         for j in range(3):
-            roots.append((s * (0.012 + 0.006 * j), 0.0105 + 0.001 * j, 0.0345 - 0.004 * j))
+            roots.append((s * (0.0118 + 0.0058 * j), EYE['y'] + 0.0096 + 0.001 * j, 0.0336 - 0.004 * j))
             dirs.append((s * 0.55, 0.75, 0.35))
             lens.append(0.026 - 0.003 * j)
     roots, dirs, lens = np.array(roots), np.array(dirs, float), np.array(lens)
@@ -169,6 +177,12 @@ def whiskers():
     col = np.tile(np.array([0.92, 0.9, 0.86]), (len(roots), 1))
     ao = np.full(len(roots), 0.9)
     width = np.full(len(roots), 0.00034)
+    # Brow whiskers (the last three per side) are finer and a little darker than the pad whiskers.
+    nb = 3
+    for s_i in range(2):
+        base = (s_i + 1) * (len(roots) // 2) - nb
+        width[base:base + nb] = 0.00016
+        col[base:base + nb] = np.array([0.62, 0.56, 0.5])
     nn = dirs
     return pts, col, ao, width, nn
 

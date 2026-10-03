@@ -31,7 +31,7 @@ export class Knight extends Character {
     const body = new CharacterBody(0.32, 1.8);
     super('knight', body, {
       hipY: 0.982, hipW: 0.1, l1: 0.46, l2: 0.45, ankleH: 0.075,
-      walkStride: 1.45, runStride: 1.95, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
+      walkStride: 1.55, runStride: 2.35, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
       swingWalk: 0.4, swingRun: 0.5, stepHeightWalk: 0.08, stepHeightRun: 0.13,
       bobWalk: 0.018, bobRun: 0.03, settleRate: 1.9, footSide: 0.12,
     }, { upperArm: 0.29, foreArm: 0.27, shoulderW: 0.195, shoulderY: 0.35, spine: 0.08, neck: 0.44 });

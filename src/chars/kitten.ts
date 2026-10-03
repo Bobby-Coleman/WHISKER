@@ -20,9 +20,9 @@ const ss = THREE.MathUtils.smoothstep;
 
 // Face landmarks (head space, +Z forward), shared by the SDF, colors and fur length.
 // Kept in step with blender/kitten_head.py, which sculpts the hero head around the same eyes.
-const EYE = { x: 0.0158, y: -0.005, z: 0.0277, r: 0.0084 };
-const SOCK = { x: 0.0159, y: -0.0048, z: 0.0311, rx: 0.0099, ry: 0.0091, rz: 0.0077 };
-const NOSEP = { x: 0, y: -0.0148, z: 0.0404, rx: 0.0047, ry: 0.0034, rz: 0.0035 };
+const EYE = { x: 0.0195, y: -0.0068, z: 0.0252, r: 0.0128 };
+const SOCK = { x: 0.0196, y: -0.0067, z: 0.0322, rx: 0.0112, ry: 0.0092, rz: 0.0062 };
+const NOSEP = { x: 0, y: -0.0186, z: 0.0424, rx: 0.0043, ry: 0.0031, rz: 0.0036 };
 const CAPE_COLS = 11, CAPE_ROWS = 13;
 const CAPE_W = 0.16, CAPE_H = 0.235;
 
@@ -48,14 +48,17 @@ export class Kitten extends Character {
     const body = new CharacterBody(0.09, 0.34);
     super('kitten', body, {
       hipY: 0.108, hipW: 0.024, l1: 0.05, l2: 0.048, ankleH: 0.014,
-      walkStride: 0.3, runStride: 0.52, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
+      walkStride: 0.32, runStride: 0.6, walkSpeed: GAME.walkSpeed, runSpeed: GAME.runSpeed,
       swingWalk: 0.42, swingRun: 0.62, stepHeightWalk: 0.016, stepHeightRun: 0.03,
       bobWalk: 0.004, bobRun: 0.009, settleRate: 3.4, footSide: 0.027,
-    }, { upperArm: 0.036, foreArm: 0.034, shoulderW: 0.047, shoulderY: 0.072, spine: 0.02, neck: 0.12 });
+    // Long forearms, as in the reference, where the left vambrace crosses the whole chest to the sword grip.
+    }, { upperArm: 0.046, foreArm: 0.062, shoulderW: 0.047, shoulderY: 0.072, shoulderZ: 0.008, spine: 0.02, neck: 0.12 });
     this.shellCount = shells;
     this.build(shells);
-    const capeMat = capeMaterial('#e6e2d8');
-    this.cape = new VerletCloth(CAPE_COLS, CAPE_ROWS, CAPE_W, CAPE_H, capeMat, { windResponse: 1.9, drag: 0.985, taper: 0.45, subdiv: 3, aero: 0.7 });
+    // Heavy cream wool, as in the reference, rather than bright white.
+    const capeMat = capeMaterial('#ddd3c0');
+    // It streams out sideways on the wind at shoulder height and whips in the gusts, as in the reference.
+    this.cape = new VerletCloth(CAPE_COLS, CAPE_ROWS, CAPE_W, CAPE_H, capeMat, { windResponse: 2.3, drag: 0.982, taper: 0.4, subdiv: 3, aero: 0.85, friction: 0.24, gravity: 0.55 });
     for (let i = 0; i < CAPE_COLS; i++) this.cape.pin(i, new THREE.Vector3());
     this.cape.mesh.name = 'KittenCape';
   }
@@ -183,8 +186,8 @@ export class Kitten extends Character {
     };
     for (const [name, geo] of body.skins) {
       const part = name.split('__')[0];
-      // In the reference the legs are plated from thigh to toe: no fur shows below the mail skirt.
-      if (part === 'shin' || part === 'foot') continue;
+      // In the reference the legs are plated from the thigh down to the instep: only the fur toes show below the greaves.
+      if (part === 'shin') continue;
       const covered = part === 'thigh';
       const n = covered ? 0 : geo.getAttribute('furLen') ? Math.max(2, Math.round((layers[part] ?? 4) * Math.min(1, this.shellCount / 14))) : 0;
       for (const t of targets[part] ?? []) {
@@ -236,56 +239,51 @@ export class Kitten extends Character {
     const mats: Record<string, THREE.Material> = {
       // Procedural dents, scratches and grime are sized for human plate; scale them to kitten plate.
       plate: armorMaterial({ mud: 0.05, wear: 0.55, masks: true, scale: 3, tint: '#c2c1ba', engrave: true }),
-      legplate: armorMaterial({ mud: 0.22, wear: 0.6, masks: true, scale: 3, engrave: true }),
+      legplate: armorMaterial({ mud: 0.05, wear: 0.55, masks: true, scale: 3, tint: '#c2c1ba', engrave: true }),
       steel: armorMaterial({ mud: 0.0, wear: 0.25, tint: '#cfd0cb', masks: true, scale: 3 }),
       brass: brassMaterial(true),
       leather: leatherMaterial('#3a2a1d'),
     };
     const targets: Record<string, THREE.Object3D[]> = {
       chest: [P.chest], pelvis: [P.pelvis], uarm: [P.uarmL, P.uarmR], farm: [P.farmL, P.farmR], hand: [P.handL, P.handR],
-      thigh: [P.thighL, P.thighR], shin: [P.shinL, P.shinR], sword: [this.sword],
+      thigh: [P.thighL, P.thighR], shin: [P.shinL, P.shinR], foot: [P.footL, P.footR], sword: [this.sword],
     };
+    const glove = leatherMaterial('#2c2119', { scuff: 0.6 });
     for (const [name, geo0] of pieces) {
       const [part, mat] = name.split('__');
-      const m = part === 'thigh' || part === 'shin' ? (mat === 'plate' ? mats.legplate : mats[mat]) : mats[mat];
+      const m = part === 'thigh' || part === 'shin' || part === 'foot' ? (mat === 'plate' ? mats.legplate : mats[mat]) : mats[mat];
       // The reference sword is slimmer and a little shorter: a narrow arming blade, about as long as its bearer.
       let geo = geo0;
       if (name === 'sword__steel__blade') geo = geo0.clone().scale(0.5, 0.74, 0.85);
       if (name === 'sword__brass__guard') geo = geo0.clone().scale(0.78, 1, 1);
-      for (const t of targets[part] ?? []) t.add(makePart(geo, m ?? mats.plate));
+      // The reference kitten grips its sword in dark leather gloves rather than plate gauntlets.
+      const mm = name === 'hand__plate__gauntlet' ? glove : (m ?? mats.plate);
+      for (const t of targets[part] ?? []) t.add(makePart(geo, mm));
     }
     // Code-built details carry no baked masks, so they get mask-free plate.
-    this.buildHeroDetails(armorMaterial({ mud: 0.22, wear: 0.6, scale: 3, engrave: true }), armorMaterial({ mud: 0.05, wear: 0.5, scale: 3, tint: '#c2c1ba' }));
+    this.buildHeroDetails(armorMaterial({ mud: 0.05, wear: 0.55, scale: 3, tint: '#c2c1ba', engrave: true }), armorMaterial({ mud: 0.05, wear: 0.5, scale: 3, tint: '#c2c1ba' }));
   }
 
   // Pieces from the reference photo that the Blender set lacks: a mail skirt under the faulds, a diagonal leather
-  // sword belt with a steel buckle, caps closing the greaves under the knees, and plated sabatons over the paws.
+  // sword belt with a steel buckle, and caps closing the greaves under the knees.
   private buildHeroDetails(legplate: THREE.Material, plate: THREE.Material) {
     const P = this.parts;
-    const mail = makePart(new THREE.CylinderGeometry(0.0505, 0.0565, 0.027, 48, 1, true).scale(1, 1, 0.86), mailMaterial(), true);
+    const mail = makePart(new THREE.CylinderGeometry(0.0548, 0.0608, 0.029, 48, 1, true).scale(1, 1, 0.86), mailMaterial(), true);
     mail.position.set(0, -0.0345, 0.003);
     P.pelvis.add(mail);
     const beltMat = leatherMaterial('#5c3b24'); beltMat.side = THREE.DoubleSide;
-    const belt = makePart(new THREE.CylinderGeometry(0.0572, 0.0572, 0.0072, 56, 1, true).scale(1, 1, 0.9), beltMat);
+    const belt = makePart(new THREE.CylinderGeometry(0.0625, 0.0625, 0.0072, 56, 1, true).scale(1, 1, 0.88), beltMat);
     belt.position.set(0, -0.012, 0.004);
     belt.rotation.set(0, 0, -0.34);
     P.pelvis.add(belt);
     const buckle = makePart(new THREE.BoxGeometry(0.0085, 0.0095, 0.0024), plate);
-    buckle.position.set(-0.012, -0.0165, 0.0548);
+    buckle.position.set(-0.013, -0.0175, 0.0562);
     buckle.rotation.set(0, 0.22, -0.34);
     P.pelvis.add(buckle);
-    for (const [shin, foot] of [[P.shinL, P.footL], [P.shinR, P.footR]] as const) {
-      const cap = makePart(new THREE.CircleGeometry(0.0168, 24).rotateX(-Math.PI / 2).scale(1, 1, 1.08), legplate);
+    for (const shin of [P.shinL, P.shinR]) {
+      const cap = makePart(new THREE.CircleGeometry(0.0166, 24).rotateX(-Math.PI / 2).scale(1, 1, 1.08), legplate);
       cap.position.set(0, -0.0075, 0);
       shin.add(cap);
-      const toe = makePart(new THREE.SphereGeometry(0.0165, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.62, 1.55), legplate);
-      toe.position.set(0, -0.0125, 0.012);
-      foot.add(toe);
-      for (let i = 0; i < 2; i++) {
-        const lame = makePart(new THREE.TorusGeometry(0.0158 - i * 0.0012, 0.0011, 6, 24, Math.PI).rotateX(Math.PI / 2).scale(1, 1, 1.4), legplate);
-        lame.position.set(0, -0.0095 - i * 0.0005, 0.004 + i * 0.008);
-        foot.add(lame);
-      }
     }
   }
 
@@ -397,7 +395,7 @@ export class Kitten extends Character {
         this.addShells(ear, outer, Math.max(3, Math.round(shells * 0.6)), 0.0075, 2600, [0, 0.25, -0.35]);
         this.addShells(ear, inner, Math.max(3, Math.round(shells * 0.5)), 0.006, 2600, [0, 0.35, 0.2]);
       }
-      ear.position.set(s * 0.028, 0.029, -0.008);
+      ear.position.set(s * 0.0295, 0.0305, -0.003);
       ear.rotation.set(-0.18, s * 0.45, -s * 0.66);
       P.head.add(ear);
     }
@@ -418,7 +416,7 @@ export class Kitten extends Character {
     this.bow.add(makePart(bowGeo, bowMat));
     // On the kitten's left, near the ear, small and pale, as in the reference photo.
     this.bow.position.set(0.021, 0.047, 0.004);
-    this.bow.scale.setScalar(0.82);
+    this.bow.scale.setScalar(0.6);
     this.bow.rotation.set(-0.55, -0.3, -0.32);
     P.head.add(this.bow);
 
@@ -546,7 +544,8 @@ export class Kitten extends Character {
     const pe = P.pelvis;
     const breathe = Math.sin(this.breath * 2.2) * 0.0006;
     P.chest.position.set(pe.position.x * 0.5, pe.position.y + 0.018 + breathe, pe.position.z);
-    P.chest.rotation.set(this.lean * 0.8 - this.hangPose * 0.2, -pe.rotation.y * 0.7, this.leanSide * 0.4 - pe.rotation.z * 0.5);
+    // A slight turn to the right brings the left shoulder forward for the cross-body grip on the sword.
+    P.chest.rotation.set(this.lean * 0.8 - this.hangPose * 0.2, -pe.rotation.y * 0.7 - 0.12 * (1 - this.hangPose), this.leanSide * 0.4 - pe.rotation.z * 0.5);
     P.chest.updateMatrix();
     // Head: solemn and still; looks up at the knight now and then.
     this.lookTimer -= dt;
@@ -569,14 +568,16 @@ export class Kitten extends Character {
     if (this.twitchT < 0) { this.twitchT = 2.5 + Math.random() * 5; this.twitchSide = Math.random() < 0.5 ? -1 : 1; this.twitchAmt = 1; }
     this.twitchAmt = Math.max(0, this.twitchAmt - dt * 4);
     const tw = Math.sin(this.twitchAmt * Math.PI) * 0.3;
-    this.earL.rotation.set(-0.18 - (this.twitchSide > 0 ? tw : 0) - g.moving * 0.12, 0.45 + (this.twitchSide > 0 ? tw * 0.6 : 0), -0.66);
-    this.earR.rotation.set(-0.18 - (this.twitchSide < 0 ? tw : 0) - g.moving * 0.12, -0.45 - (this.twitchSide < 0 ? tw * 0.6 : 0), 0.66);
+    // Set low on the sides and tilted out and a little forward, as the reference kitten carries them.
+    this.earL.rotation.set(-0.16 - (this.twitchSide > 0 ? tw : 0) - g.moving * 0.12, 0.36 + (this.twitchSide > 0 ? tw * 0.6 : 0), -0.64);
+    this.earR.rotation.set(-0.16 - (this.twitchSide < 0 ? tw : 0) - g.moving * 0.12, -0.36 - (this.twitchSide < 0 ? tw * 0.6 : 0), 0.64);
     // Bow: barely moves with the wind.
     this.bow.rotation.z = -0.32 + Math.sin(this.breath * 3.1) * 0.03;
     // Tail: slow sway, lifted a little when moving.
     this.tailPhase += dt * (1.1 + g.moving * 2.5);
     this.tail.rotation.set(-0.25 + g.moving * 0.35 + Math.sin(this.tailPhase * 0.5) * 0.05, Math.sin(this.tailPhase) * 0.25, Math.sin(this.tailPhase * 0.7) * 0.08);
-    // Sword: upright before its right shoulder, with a lagging spring that shows its weight.
+    // Sword: upright before its right shoulder with the guard at chin height, as in the reference: the right paw grips
+    // under the guard and the left forearm crosses the chest to grip below it. A lagging spring shows its weight.
     const c = Math.cos(this.renderYaw), s = Math.sin(this.renderYaw);
     const accF = s * this.accel.x + c * this.accel.z, accS = c * this.accel.x - s * this.accel.z;
     const target = new THREE.Vector2(THREE.MathUtils.clamp(-accF * 0.035, -0.35, 0.35) + g.moving * 0.12, THREE.MathUtils.clamp(accS * 0.03, -0.3, 0.3));
@@ -585,15 +586,21 @@ export class Kitten extends Character {
     this.swordTiltV.y += ((target.y - this.swordTilt.y) * k - this.swordTiltV.y * damp) * dt;
     this.swordTilt.x += this.swordTiltV.x * dt; this.swordTilt.y += this.swordTiltV.y * dt;
     const bounce = g.bob * 0.6;
-    const guard = new THREE.Vector3(-0.041, 0.158 + bounce - this.pelvisDrop, 0.052 + this.lean * 0.05).applyMatrix4(new THREE.Matrix4().makeRotationY(-pe.rotation.y * 0.5));
+    const guard = new THREE.Vector3(-0.027, 0.198 + bounce - this.pelvisDrop, 0.072 + this.lean * 0.05).applyMatrix4(new THREE.Matrix4().makeRotationY(-pe.rotation.y * 0.5));
     this.sword.position.copy(guard);
     this.sword.rotation.set(0.08 + this.swordTilt.x, 0, this.swordTilt.y + 0.07);
     this.sword.updateMatrix();
-    const gripTop = new THREE.Vector3(0, -0.014, 0).applyMatrix4(this.sword.matrix);
-    const gripLow = new THREE.Vector3(0, -0.043, 0).applyMatrix4(this.sword.matrix);
-    this.armL.target.copy(gripTop).add(new THREE.Vector3(0.007, 0, -0.004));
-    this.armR.target.copy(gripLow).add(new THREE.Vector3(-0.005, 0, -0.004));
-    this.armL.pole.set(1, -0.6, -0.4); this.armR.pole.set(-1, -0.6, -0.4);
+    const gripTop = new THREE.Vector3(0, -0.015, 0).applyMatrix4(this.sword.matrix);
+    const gripLow = new THREE.Vector3(0, -0.042, 0).applyMatrix4(this.sword.matrix);
+    // The wrist sits a paw's length short of the grip along the line from the shoulder, so the paw closes on it.
+    const d = this.dims;
+    const wrist = (grip: THREE.Vector3, side: number) => {
+      const sh = new THREE.Vector3(side * d.shoulderW, d.shoulderY, d.shoulderZ ?? 0).applyMatrix4(P.chest.matrix);
+      return grip.clone().sub(grip.clone().sub(sh).normalize().multiplyScalar(0.011));
+    };
+    this.armR.target.copy(wrist(gripTop, -1));
+    this.armL.target.copy(wrist(gripLow, 1));
+    this.armL.pole.set(1, -1, 0.15); this.armR.pole.set(-1, -0.8, -0.2);
     if (this.hangPose > 0.001) {
       // Both paws reach up to a lever handle, bar or rope; the sword is tucked against the body.
       const h = this.hangPose;

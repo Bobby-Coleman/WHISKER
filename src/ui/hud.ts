@@ -15,6 +15,7 @@ export type HudCallbacks = {
   onAdaptive: (on: boolean) => void;
   onAO: (on: boolean) => void;
   onLook: (look: string) => void;
+  onHandheld?: (on: boolean) => void;
 };
 
 const CSS = `
@@ -102,6 +103,7 @@ export class Hud {
         <label>Clean render <input type="checkbox" data-k="clean"></label>
         <label>4:3 framing <input type="checkbox" data-k="aspect"></label>
         <label>Ambient occlusion <input type="checkbox" data-k="ao"></label>
+        <label>Handheld camera <input type="checkbox" checked data-k="handheld"></label>
         <label>Adaptive resolution <input type="checkbox" checked data-k="drs"></label>
         <label>Performance stats (P) <input type="checkbox" data-k="stats"></label>
         <label>Quality <select data-k="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
@@ -146,6 +148,7 @@ export class Hud {
         if (k === 'mute') cb.onMute(i.checked);
         if (k === 'stats') cb.onStats(i.checked);
         if (k === 'drs') cb.onAdaptive(i.checked);
+        if (k === 'handheld') cb.onHandheld?.(i.checked);
         if (k === 'ao') cb.onAO(i.checked);
         if (k === 'look') cb.onLook(i.value);
         if (l) cb.onLabToggle(l, i.checked);

@@ -7,9 +7,14 @@ import bpy
 from kk_sdf import ellipsoid, capsule, torus, union, smin, smax, polygonize
 import kk_blender as kb
 
-EYE = dict(x=0.0158, y=-0.005, z=0.0277, r=0.0084)
-SOCK = dict(x=0.0159, y=-0.0048, z=0.0311, rx=0.0099, ry=0.0091, rz=0.0077)
-NOSEP = dict(x=0.0, y=-0.0148, z=0.0404, rx=0.0047, ry=0.0034, rz=0.0035)
+# Measured off the reference in face widths (W, across the fur at eye level, ~0.084 here; its head is turned ~30 deg,
+# corrected for): each eye opening ~0.19 W wide and 0.13 W tall, centres 0.4 W apart; the nose one eye-height
+# (0.13 W) below the eye line, the mouth 0.24 W below it.
+# The eyeball sits forward, its opening level with the face, and the socket is cut barely wider than the opening, so
+# the lids hug the eye with no moat around it.
+EYE = dict(x=0.0195, y=-0.0068, z=0.0252, r=0.0128)
+SOCK = dict(x=0.0196, y=-0.0067, z=0.0322, rx=0.0112, ry=0.0092, rz=0.0062)
+NOSEP = dict(x=0.0, y=-0.0186, z=0.0424, rx=0.0043, ry=0.0031, rz=0.0036)
 
 
 def eye_axis(s):
@@ -34,7 +39,7 @@ def eye_ap(du, dv, dw):
     return th * np.cos(ph), th * np.sin(ph)
 
 
-APERTURE = dict(a_h=0.92, a_v=0.6, tilt=-0.09)
+APERTURE = dict(a_h=0.9, a_v=0.62, tilt=-0.08)
 
 
 def lid_solid(s, gap=0.00035, a_h=APERTURE['a_h'], a_v=APERTURE['a_v'], tilt=APERTURE['tilt']):
@@ -60,14 +65,14 @@ def lid_solid(s, gap=0.00035, a_h=APERTURE['a_h'], a_v=APERTURE['a_v'], tilt=APE
 def head_sdf():
     base = union(0.01,
                  ellipsoid((0, 0.006, -0.004), (0.044, 0.04, 0.042)),            # cranium
-                 ellipsoid((0.02, -0.0158, 0.008), (0.028, 0.024, 0.027)),       # cheeks
-                 ellipsoid((-0.02, -0.0158, 0.008), (0.028, 0.024, 0.027)),
-                 ellipsoid((0, -0.008, 0.0305), (0.0105, 0.0108, 0.0118)),       # nose bridge
-                 ellipsoid((0.0072, -0.0222, 0.0342), (0.0108, 0.0089, 0.0104)),  # whisker pads
-                 ellipsoid((-0.0072, -0.0222, 0.0342), (0.0108, 0.0089, 0.0104)),
-                 ellipsoid((0, -0.0302, 0.0262), (0.0092, 0.0068, 0.0088)),      # chin
-                 ellipsoid((0.0152, 0.0028, 0.0266), (0.0135, 0.0086, 0.0106)),  # brows
-                 ellipsoid((-0.0152, 0.0028, 0.0266), (0.0135, 0.0086, 0.0106)),
+                 ellipsoid((0.019, -0.0178, 0.008), (0.026, 0.023, 0.026)),       # cheeks
+                 ellipsoid((-0.019, -0.0178, 0.008), (0.026, 0.023, 0.026)),
+                 ellipsoid((0, -0.0114, 0.0302), (0.0102, 0.0118, 0.0118)),        # nose bridge
+                 ellipsoid((0.0071, -0.0256, 0.0322), (0.0102, 0.0083, 0.0098)),  # whisker pads
+                 ellipsoid((-0.0071, -0.0256, 0.0322), (0.0102, 0.0083, 0.0098)),
+                 ellipsoid((0, -0.034, 0.0252), (0.0092, 0.0066, 0.0086)),        # chin
+                 ellipsoid((0.019, 0.0048, 0.0236), (0.015, 0.0088, 0.0106)),  # brows
+                 ellipsoid((-0.019, 0.0048, 0.0236), (0.015, 0.0088, 0.0106)),
                  ellipsoid((0, -0.038, -0.01), (0.028, 0.028, 0.028)))           # neck
     N = NOSEP
 
@@ -79,8 +84,8 @@ def head_sdf():
         k0 = np.sqrt(px * px + py * py + pz * pz)
         return (k0 - 1.0) * np.minimum(np.minimum(rx, N['ry']), N['rz'])
     # Comma-shaped slits low on each side of the leather, opening down and out.
-    nostrils = [ellipsoid((s * 0.0031, N['y'] - 0.0019, N['z'] + 0.0017), (0.0012, 0.00055, 0.0012)) for s in (-1, 1)]
-    philtrum = capsule((0, N['y'] - N['ry'] * 0.6, N['z'] + 0.0028), (0, N['y'] - 0.0072, N['z'] - 0.0012), 0.00055)
+    nostrils = [ellipsoid((s * 0.0025, N['y'] - 0.0016, N['z'] + 0.0015), (0.001, 0.00045, 0.001)) for s in (-1, 1)]
+    philtrum = capsule((0, N['y'] - N['ry'] * 0.6, N['z'] + 0.0024), (0, N['y'] - 0.0062, N['z'] - 0.0012), 0.0004)
     ym, zm = N['y'] - 0.0074, N['z'] - 0.0014
     mouth = [capsule((0, ym, zm), (s * 0.0062, ym - 0.0022, zm - 0.0042), 0.0005, 0.0003) for s in (-1, 1)]
     socks = [ellipsoid((s * SOCK['x'], SOCK['y'], SOCK['z']), (SOCK['rx'], SOCK['ry'], SOCK['rz'])) for s in (-1, 1)]

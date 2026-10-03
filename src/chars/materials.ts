@@ -3,7 +3,8 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, positionLocal, positionGeometry, normalLocal, mx_noise_float, mx_fractal_noise_float, vec3, float, mix, smoothstep, abs, fract, sin, dot,
   uniform, attribute, color, floor, step, clamp, pow, length, max, bumpMap, vec2, uv, positionView,
-  texture, normalize, refract, atan, cos, min, vec4, modelWorldMatrixInverse, cameraPosition, normalWorld, fwidth,
+  texture, normalize, refract, atan, cos, min, vec4, modelWorldMatrixInverse, cameraPosition, normalWorld, fwidth, mx_worley_noise_float,
+  reflect, normalView, positionViewDirection,
 } from 'three/tsl';
 import { WIND, LOOK } from '../render/settings';
 import { procBump } from '../render/bump';
@@ -14,6 +15,8 @@ export const CHAR_TOGGLES = {
   fuzz: uniform(1.0),
   // World-space size of one pixel per metre of view distance; set each frame from the camera.
   pixelAngle: uniform(0.001),
+  // How wet the plate is (rain beads, runs and film): 1 on the moor, less indoors or as weather dries.
+  wet: uniform(1.0),
 };
 
 const hash3 = Fn(([p]: any[]) => fract(sin(dot(p, vec3(127.1, 311.7, 74.7))).mul(43758.5453)));
@@ -93,6 +96,23 @@ export function armorMaterial(opts: { mud?: number; wear?: number; tint?: string
   // grooves narrower than a pixel turn into bright aliased specks in a derivative bump.
   const bumpH = mx_noise_float(p.mul(42.0)).mul(0.00015).sub(etch.mul(0.00004)).mul(CHAR_TOGGLES.detailNormals);
   m.normalNode = procBump(bumpH.div(sc), float(0.006).div(sc));
+  // Rain on the plate. A thin water film over everything, beads of water (2-4 mm, real size whatever the wearer's
+  // scale) standing on the faces that look up, and runs streaking down the sides. The water is a clear coat over
+  // the steel: it carries sharp reflections of the sky and glints of the hidden sun on every curve, which is what
+  // makes wet armour glisten; the steel under it stays as worn as it was.
+  {
+    const lp = positionLocal;
+    const up = smoothstep(-0.1, 0.75, normalWorld.y);
+    const cell = mx_worley_noise_float(lp.mul(310.0));
+    const present = smoothstep(0.42, 0.62, mx_noise_float(lp.mul(95.0).add(vec3(3.1, 7.7, 1.3))).mul(0.5).add(0.5));
+    const bead = smoothstep(0.34, 0.12, cell).mul(present).mul(up.mul(0.8).add(0.2)).mul(float(1).sub(mudMask));
+    const runs = smoothstep(0.62, 0.8, mx_noise_float(vec3(lp.x.mul(260.0), lp.y.mul(14.0), lp.z.mul(260.0))).mul(0.5).add(0.5))
+      .mul(float(1).sub(up)).mul(float(1).sub(mudMask));
+    const water = clamp(float(0.32).add(bead.mul(0.68)).add(runs.mul(0.45)), 0, 1).mul(CHAR_TOGGLES.wet);
+    m.clearcoatNode = water;
+    m.clearcoatRoughnessNode = mix(float(0.12), float(0.025), max(bead, runs));
+    m.clearcoatNormalNode = procBump(bead.mul(0.00025).add(runs.mul(0.00006)), float(0.002));
+  }
   armorCache.set(key, m);
   return m;
 }
@@ -335,7 +355,7 @@ export function heroEyeMaterial(radius: number, side = 1) {
   const dLid = min(upper.sub(v), v.sub(lower)).mul(step(0.0, n.z));
   const open = smoothstep(0.0, 0.035, dLid);
   const rim = smoothstep(-0.11, -0.015, dLid).mul(float(1).sub(open));
-  const lidShadow = mix(float(0.42), float(1), smoothstep(0.0, 0.22, upper.sub(v)));
+  const lidShadow = mix(float(0.6), float(1), smoothstep(0.0, 0.22, upper.sub(v)));
   const camL = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
   const view = normalize(camL.sub(p));
   const r = refract(view.negate(), n, 1 / 1.336);
@@ -348,10 +368,16 @@ export function heroEyeMaterial(radius: number, side = 1) {
   // Big, round kitten pupil; a dark brown-grey iris with radial fibres and a soft darker limbal ring.
   const fib = mx_noise_float(vec3(ang.mul(9.0), rho.mul(3.0), 0.0)).mul(0.5).add(0.5);
   const fib2 = mx_noise_float(vec3(cos(ang).mul(14.0), rho.mul(12.0), ang.mul(2.0))).mul(0.5).add(0.5);
-  const irisCol = mix(color('#1c1511'), color('#55443a'), fib.mul(0.6).add(fib2.mul(0.4)).mul(smoothstep(0.55, 0.9, rho).mul(0.6).add(0.4)));
-  const pupil = smoothstep(0.56, 0.61, rho);
-  const limbus = smoothstep(0.86, 1.0, rho);
-  let c: any = mix(color('#030303'), irisCol, pupil);
+  // The reference kitten's eyes are almost entirely black: a pupil wide open in the dull light, leaving only a thin,
+  // very dark brown ring of iris at the edge that shows when the sky catches it.
+  let irisCol: any = mix(color('#0d0907'), color('#3a2a20'), fib.mul(0.6).add(fib2.mul(0.4)).mul(smoothstep(0.8, 0.96, rho).mul(0.7).add(0.3)));
+  // Sky light through the cornea gathers on the lower iris, opposite the bright sky: the warm glow at the bottom of a
+  // dark eye that gives it depth instead of a flat black disc.
+  const caustic = smoothstep(0.1, -0.75, q.y).mul(smoothstep(0.45, 0.9, rho)).mul(float(1).sub(smoothstep(0.98, 1.05, rho)));
+  irisCol = irisCol.add(color('#5a3a22').mul(caustic.mul(0.55)));
+  const pupil = smoothstep(0.8, 0.86, rho);
+  const limbus = smoothstep(0.93, 1.02, rho);
+  let c: any = mix(color('#030303'), irisCol, pupil).add(color('#2a1a10').mul(caustic.mul(0.25)));
   c = mix(c, color('#120d0b'), limbus);
   // Behind the limbus (rarely visible) the sclera is dark in a kitten.
   c = mix(c, color('#2b231f'), smoothstep(1.02, 1.1, rho));
@@ -359,16 +385,25 @@ export function heroEyeMaterial(radius: number, side = 1) {
   // Lid rim, then fur-coloured lid: the cream of the face with fine combed streaks, so the round socket of the
   // sculpted head blends into the coat instead of reading as a ring.
   const streak = mx_noise_float(vec3(atan(n.y, n.x).mul(40.0), length(n.xy).mul(6.0), 1.7)).mul(0.5).add(0.5);
-  const lidFur = mix(color('#6e5644'), color('#c2a487'), smoothstep(-0.05, -0.32, dLid)).mul(streak.mul(0.22).add(0.86));
+  // The sculpted lids now frame the opening; what shows of the ball beyond it is the shadowed socket.
+  const lidFur = mix(color('#2a1d16'), color('#4a3a2e'), smoothstep(-0.05, -0.32, dLid)).mul(streak.mul(0.22).add(0.86));
   c = mix(mix(lidFur, color('#120c09'), rim), c, open);
   m.colorNode = c;
   m.roughnessNode = mix(float(0.8), float(0.45), open);
   m.metalness = 0;
   // The wet cornea covers only the opening; it carries the broad sky catchlight.
-  m.clearcoatNode = open.mul(0.7);
-  m.clearcoatRoughness = 0.09;
-  m.ior = 1.336;
-  m.specularIntensity = 0.6;
+  // Boosted, as character artists do for hero eyes: the overcast sky mirrored in the cornea is the eye's life.
+  m.clearcoatNode = open;
+  m.clearcoatRoughness = 0.04;
+  m.ior = 1.75;
+  m.specularIntensity = 1.0;
+  // Catchlight: the bright break in the cloud mirrored up and to one side of the cornea, as in the reference (and as
+  // cinematographers place an eye light). Fixed relative to the camera, so it always reads, and soft-edged like a
+  // window of brighter sky.
+  const Rv = reflect(positionViewDirection.negate(), normalView);
+  const catchDir = normalize(vec3(-0.42, 0.5, 0.76));
+  const catchK = smoothstep(0.935, 0.985, dot(Rv, catchDir));
+  m.emissiveNode = color('#e8ecf0').mul(catchK.mul(open).mul(0.75));
   return m;
 }
 

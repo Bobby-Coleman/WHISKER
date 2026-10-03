@@ -14,7 +14,7 @@ from kk_sdf import ellipsoid, capsule, sphere, union, smin, smax, gradient, poly
 from kitten_head_build import lin, ss, mix, wobble, COAT, COAT_DARK, CREAM, PUB
 
 rng = np.random.default_rng(11)
-INNER, INNER_DEEP, WHITE = lin('#dcaa9f'), lin('#b47e74'), lin('#f6efe6')
+INNER, INNER_DEEP, WHITE = lin('#c9a197'), lin('#9c7a70'), lin('#f1ebe4')
 LOOK_FUR = dict(width=(0.00011, 0.00016))
 
 
@@ -151,12 +151,14 @@ def groom_tail(count=15000, NP=8):
 
 # ---------------------------------------------------------------- ears
 # Ear group space: base at y = 0, tip at y = H, inner bowl facing +Z (the code ear used the same frame).
-EW, EH, ECUP = 0.03, 0.026, 0.0062
+# Big, round-tipped kitten ears as in the reference: about a third of the face's width at the base, standing up
+# out of the fluff and tilted out.
+EW, EH, ECUP = 0.031, 0.025, 0.0066
 
 
 def ear_shape(x, y):
     v = np.clip(y / EH, 0, 1)
-    half = np.maximum(EW / 2 * np.maximum(1 - v ** 1.7, 0) ** 0.75, 1e-4)
+    half = np.maximum(EW / 2 * np.maximum(1 - v ** 2.4, 0) ** 0.55, 1e-4)
     u = np.clip(x / half, -1, 1)
     zm = -ECUP * np.cos(u * np.pi / 2) * (1 - 0.72 * v)
     t = 0.0034 * (1 - v) ** 0.7 + 0.0009
@@ -189,15 +191,15 @@ def groom_ear(NP=6):
     bw = rng.uniform(0.00012, 0.00017, len(p))
     # Furnishings: long pale hairs curling up out of the bowl near the rims and the base.
     q, qn, _, _ = G.sample_roots(v, n, f, lambda q: 1 + 0 * q[:, 0],
-                                 lambda q: vis(q) * ss(gradient(sdf, q)[:, 2], 0.25, 0.5) * np.maximum(ss(np.abs(shape(q)[2]), 0.45, 0.8), 1 - ss(shape(q)[0], 0.15, 0.4)), 900, rng)
+                                 lambda q: vis(q) * ss(gradient(sdf, q)[:, 2], 0.25, 0.5) * np.maximum(ss(np.abs(shape(q)[2]), 0.3, 0.7), 1 - ss(shape(q)[0], 0.2, 0.55)), 1700, rng)
     qv = shape(q)[0]
     dq = G.tangent_project(np.array([0, 1.0, 0.7]) - 0.4 * np.sign(q[:, 0])[:, None] * np.array([1.0, 0, 0]), qn)
-    Lq = rng.uniform(0.0075, 0.0118, len(q)) * (1 - 0.35 * qv)
+    Lq = rng.uniform(0.0085, 0.0135, len(q)) * (1 - 0.3 * qv)
     furn = G.grow(q, qn, dq, Lq, np.radians(48 + rng.normal(0, 8, len(q))), NP, rng, droop=0.0, lay=0.3, frizz=0.05, wave=0.22, waves=rng.uniform(0.6, 1.2, len(q)))
     fcol = WHITE * rng.uniform(0.93, 1.03, len(q))[:, None]
     fw = rng.uniform(0.00007, 0.0001, len(q))
     # A small tuft at the tip.
-    t, tn, _, _ = G.sample_roots(v, n, f, lambda q: 1 + 0 * q[:, 0], lambda q: ss(q[:, 1], 0.021, 0.024), 90, rng)
+    t, tn, _, _ = G.sample_roots(v, n, f, lambda q: 1 + 0 * q[:, 0], lambda q: ss(q[:, 1], EH - 0.005, EH - 0.002), 90, rng)
     dt_ = G.tangent_project(np.array([0, 1.0, 0.25]), tn)
     tuft = G.grow(t, tn, dt_, rng.uniform(0.004, 0.0065, len(t)), np.radians(30 + rng.normal(0, 6, len(t))), NP, rng, droop=0.0, lay=0.2, frizz=0.04, wave=0.1)
     tcol = mix(COAT, COAT_DARK, 0.35) * np.ones((len(t), 1))

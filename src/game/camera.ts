@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { Character } from '../chars/character';
 import { PhysicsWorld, MASK } from './physics';
-import { LOOK } from '../render/settings';
+import { LOOK, WIND } from '../render/settings';
 
 // Full-frame-equivalent focal length to vertical FOV (24 mm sensor height).
 export const fovFromMM = (mm: number) => THREE.MathUtils.radToDeg(2 * Math.atan(12 / mm));
@@ -100,6 +100,7 @@ export class CameraRig {
     }
     this.cam.position.copy(pos);
     this.cam.lookAt(look);
+    this.handheld(dt, 0, 0.7);
     this.cam.fov = fovFromMM(mm);
     this.cam.updateProjectionMatrix();
     this.revealEndPos.copy(pos); this.revealEndLook.copy(look);
@@ -117,6 +118,40 @@ export class CameraRig {
   }
 
   setPreset(i: number) { this.mode = i < 0 ? 'play' : 'preset'; this.presetIndex = i; }
+
+  // Story moments: a short observed shot (a gate rising, the marsh draining) that eases out of play, holds, and eases
+  // back. Positions can be functions so the shot can follow what it watches. Play resumes where the rig left off.
+  moment: null | { pos: () => THREE.Vector3; look: () => THREE.Vector3; mm: number; dur: number; t: number; from: { pos: THREE.Vector3; look: THREE.Vector3; mm: number }; dof: number } = null;
+  playMoment(pos: THREE.Vector3 | (() => THREE.Vector3), look: THREE.Vector3 | (() => THREE.Vector3), dur = 5, mm = 40, dof = 0.15) {
+    const fwd = this.cam.getWorldDirection(new THREE.Vector3());
+    this.moment = {
+      pos: typeof pos === 'function' ? pos : () => pos, look: typeof look === 'function' ? look : () => look, mm, dur, t: 0, dof,
+      from: { pos: this.cam.position.clone(), look: this.cam.position.clone().addScaledVector(fwd, 6), mm: 12 / Math.tan(THREE.MathUtils.degToRad(this.cam.fov) / 2) },
+    };
+  }
+  // Returns true while the moment holds the camera.
+  updateMoment(dt: number) {
+    const m = this.moment;
+    if (!m) return false;
+    m.t += dt;
+    const ease = (x: number) => x * x * (3 - 2 * x);
+    const inT = Math.min(1, m.t / 1.4), outT = Math.max(0, (m.t - (m.dur - 1.3)) / 1.3);
+    const k = ease(inT) * (1 - ease(Math.min(1, outT)));
+    const p = m.pos(), l = m.look();
+    // Ease in from where the play camera was, and back to where it is now.
+    const backPos = this.camPos.lengthSq() > 0 ? this.camPos : m.from.pos;
+    const backLook = this.target.lengthSq() > 0 ? this.target : m.from.look;
+    const fromPos = outT > 0 ? backPos : m.from.pos, fromLook = outT > 0 ? backLook : m.from.look;
+    this.cam.position.lerpVectors(fromPos, p, k);
+    this.cam.lookAt(new THREE.Vector3().lerpVectors(fromLook, l, k));
+    this.handheld(dt, 0, 0.6);
+    this.cam.fov = fovFromMM(THREE.MathUtils.lerp(outT > 0 ? this.frame.mm : m.from.mm, m.mm, k));
+    this.cam.updateProjectionMatrix();
+    LOOK.dofAmount.value = m.dof * k;
+    LOOK.focusDistance.value = this.cam.position.distanceTo(l);
+    if (m.t >= m.dur) { this.moment = null; return false; }
+    return true;
+  }
 
   updatePreset(kitten: Character, knight: Character) {
     const p = this.presets[this.presetIndex];
@@ -196,12 +231,48 @@ export class CameraRig {
       this.lastLook.copy(this.target);
     }
     this.cam.lookAt(this.lastLook);
+    this.handheld(dt, Math.hypot(active.body.vel.x, active.body.vel.z), active.kind === 'kitten' ? 0.55 : 1);
     this.cam.fov = fovFromMM(this.frame.mm);
     this.cam.updateProjectionMatrix();
     // Broad gameplay focus; DoF only as a whisper.
     LOOK.dofAmount.value += (0.0 - LOOK.dofAmount.value) * Math.min(1, dt * 1.5);
     LOOK.focusDistance.value = this.cam.position.distanceTo(active.group.position);
     void companion;
+  }
+
+  // Handheld follow camera, as in the reference footage: someone is filming behind the pair. At rest the frame
+  // breathes (slow drift in aim and height); moving, it bobs and sways with the operator's own steps, faster and
+  // stronger at a run; gusts add a small, quick judder. Applied on top of the aimed camera, in its own frame.
+  handheldAmount = 1;
+  private hhT = 0; private hhWalk = 0; private hhStep = 0;
+  handheld(dt: number, speed: number, scale = 1) {
+    const a = this.handheldAmount * scale;
+    if (a <= 0) return;
+    this.hhT += dt;
+    const t = this.hhT;
+    const run = THREE.MathUtils.clamp(speed / 4.2, 0, 1);
+    this.hhWalk += ((speed > 0.3 ? 0.35 + 0.65 * run : 0) - this.hhWalk) * Math.min(1, dt * 3);
+    // The operator's cadence: about 1.8 steps a second walking, 2.6 running.
+    this.hhStep += dt * (1.8 + 0.8 * run) * Math.PI * 2;
+    const w = this.hhWalk, g = WIND.gust;
+    const s = (f: number, p: number) => Math.sin(t * f + p);
+    // Breathing drift (degrees), always present.
+    let pitch = (s(0.31, 0.4) * 0.6 + s(0.53, 2.1) * 0.3) * 0.32;
+    let yaw = (s(0.23, 1.3) * 0.6 + s(0.47, 0.2) * 0.35) * 0.38;
+    let roll = (s(0.19, 2.9) * 0.7 + s(0.41, 1.1) * 0.3) * 0.42;
+    // Walking: bob twice per stride, sway and roll once.
+    pitch += Math.abs(Math.sin(this.hhStep)) * 0.55 * w - 0.28 * w;
+    roll += Math.sin(this.hhStep * 0.5) * 0.5 * w;
+    yaw += Math.sin(this.hhStep * 0.5 + 0.7) * 0.32 * w;
+    // Gusts: a quick, small judder.
+    const j = g * g;
+    pitch += (s(11.3, 0.5) * 0.5 + s(17.9, 1.7) * 0.3) * 0.16 * j;
+    yaw += (s(9.7, 2.2) * 0.5 + s(14.1, 0.9) * 0.3) * 0.18 * j;
+    const d = THREE.MathUtils.DEG2RAD * a;
+    this.cam.rotateX(pitch * d); this.cam.rotateY(yaw * d); this.cam.rotateZ(roll * d);
+    // Height and side drift of the operator (metres).
+    this.cam.translateY((s(0.37, 0.8) * 0.008 + (Math.abs(Math.sin(this.hhStep)) - 0.5) * 0.022 * w) * a);
+    this.cam.translateX((s(0.29, 2.4) * 0.008 + Math.sin(this.hhStep * 0.5) * 0.014 * w) * a);
   }
 
   isVisible(p: THREE.Vector3) {

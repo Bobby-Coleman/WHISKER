@@ -19,8 +19,12 @@ def lin(h):
 
 
 # Peach-cream coat with soft tabby markings, as in the reference clip (its haze and colour cast removed).
-COAT, COAT_DARK, CREAM = lin('#d9b49a'), lin('#9f765e'), lin('#f0e2d4')
-NOSE, NOSE_DARK, LID, LIP = lin('#d99a93'), lin('#a8645f'), lin('#2b1f19'), lin('#4a302b')
+# Coat matched to the reference photo: a muted grey-beige tabby (cool brown-grey stripes), pale cream cheeks and a
+# near-white muzzle, a dusky pink nose (colours sampled from the reference, with its fog lift taken out).
+# Warmed so that under the moor's cool overcast light the fur renders at the reference's measured warmth (forehead
+# about (154, 129, 120), cheeks (123, 99, 83)): a pale ginger-cream tabby rather than a grey one.
+COAT, COAT_DARK, CREAM = lin('#cdab93'), lin('#8f6c5a'), lin('#f2e6da')
+NOSE, NOSE_DARK, LID, LIP = lin('#b8857d'), lin('#77504b'), lin('#241a16'), lin('#4a302b')
 
 
 def ss(x, a, b):
@@ -66,7 +70,7 @@ def mouth_mask(p):
     N = NOSEP
     ym, zm = N['y'] - 0.0074, N['z'] - 0.0014
     caps = [capsule((0, ym, zm), (s * 0.0062, ym - 0.0022, zm - 0.0042), 0.0005, 0.0003) for s in (-1, 1)]
-    caps.append(capsule((0, N['y'] - N['ry'] * 0.6, N['z'] + 0.0028), (0, N['y'] - 0.0072, N['z'] - 0.0012), 0.00055))
+    caps.append(capsule((0, N['y'] - N['ry'] * 0.6, N['z'] + 0.0024), (0, N['y'] - 0.0062, N['z'] - 0.0012), 0.0004))
     d = np.min([c(p[:, 0], p[:, 1], p[:, 2]) for c in caps], axis=0)
     return 1 - ss(d, 0.0002, 0.0011)
 
@@ -83,7 +87,7 @@ def wobble(p, f):
 def head_color(p):
     x, y, z = p[:, 0], p[:, 1], p[:, 2]
     c = np.tile(COAT, (len(p), 1))
-    muzzle = ss(z, 0.016, 0.032) * (1 - ss(y, -0.0145, -0.0075))
+    muzzle = ss(z, 0.016, 0.032) * (1 - ss(y, -0.019, -0.012))
     c = mix(c, CREAM, muzzle * 0.9)
     c = mix(c, CREAM, ss(-y, 0.024, 0.04) * 0.75)
     c = mix(c, CREAM, ss(np.abs(x), 0.022, 0.04) * (1 - ss(y, -0.012, 0.006)) * 0.45)
@@ -91,26 +95,28 @@ def head_color(p):
     brk = 0.5 + 0.5 * wobble(p, 260.0)
     crown = ss(y, 0.014, 0.03) * (1 - muzzle)
     stripe = (0.5 + 0.5 * np.cos(x * 190 + np.sin(z * 90) * 0.9 + 0.8 * wobble(p, 120.0))) ** 4
-    c = mix(c, COAT_DARK, crown * stripe * 0.34 * (0.4 + 0.6 * brk))
+    c = mix(c, COAT_DARK, crown * stripe * 0.22 * (0.4 + 0.6 * brk))
     fore = ss(y, 0.001, 0.013) * ss(z, -0.01, 0.02) * (1 - ss(np.abs(x), 0.015, 0.028))
     fan = x * (1.0 + 18.0 * np.maximum(y - 0.01, 0)) + 0.0009 * wobble(p, 150.0)
     lines = (0.5 + 0.5 * np.cos(2 * np.pi * fan / 0.0085)) ** 4
-    c = mix(c, COAT_DARK * 0.85, fore * lines * 0.5 * (0.35 + 0.65 * brk))
+    c = mix(c, COAT_DARK * 0.85, fore * lines * 0.32 * (0.35 + 0.65 * brk))
     c = mix(c, COAT_DARK, ss(y, 0.02, 0.045) * ss(-z, -0.02, 0.03) * 0.35)  # warmer back of the head
     # Cheek lines running back from the outer corner of each eye.
     for sgn in (-1, 1):
         for a, off, k in ((0.0, 0.0, 0.5), (0.0045, -0.0055, 0.3)):
-            c0 = np.array([sgn * (0.0245 + a), -0.006 + off, 0.0225 - a])
+            c0 = np.array([sgn * (0.0245 + a), -0.0085 + off, 0.0222 - a])
             d = np.array([sgn * 0.55, -0.28, -0.79]); d /= np.linalg.norm(d)
             q = p - c0
             along = q @ d
             perp = np.linalg.norm(q - along[:, None] * d[None, :], axis=1)
             line = (1 - ss(perp, 0.0009, 0.0024)) * ss(along, -0.001, 0.003) * (1 - ss(along, 0.012, 0.022))
             c = mix(c, COAT_DARK, line * k * (np.sign(x) == sgn))
+    # Pale 'spectacles' of short cream fur ring each eye, as in the reference, inside the thin dark lid margin.
+    c = mix(c, CREAM * 0.97, (1 - ss(eye_dist(p), 0.8, 1.3)) * 0.55)
     nd = nose_dist(p)
     nose = 1 - ss(nd, 0.92, 1.12)
     c = mix(c, mix(NOSE_DARK, NOSE, ss(nd, 0.2, 0.75) * (1 - ss(nd, 0.8, 1.0)) + 0.2), nose)
-    c = mix(c, LIP, mouth_mask(p) * 0.85)
+    c = mix(c, LIP, mouth_mask(p) * 0.22)
     c = mix(c, LID, lid_margin(p))
     return c
 

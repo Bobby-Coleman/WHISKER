@@ -1,0 +1,12 @@
+[
+ {
+  "label": "setup",
+  "js": "(() => { document.getElementById('hud').style.display = 'none'; window.__view = (px, py, pz, lx, ly, lz, mm) => { const r = __kk.rig; const P = r.cam.position.clone().set(px, py, pz), L = r.cam.position.clone().set(lx, ly, lz); r.presets[9] = { name: 'view', pos: () => P.clone(), look: () => L.clone(), mm, dof: 0, focus: () => 10 }; __kk.preset(9); }; __kk.rig.handheldAmount = 0; return 'ok'; })()",
+  "wait": 1500
+ },
+ {
+  "js": "(() => { const k = __kk.kitten; const h = __kk.rig.cam.position.clone(); k.parts.head.updateMatrixWorld(true); const e = h.clone().set(0.0167, -0.0072, 0.0259); k.parts.head.localToWorld(e); const f = h.clone().set(0.0167 + 0.05, -0.0072, 0.0259 + 0.12); k.parts.head.localToWorld(f); __view(f.x, f.y, f.z, e.x, e.y, e.z, 100); return e.toArray().map(v => v.toFixed(3)).join(','); })()",
+  "out": "eye.png",
+  "wait": 2500
+ }
+]

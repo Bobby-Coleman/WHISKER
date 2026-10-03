@@ -79,20 +79,22 @@ def rivets_on(name, prof_point, angles, sx=1.0, sz=1.0, lift=0.0004, radius=0.00
 
 # ---------------------------------------------------------------- chest
 def cuirass():
-    prof = [(0.093, 0.0305), (0.089, 0.0345), (0.081, 0.0425), (0.069, 0.0485), (0.053, 0.0522), (0.037, 0.0515),
-            (0.021, 0.0487), (0.009, 0.0457), (0.001, 0.0449), (-0.004, 0.0463)]
+    # After the reference: a breastplate that stands nearly upright from mid-chest to the waist (so it mirrors the
+    # bright horizon rather than the ground), rounding over the shoulders at the top.
+    prof = [(0.093, 0.0305), (0.089, 0.0348), (0.081, 0.043), (0.069, 0.0492), (0.053, 0.0527), (0.037, 0.0529),
+            (0.021, 0.0522), (0.009, 0.0512), (0.001, 0.0506), (-0.004, 0.0512)]
 
     def deform(V, P, th):
         x, y, z = V[..., 0], V[..., 1], V[..., 2]
         front = ss(z, 0.0, 0.02)
         # Medial ridge down the breastplate and a soft forward swell at mid-chest.
-        keel = 0.0021 * np.exp(-(x / 0.0105) ** 2) * ss(y, 0.004, 0.03) * (1 - ss(y, 0.07, 0.088))
-        swell = 1 + 0.09 * np.exp(-((y - 0.043) ** 2) / 0.0005)
+        keel = 0.0026 * np.exp(-(x / 0.0095) ** 2) * ss(y, 0.002, 0.026) * (1 - ss(y, 0.072, 0.089))
+        swell = 1 + 0.06 * np.exp(-((y - 0.045) ** 2) / 0.0012)
         V[..., 2] = np.where(z > 0, z * swell + keel * front, z)
         return V
     body = plate('chest__plate__cuirass', prof, rolls=('top', 'bottom'), sz=0.84, deform=deform, rr=0.001)
     # Rivets along the waist and a pair at the neck.
-    rv = rivets_on('cuirass_rv', (0.004, 0.0453), [-1.0, -0.45, 0.45, 1.0, np.pi - 0.6, np.pi + 0.6], sz=0.84)
+    rv = rivets_on('cuirass_rv', (0.004, 0.051), [-1.0, -0.45, 0.45, 1.0, np.pi - 0.6, np.pi + 0.6], sz=0.84)
     rv += rivets_on('cuirass_rvn', (0.086, 0.0385), [-0.7, 0.7], sz=0.84)
     for o in rv:
         A.finish(o, subsurf=0)
@@ -101,10 +103,11 @@ def cuirass():
 
 def pauldron(side):
     # Dome over the shoulder and three lames down the upper arm, open toward the neck.
-    parts = [dome('pd_dome', 0.0215, 0.0285, base=-0.003, sz=1.05, roll_rr=0.001)]
-    a0, a1 = np.radians(-45), np.radians(225)     # lames wrap front, outside and back (angle 90 deg = +X)
-    for k, (yt, rt, yb, rb) in enumerate([(-0.0015, 0.0274, -0.0095, 0.0284), (-0.0085, 0.0266, -0.0165, 0.0274),
-                                          (-0.0155, 0.0257, -0.0235, 0.0262)]):
+    # Large, rounded pauldrons as in the reference: a deep dome and four lames down the upper arm.
+    parts = [dome('pd_dome', 0.0245, 0.0322, base=-0.003, sz=1.05, roll_rr=0.0011)]
+    a0, a1 = np.radians(-50), np.radians(230)     # lames wrap front, outside and back (angle 90 deg = +X)
+    for k, (yt, rt, yb, rb) in enumerate([(-0.0015, 0.031, -0.0095, 0.0321), (-0.0085, 0.0301, -0.0165, 0.031),
+                                          (-0.0155, 0.0291, -0.0235, 0.0297), (-0.0225, 0.0281, -0.0298, 0.0284)]):
         prof = [(yt, rt), ((yt + yb) / 2, (rt + rb) / 2 + 0.0004), (yb, rb)]
         lame = plate(f'pd_lame{k}', prof, rolls=('bottom',), a0=a0, a1=a1, sz=1.05, segs=40, rr=0.0008)
         parts.append(lame)
@@ -126,40 +129,47 @@ def pauldron(side):
 # ---------------------------------------------------------------- pelvis
 def belt_and_fauld():
     out = []
-    belt = A.lathe('pelvis__leather__belt', [(0.0135, 0.0462), (0.0045, 0.0466)], segs=48, sz=0.84)
+    belt = A.lathe('pelvis__leather__belt', [(0.0135, 0.0516), (0.0045, 0.052)], segs=48, sz=0.84)
     A.finish(belt, thick=0.0009, bevel=0.0002, subsurf=0)
     out.append(belt)
     # Brass buckle: a small square frame at the front.
     bpy.ops.mesh.primitive_torus_add(major_radius=0.0042, minor_radius=0.0009, major_segments=4, minor_segments=8,
                                      location=(0, 0, 0))
     bk = bpy.context.active_object
-    A.transform(bk, A.mat4(t=(0.0, 0.009, 0.0466 * 0.84 + 0.0012), rz=np.pi / 4))
+    A.transform(bk, A.mat4(t=(0.0, 0.009, 0.052 * 0.84 + 0.0012), rz=np.pi / 4))
     A.finish(bk, bevel=0.0002, subsurf=0)
     bk.name = bk.data.name = 'pelvis__brass__buckle'
     out.append(bk)
     # Fauld: three lames flaring over the hips, open at the back for the tail.
     a0, a1 = np.radians(-150), np.radians(150)
     lames = []
-    for k, (yt, rt, yb, rb) in enumerate([(0.0055, 0.0468, -0.0065, 0.0498), (-0.0035, 0.0484, -0.0155, 0.0516),
-                                          (-0.0125, 0.0501, -0.0245, 0.0536)]):
+    for k, (yt, rt, yb, rb) in enumerate([(0.0055, 0.052, -0.0065, 0.0546), (-0.0035, 0.0536, -0.0155, 0.0562),
+                                          (-0.0125, 0.0552, -0.0245, 0.0582)]):
         prof = [(yt, rt), ((yt + yb) / 2, (rt + rb) / 2 + 0.0005), (yb, rb)]
         lames.append(plate(f'fauld{k}', prof, rolls=('bottom',), a0=a0, a1=a1, sz=0.82, segs=48, rr=0.0008))
         for o in rivets_on(f'fauld_rv{k}', ((yt + yb) / 2, (rt + rb) / 2 + 0.0008), [-1.1, 1.1, -2.4, 2.4], sz=0.82, radius=0.0008):
             A.finish(o, subsurf=0)
             lames.append(o)
+    # Tassets: two lames over the front of each thigh, hanging from the fauld in front of the mail skirt.
+    for s in (-1, 1):
+        c = s * 0.5
+        for k, (yt, rt, yb, rb) in enumerate([(-0.0225, 0.0588, -0.0385, 0.0612), (-0.0355, 0.0605, -0.0515, 0.0628)]):
+            prof = [(yt, rt), ((yt + yb) / 2, (rt + rb) / 2 + 0.0006), (yb, rb)]
+            lames.append(plate(f'tasset{s}{k}', prof, rolls=('bottom',), a0=c - 0.42, a1=c + 0.42, sz=0.84, segs=24, rr=0.0008))
     out.append(A.join('pelvis__plate__fauld', lames))
     return out
 
 
 # ---------------------------------------------------------------- arms
 def arm_pieces():
-    rere = plate('uarm__plate__rerebrace', [(-0.0075, 0.0139), (-0.019, 0.0134), (-0.0305, 0.0124)],
+    # Arm lengths follow the rig (src/chars/kitten.ts): upper arm 0.046, forearm 0.062.
+    rere = plate('uarm__plate__rerebrace', [(-0.0075, 0.0139), (-0.024, 0.0135), (-0.0405, 0.0125)],
                  rolls=('top', 'bottom'), segs=36, rr=0.0007)
     # Elbow cop: a dome over the point of the elbow (+Z faces the pole) with a band around the joint.
     cop = dome('farm_cop', 0.0085, 0.0138, apex_axis=(0, 0, 1), center=(0, 0, 0.003), roll_rr=0.0007)
     band = plate('farm_band', [(0.004, 0.0136), (-0.004, 0.0138)], rolls=('bottom',), segs=36, rr=0.0006)
     couter = A.join('farm__plate__couter', [cop, band])
-    vamb = plate('farm__plate__vambrace', [(-0.0055, 0.0129), (-0.018, 0.0123), (-0.0305, 0.0111)],
+    vamb = plate('farm__plate__vambrace', [(-0.0055, 0.0131), (-0.031, 0.0126), (-0.0565, 0.0112)],
                  rolls=('top', 'bottom'), segs=36, rr=0.0007)
     # Mitten gauntlet: a flared cuff and a plated paw in three lames.
     cuff = plate('hand_cuff', [(0.0065, 0.0146), (0.0015, 0.0131), (-0.0045, 0.0125)], rolls=('top',), segs=36, rr=0.0007)
@@ -181,10 +191,40 @@ def leg_pieces():
     a0, a1 = np.radians(-105), np.radians(105)
     cuisse = plate('thigh__plate__cuisse', [(-0.0105, 0.0214), (-0.025, 0.0206), (-0.0395, 0.0174)], rolls=('top', 'bottom'),
                    a0=a0, a1=a1, sz=1.06, segs=36, rr=0.0007)
-    poleyn = dome('shin__plate__poleyn', 0.0085, 0.0152, apex_axis=(0, 0, 1), center=(0, 0, 0.004), roll_rr=0.0007)
-    greave = plate('shin__plate__greave', [(-0.0075, 0.0152), (-0.023, 0.0151), (-0.0385, 0.0131)], rolls=('top', 'bottom'),
-                   sz=1.1, segs=36, rr=0.0007)
-    return [cuisse, poleyn, greave]
+    cop = dome('poleyn_cop', 0.0085, 0.0152, apex_axis=(0, 0, 1), center=(0, 0, 0.004), roll_rr=0.0007)
+    # Fan-shaped side wing on the outside of the knee (both sides: the left and right shins share the piece).
+    wings = [dome(f'poleyn_wing{s}', 0.0035, 0.0105, apex_axis=(s, 0, 0.35), center=(s * 0.0105, 0.0005, 0.0045), roll_rr=0.0006, sz=1.25) for s in (-1, 1)]
+    poleyn = A.join('shin__plate__poleyn', [cop] + wings)
+    # Greave down to the ankle (the shin is 0.048 long), barely tapered and flaring a little over the instep, so its
+    # faces stand upright and mirror the misty horizon rather than the ground.
+    greave = plate('shin__plate__greave', [(-0.0075, 0.015), (-0.022, 0.0149), (-0.036, 0.0138), (-0.0445, 0.0134), (-0.049, 0.014)],
+                   rolls=('top', 'bottom'), sz=1.1, segs=36, rr=0.0007)
+    return [cuisse, poleyn, greave, sabaton()]
+
+
+def sabaton():
+    # Articulated sabaton over the top of the paw (foot space: origin at the ankle, +Z toward the toes, the sole at
+    # y = -0.0134). Lames arch over the instep and toe box like roof tiles, each rear lame riding over the next, and
+    # stop short of the toes so the fur toes show in front, as in the reference.
+    lames = []
+    # (top of the arch (z, y), pitch of the lame's axis below level, half-width, arch height, length)
+    spec = [((0.0078, 0.0112), 1.0, 0.0128, 0.0118, 0.0062),
+            ((0.0112, 0.0068), 0.62, 0.0139, 0.0104, 0.0058),
+            ((0.0146, 0.0036), 0.32, 0.0148, 0.0094, 0.0056),
+            ((0.0178, 0.0021), 0.12, 0.0152, 0.0088, 0.005)]
+    span = 1.92                     # the sides come down to a little below the arch's centre
+    for k, ((zt, yt), phi, hw, h, L) in enumerate(spec):
+        lift = 0.00035 * (len(spec) - 1 - k)   # rear lames ride over the next one
+        r = h + lift
+        ob = plate(f'sab{k}', [(-L / 2, r), (0.0, r * 1.01), (L / 2, r * 0.995)], rolls=('bottom',), a0=np.pi - span, a1=np.pi + span,
+                   sx=(hw + lift) / r, segs=28, rr=0.0006)
+        up = np.array([0.0, np.cos(phi), np.sin(phi)])
+        c = np.array([0.0, yt, zt]) - up * r
+        lames.append(A.transform(ob, A.mat4(t=tuple(c), rx=np.pi / 2 + phi)))
+        for o in rivets_on(f'sab_rv{k}', (0.0, r + 0.0002), [np.pi - 1.45, np.pi + 1.45], sx=(hw + lift) / r, radius=0.0006):
+            A.finish(o, subsurf=0)
+            lames.append(A.transform(o, A.mat4(t=tuple(c), rx=np.pi / 2 + phi)))
+    return A.join('foot__plate__sabaton', lames)
 
 
 # ---------------------------------------------------------------- sword

@@ -17,6 +17,11 @@ export class VerletCloth {
   windResponse: number;
   drag: number;
   aero: number;
+  // Skin friction of the wind along the cloth, and the share of gravity it feels. A flag streams out flat in a
+  // gale because air dragging along a fluttering sheet outweighs it many times; raising the first and easing the
+  // second lets a short cape fly like that at game-scale wind speeds.
+  friction: number;
+  gravity: number;
   private nrm: Float32Array;
   private pins: Map<number, THREE.Vector3> = new Map();
   private v = new THREE.Vector3();
@@ -27,9 +32,11 @@ export class VerletCloth {
   private rW: Float32Array | null = null;
   private rPos: Float32Array | null = null;
 
-  constructor(cols: number, rows: number, width: number, height: number, material: THREE.Material, opts: { windResponse?: number; drag?: number; taper?: number; subdiv?: number; aero?: number } = {}) {
+  constructor(cols: number, rows: number, width: number, height: number, material: THREE.Material, opts: { windResponse?: number; drag?: number; taper?: number; subdiv?: number; aero?: number; friction?: number; gravity?: number } = {}) {
     this.cols = cols; this.rows = rows;
     this.aero = opts.aero ?? 0;
+    this.friction = opts.friction ?? 0.08;
+    this.gravity = opts.gravity ?? 1;
     this.subdiv = Math.max(1, Math.round(opts.subdiv ?? 1));
     this.windResponse = opts.windResponse ?? 1;
     this.drag = opts.drag ?? 0.985;
@@ -107,7 +114,7 @@ export class VerletCloth {
   step(dt: number, groundY: (x: number, z: number) => number, extraForce?: THREE.Vector3) {
     // A zero step would divide by zero below and leave every particle NaN for good.
     if (!(dt > 0)) return;
-    const g = -9.8;
+    const g = -9.8 * this.gravity;
     const gust = 0.35 + WIND.gust * 1.1;
     const wx = WIND.dir.x * gust * this.windResponse, wz = WIND.dir.y * gust * this.windResponse;
     const t = WIND.time.value as number;
@@ -135,7 +142,7 @@ export class VerletCloth {
         const fn = this.aero * rn * Math.abs(rn);
         // Pressure along the normal plus a little skin friction along the surface.
         const rl = Math.sqrt(rx * rx + ry * ry + rz * rz);
-        const ft = this.aero * 0.08 * rl;
+        const ft = this.aero * this.friction * rl;
         ax = nx * fn + (rx - nx * rn) * ft; ay += ny * fn + (ry - ny * rn) * ft; az = nz * fn + (rz - nz * rn) * ft;
       } else {
         ax = (wx + flutter * wz * 0.6) * 2.4; az = (wz - flutter * wx * 0.6) * 2.4;

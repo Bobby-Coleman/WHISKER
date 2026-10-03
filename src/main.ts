@@ -199,6 +199,8 @@ async function main() {
   const player = new PlayerController();
   const companions = new Map<Character, CompanionController>([[kitten, new CompanionController()], [knight, new CompanionController()]]);
   const rig = new CameraRig(innerWidth / innerHeight);
+  rig.handheldAmount = readPref('kk-handheld', true) ? 1 : 0;
+  hud.setChecked('handheld', rig.handheldAmount > 0);
   const camera = rig.cam;
   const input = new KeyboardMouseGamepad(renderer.domElement);
   input.onTouchMode = () => hud.setTouch();
@@ -262,7 +264,7 @@ async function main() {
   LOOK.aoAmount.value = aoOn ? AO_ON : 0;
   hud.setChecked('ao', aoOn);
   const setLook = (look: string) => { LOOK.modern.value = look === 'modern' ? 1 : 0; };
-  let look = params.get('look') ?? readPrefString('kk-look', 'vintage');
+  let look = params.get('look') ?? readPrefString('kk-look', 'modern');
   setLook(look);
   hud.setValue('look', look);
   let cleanMode = false;
@@ -282,6 +284,7 @@ async function main() {
     onAdaptive: (on: boolean) => { adaptive = on; writePref('kk-drs', on); if (!on) setRenderScale(1); },
     onAO: (on: boolean) => { aoOn = on; LOOK.aoAmount.value = on ? AO_ON : 0; writePref('kk-ao', on); },
     onLook: (v: string) => { look = v; setLook(v); writePrefString('kk-look', v); },
+    onHandheld: (on: boolean) => { rig.handheldAmount = on ? 1 : 0; writePref('kk-handheld', on); },
     onLabToggle: (k: string, on: boolean) => {
       if (k === 'normals') CHAR_TOGGLES.detailNormals.value = on ? 1 : 0;
       if (k === 'rough') CHAR_TOGGLES.roughnessMaps.value = on ? 1 : 0;
@@ -512,6 +515,9 @@ async function main() {
     hud.setPrompt(playing && rig.mode === 'play' ? puzzles.prompt : null);
     hud.update(dt);
     CHAR_TOGGLES.pixelAngle.value = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.max(1, innerHeight * renderer.getPixelRatio());
+    // Occlusion reach follows the scale on screen: centimetres for a kitten close-up, half a metre at knight scale.
+    const nearChar = Math.min(camera.position.distanceTo(kitten.group.position), camera.position.distanceTo(knight.group.position));
+    LOOK.aoRadius.value = THREE.MathUtils.clamp(nearChar * 0.11, 0.1, 0.45);
     if (render) pipeline.render();
   }
 

@@ -12,6 +12,8 @@ export class CharacterBody {
   yaw = 0; prevYaw = 0; turnRate = 0;
   radius: number; height: number;
   grounded = true; vy = 0;
+  // Strength of the last landing (0..1), eased off by the pose: a dip in the knees and pelvis.
+  landing = 0;
   constructor(radius: number, height: number) { this.radius = radius; this.height = height; }
 }
 
@@ -37,7 +39,7 @@ export abstract class Character {
   headLook = new THREE.Euler();
   armL = { target: new THREE.Vector3(), pole: new THREE.Vector3(1, -0.4, -1), handQ: new THREE.Quaternion(), useHandQ: false };
   armR = { target: new THREE.Vector3(), pole: new THREE.Vector3(-1, -0.4, -1), handQ: new THREE.Quaternion(), useHandQ: false };
-  dims: { upperArm: number; foreArm: number; shoulderW: number; shoulderY: number; spine: number; neck: number };
+  dims: { upperArm: number; foreArm: number; shoulderW: number; shoulderY: number; shoulderZ?: number; spine: number; neck: number };
   breath = 0;
   lean = 0; leanSide = 0;
   pelvisDrop = 0;
@@ -84,7 +86,12 @@ export abstract class Character {
       this.poseCarried(ctx);
       return;
     }
-    this.gait.update(dt, this.renderPos, b.vel, this.renderYaw, b.turnRate, ctx.ground);
+    // In the air the feet plan their steps on a ground just under the body: the legs tuck instead of reaching for
+    // the earth below. On landing they plant again and the body dips with the impact.
+    const tuck = this.gait.p.hipY * 0.42;
+    const ground = b.grounded ? ctx.ground : (_x: number, _z: number) => this.renderPos.y + tuck;
+    this.gait.update(dt, this.renderPos, b.vel, this.renderYaw, b.turnRate, ground);
+    b.landing = Math.max(0, b.landing - dt * 3.5);
     this.poseLegs(ctx);
     this.poseUpper(ctx);
     this.solveArms();
@@ -102,7 +109,7 @@ export abstract class Character {
     const speed = Math.hypot(this.body.vel.x, this.body.vel.z);
     const crouch = this.crouchAmount(speed);
     this.breath += ctx.dt;
-    const pelvisY = p.hipY + g.bob - this.pelvisDrop - crouch + Math.sin(this.breath * 1.3) * p.hipY * 0.004;
+    const pelvisY = p.hipY + g.bob - this.pelvisDrop - crouch + Math.sin(this.breath * 1.3) * p.hipY * 0.004 - this.body.landing * p.hipY * 0.14;
     P.pelvis.position.set(g.sway * 0.6, pelvisY, 0);
     const fwdLean = THREE.MathUtils.clamp(speed / p.runSpeed, 0, 1);
     // Acceleration-driven lean in local space.
@@ -145,7 +152,7 @@ export abstract class Character {
     for (const side of [-1, 1]) {
       const arm = side > 0 ? this.armL : this.armR;
       const ua = side > 0 ? P.uarmL : P.uarmR, fa = side > 0 ? P.farmL : P.farmR, hand = side > 0 ? P.handL : P.handR;
-      const sh = new THREE.Vector3(side * d.shoulderW, d.shoulderY, 0).applyMatrix4(P.chest.matrix);
+      const sh = new THREE.Vector3(side * d.shoulderW, d.shoulderY, d.shoulderZ ?? 0).applyMatrix4(P.chest.matrix);
       const elbow = new THREE.Vector3();
       const end = solveTwoBone(sh, arm.target, d.upperArm, d.foreArm, arm.pole, elbow);
       orientBone(ua, sh, elbow, arm.pole);

@@ -76,7 +76,10 @@ const photoUV = Fn(([dir, yaw, top, bottom]: any[]) => {
 
 // The moor's ground as the sky would light it: dark peat and olive turf, fogging toward the horizon.
 const groundRadiance = (irr: THREE.Color) => {
-  const g = new THREE.Color('#46493a').convertSRGBToLinear();
+  // Lush, wet green grass in mist (the reference's ground): brighter than bare peat, so steel facing down reads grey-green.
+  // Wet blades also mirror the bright sky at the grazing angles a reflection sees them from, so the turf reads paler
+  // and greyer than its albedo. (A hex colour is already linear once parsed: converting it again made it ~6x too dark.)
+  const g = new THREE.Color('#8e957f');
   return new THREE.Color(g.r * irr.r / Math.PI, g.g * irr.g / Math.PI, g.b * irr.b / Math.PI);
 };
 
@@ -94,7 +97,7 @@ function envMaterial(w: Loaded, fog: THREE.Color) {
   // fog's own radiance (bright), the open sky takes over above it and the near, unfogged ground below it. Polished
   // steel facing sideways reflects that band, which is why it reads pale silver in the reference rather than dark.
   const mist = color(fog).mul(0.97);
-  const below = mix(ground, mist, smoothstep(-0.32, -0.05, dir.y));
+  const below = mix(ground, mist, smoothstep(-0.62, -0.03, dir.y));
   // The photographs' own horizons (bushes, hills, a road) sit within ~6 degrees of level; the moor's mist hides that
   // band in the visible sky, so the reflected sky starts above it too.
   m.colorNode = mix(below, sky, smoothstep(0.1, 0.3, dir.y));

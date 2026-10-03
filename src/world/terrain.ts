@@ -37,13 +37,13 @@ export function photoTerrainMaterial(maps: FieldMaps) {
 
   // Canopy: the colour of grassed ground seen from a few metres up and beyond (as the blades read at distance).
   const broadB = mx_fractal_noise_float(wp.xz.mul(1 / 13).add(7.3), 2, 2.0, 0.5).mul(0.5).add(0.5);
-  const living = mix(color('#5a6339'), color('#6c7552'), smoothstep(0.55, 0.85, broadB).mul(0.7));
+  const living = mix(color('#4d6a2f'), color('#5f7642'), smoothstep(0.55, 0.85, broadB).mul(0.7));
   let canopy: any = mix(living, color('#85765a'), dead.mul(0.85));
   canopy = canopy.mul(mix(float(0.84), float(1.04), vigour));
 
   // Turf scan graded to the moor: living olive, with the scan's own straw and leaf litter where grass is dead.
   const lum = dot(turf.albedo, vec3(0.2126, 0.7152, 0.0722));
-  const liveTint = vec3(0.285, 0.474, 0.34), deadTint = vec3(0.6, 0.62, 0.72);
+  const liveTint = vec3(0.24, 0.5, 0.27), deadTint = vec3(0.6, 0.62, 0.72);
   let turfCol: any = turf.albedo.mul(mix(liveTint, deadTint, clamp(dead.mul(0.9), 0, 1)));
   turfCol = turfCol.mul(mix(float(0.86), float(1.04), vigour));
   // Seen from far enough that single leaves blur, the ground reads as canopy modulated by the scan's light and shade.

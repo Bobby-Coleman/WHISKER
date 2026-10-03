@@ -146,6 +146,19 @@ def render(path, w=640, h=640, samples=48, transparent=False):
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
     sc.cycles.device = 'CPU'
+    # Render on the GPU when one is available (OptiX, then CUDA); review renders take seconds instead of minutes.
+    try:
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        for kind in ('OPTIX', 'CUDA'):
+            prefs.compute_device_type = kind
+            prefs.get_devices()
+            gpus = [d for d in prefs.devices if d.type == kind]
+            if gpus:
+                for d in prefs.devices: d.use = d.type == kind
+                sc.cycles.device = 'GPU'
+                break
+    except Exception as e:  # no GPU backend: stay on the CPU
+        print('GPU render unavailable:', e)
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
     sc.render.resolution_x = w
