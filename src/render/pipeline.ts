@@ -128,9 +128,12 @@ export function createPipeline(renderer: THREE.WebGPURenderer, scene: THREE.Scen
     ssrNode = ssr(sceneColor, scenePass.getTextureNode('depth'), sceneNormal, { metalnessNode: metalTex.r, roughnessNode: metalTex.g, camera });
     ssrNode.resolutionScale = 0.5;
     ssrNode.maxDistance.value = 6;
-    ssrNode.thickness.value = 0.06;
+    ssrNode.thickness.value = 0.03;
     ssrNode.quality.value = 0.5;
     ssrNode.screenEdgeFade.value = 0.25;
+    // Overcast light has no hot spots: clamp what a reflection may pick up to about the brightness of the sky, so a
+    // grazing ray that catches the horizon cannot print a glint that bloom then blows up.
+    ssrNode.maxLuminance.value = 0.9;
     hdr = blendColor(hdr, ssrNode);
   }
   // Temporal anti-aliasing on the linear HDR image: the camera is jittered by a sub-pixel Halton offset each

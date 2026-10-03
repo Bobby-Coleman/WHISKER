@@ -6,9 +6,11 @@ export type QualityTier = 'high' | 'medium' | 'low';
 
 export const TIERS: Record<QualityTier, {
   pixelRatioCap: number; renderScale: number; grassDensity: number; grassRadius: number;
+  // ssr: screen-space reflections, off on every tier for now (?ssr=1 turns them on): in this mist, rays that graze
+  // the horizon print glints that bloom blows up, and the sky probe alone already gives plate its contrast.
   shadowMap: number; furShells: number; dof: boolean; msaa: boolean; mistCards: number; ao: boolean; ssr: boolean;
 }> = {
-  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 84, ao: true, ssr: true },
+  high: { pixelRatioCap: 1.5, renderScale: 1.0, grassDensity: 1.0, grassRadius: 70, shadowMap: 2048, furShells: 14, dof: true, msaa: true, mistCards: 84, ao: true, ssr: false },
   medium: { pixelRatioCap: 1.25, renderScale: 0.85, grassDensity: 0.6, grassRadius: 55, shadowMap: 2048, furShells: 9, dof: true, msaa: true, mistCards: 54, ao: false, ssr: false },
   low: { pixelRatioCap: 1.0, renderScale: 0.7, grassDensity: 0.32, grassRadius: 40, shadowMap: 1024, furShells: 5, dof: false, msaa: false, mistCards: 26, ao: false, ssr: false },
 };

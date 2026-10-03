@@ -52,7 +52,7 @@ The settings panel also has the look (Modern or Vintage), the treatment-strength
 
 - **Photographed overcast skies.** Three CC0 Poly Haven skies (one per weather) light the moor and fill its reflections, each scaled so the light it casts on level ground matches the tuning target. The mist band at the horizon and the ground below it are added from the fog's real depth along each ray, so polished steel reads the way it does in the clip: bright streaks of sky and mist, darker where it mirrors the turf.
 - **Scanned surfaces.** The ground, mud, stone, timber and slates are CC0 photoscans (Poly Haven), packed into two WebP textures each (colour and height, normal, roughness and occlusion) and blended by height, triplanar where they wrap.
-- **Steel.** Plate is worked steel with baked occlusion, edge and cavity masks, etched scrollwork, hammered dents, scratches in the roughness and a film of rain (beads on faces that look up, runs on the sides) as a clear coat. Screen-space reflections at half resolution (high quality) let it mirror what is really around it, the wearer's own sleeves, the ground and the other character.
+- **Steel.** Plate is burnished, worked steel with baked occlusion, edge and cavity masks, etched scrollwork, hammered dents, scratches in the roughness and a film of rain (beads on faces that look up, runs on the sides) as a clear coat. Screen-space reflections are built in but off by default (`?ssr=1`): in this much mist they print glints at grazing angles.
 - **Fur and eyes.** About 87,000 groomed strands over a shell undercoat, with clumping in three levels, flyaways and length maps after a production groom. The kitten's eyes were sized and placed from the reference in face widths, with a wet cornea and a catchlight.
 - **Temporal anti-aliasing** on the HDR image (TRAA with motion vectors; fur and grass blades write their own), then depth of field, bloom, filmic tone mapping and the grade.
 - **Ambient occlusion.** Ground-truth AO at half resolution, depth-aware blurred, sized to the character on screen, sparing polished metal.
@@ -61,7 +61,7 @@ The settings panel also has the look (Modern or Vintage), the treatment-strength
 
 ## Performance
 
-Measured on a laptop RTX 4070 at 1920x1080, high quality: 91-104 fps, 5.1-5.5 ms of GPU time per frame with SSR, AO and TAA on. That leaves room for 60 fps on a mid-range desktop GPU; medium and low quality drop SSR, AO and density for older machines and phones.
+Measured on a laptop RTX 4070 at 1920x1080, high quality: 91-104 fps, 5.1-5.5 ms of GPU time per frame with AO and TAA on (and SSR, now off by default). That leaves room for 60 fps on a mid-range desktop GPU; medium and low quality drop AO, fur layers and grass density for older machines and phones.
 
 - **Loading bar.** The title screen shows each loading stage and how long it took; the same timings print to the console and appear in the stats panel.
 - **Stats panel (P).** Frame rate, frame time with the worst recent frame, main-thread and GPU time, render resolution, draw calls and triangles.
@@ -82,7 +82,7 @@ The spec was treated as a guide. Where it and the reference clip disagree, the c
 
 ```
 npm install
-npm run dev                # http://localhost:5173 (?q=low|medium|high, ?webgl, ?look=vintage, ?ssr=0, ?aa=fxaa)
+npm run dev                # http://localhost:5173 (?q=low|medium|high, ?webgl, ?look=vintage, ?ssr=1, ?aa=fxaa)
 npm run build              # dist/
 npm run artifact           # build, then write dist/artifact.html
 ```
