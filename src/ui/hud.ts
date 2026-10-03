@@ -240,10 +240,12 @@ export class Hud {
     this.creditsEl.classList.add('on');
   }
 
-  setPrompt(text: string | null) {
-    if (text === this.lastPrompt) return;
-    this.lastPrompt = text;
-    if (text) { this.promptEl.innerHTML = `<span class="key">${this.keyLabel}</span>${text}`; this.promptEl.style.opacity = '1'; } else this.promptEl.style.opacity = '0';
+  // `key` names the button when it is not the act button.
+  setPrompt(text: string | null, key?: string) {
+    const id = text ? `${key ?? ''}|${text}` : null;
+    if (id === this.lastPrompt) return;
+    this.lastPrompt = id;
+    if (text) { this.promptEl.innerHTML = `<span class="key">${key ?? this.keyLabel}</span>${text}`; this.promptEl.style.opacity = '1'; } else this.promptEl.style.opacity = '0';
   }
 
   // Touch players see the on-screen button name instead of a keyboard key.

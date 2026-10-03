@@ -1,0 +1,8 @@
+[
+  { "label": "begin", "js": "(() => { return __v2.timeline.playing; })()", "wait": 1200 },
+  { "js": "__v2.timeline.t.toFixed(2)", "out": "v2_20_intro_a.png", "wait": 2500 },
+  { "js": "__v2.timeline.t.toFixed(2)", "out": "v2_21_intro_b.png", "wait": 2600 },
+  { "js": "__v2.timeline.t.toFixed(2)", "out": "v2_22_intro_c.png", "wait": 2400 },
+  { "js": "JSON.stringify([__v2.timeline.playing, __v2.state()])", "out": "v2_23_after.png", "wait": 1500 },
+  { "js": "JSON.stringify([__v2.timeline.playing, __v2.state()])", "out": "v2_24_play.png", "wait": 200 }
+]

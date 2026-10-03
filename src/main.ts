@@ -781,7 +781,9 @@ async function main() {
   });
 }
 
-main().catch((e) => {
+// ?v2 runs the engine rebuild (src/v2) instead of the v1 field.
+const boot = params.has('v2') ? import('./v2/main').then((m) => m.run(params)) : main();
+boot.catch((e) => {
   console.error(e);
   W.__error = String(e?.stack || e);
   const d = document.createElement('div');

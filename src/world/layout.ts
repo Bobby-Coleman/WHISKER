@@ -85,6 +85,10 @@ function rawHeight(x: number, z: number): number {
   return h;
 }
 
+// Engine v2 levels bring their own ground and clearings: set before the terrain, grass and plants are built, these
+// replace the moor's shape and FIELD_01's clearings (its structures, marsh and paths belong to v1).
+export const FIELD_OVERRIDE: { height: ((x: number, z: number) => number) | null; exclusion: ((x: number, z: number) => number) | null } = { height: null, exclusion: null };
+
 type Flat = { x: number; z: number; hx: number; hz: number; fall: number; h?: number };
 const FLATS: Flat[] = [
   { x: (YARD.minX + YARD.maxX) / 2, z: (YARD.minZ + YARD.maxZ) / 2, hx: 14, hz: 11, fall: 9 },
@@ -110,6 +114,7 @@ export function waterDepthAt(x: number, z: number, level: number, ground: number
 }
 
 export function heightAt(x: number, z: number): number {
+  if (FIELD_OVERRIDE.height) return FIELD_OVERRIDE.height(x, z);
   let h = rawHeight(x, z);
   for (const f of FLATS) {
     const dx = Math.max(0, Math.abs(x - f.x) - f.hx);
@@ -202,6 +207,7 @@ export function insideRect(x: number, z: number, r: { minX: number; maxX: number
 
 // Areas where vegetation and scattered rocks are excluded.
 export function vegetationExclusion(x: number, z: number): number {
+  if (FIELD_OVERRIDE.exclusion) return FIELD_OVERRIDE.exclusion(x, z);
   let e = 0;
   if (insideRect(x, z, YARD, 0.6)) {
     // Courtyard keeps a few sparse tufts.

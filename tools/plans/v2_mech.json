@@ -1,0 +1,20 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; window.__s = () => JSON.stringify(__v2.state()); return __s(); })()", "wait": 800 },
+  { "label": "kitten to ivy", "js": "(() => { __v2.setActive('kitten'); __v2.teleport('kitten', 0.3, 0.436, -11.6, Math.PI); __v2.camYaw(0, 0.25); return __s(); })()", "wait": 800 },
+  { "label": "push into ivy", "js": "(() => { __v2.simMove(0, 1, 4.5); return __s(); })()", "wait": 700 },
+  { "js": "__s()", "out": "v2_10_grab.png", "wait": 1000 },
+  { "js": "__s()", "out": "v2_11_climb.png", "wait": 1300 },
+  { "js": "__s()", "out": "v2_12_top.png", "wait": 1500 },
+  { "label": "knight lift", "js": "(() => { __v2.simMove(0,0,0.1); __v2.teleport('kitten', 4, 0.436, -9, Math.PI); __v2.teleport('knight', 4, 0.436, -8.4, Math.PI); __v2.setActive('knight'); __v2.camYaw(0.4, 0.25); return __s(); })()", "wait": 600 },
+  { "label": "act", "js": "(() => { __v2.act(); return __s(); })()", "wait": 1000 },
+  { "js": "__s()", "out": "v2_13_lifted.png", "wait": 200 },
+  { "label": "throw", "js": "(() => { __v2.act(); return __s(); })()", "wait": 250 },
+  { "js": "__s()", "out": "v2_14_thrown.png", "wait": 1500 },
+  { "js": "__s()", "out": "v2_15_landed.png", "wait": 300 },
+  { "label": "jump line", "js": "(() => { __v2.teleport('kitten', -7, 1.636, -7.6, Math.PI); __v2.setActive('kitten'); __v2.camYaw(0, 0.35); return __s(); })()", "wait": 800 },
+  { "label": "run+jump", "js": "(() => { __v2.simMove(0, 1, 1.2, true); setTimeout(() => __v2.jump(), 180); return __s(); })()", "wait": 450 },
+  { "js": "__s()", "out": "v2_16_jump.png", "wait": 1200 },
+  { "js": "__s()", "out": "v2_17_after.png", "wait": 300 },
+  { "label": "ferry", "js": "(() => { __v2.teleport('knight', 0, 0.436, -26.5, Math.PI); __v2.setActive('knight'); __v2.camYaw(0.8, 0.3); return __s(); })()", "wait": 3000 },
+  { "js": "__s()", "out": "v2_18_ferry.png", "wait": 300 }
+]

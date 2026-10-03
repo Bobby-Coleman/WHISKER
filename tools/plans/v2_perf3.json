@@ -1,0 +1,12 @@
+[
+  { "label": "settle", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; window.__g = async (n) => { const t0 = performance.now(); for (let i = 0; i < n; i++) { __v2.pipeline.render(); await __v2.renderer.backend.device.queue.onSubmittedWorkDone(); } return ((performance.now() - t0) / n).toFixed(2); }; return 1; })()", "wait": 8000 },
+  { "label": "all", "js": "__g(12)", "wait": 300 },
+  { "label": "no level", "js": "(async () => { __v2.level.root.visible = false; const r = await __g(12); __v2.level.root.visible = true; return r; })()", "wait": 300 },
+  { "label": "no grass", "js": "(async () => { __v2.grass.group.visible = false; const r = await __g(12); __v2.grass.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no veg", "js": "(async () => { __v2.veg.group.visible = false; const r = await __g(12); __v2.veg.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no chars", "js": "(async () => { __v2.kitten.group.visible = false; __v2.knight.group.visible = false; const r = await __g(12); __v2.kitten.group.visible = true; __v2.knight.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no mist", "js": "(async () => { __v2.mist.group.visible = false; const r = await __g(12); __v2.mist.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no ao", "js": "(async () => { const a = __v2.LOOK.aoAmount.value; __v2.LOOK.aoAmount.value = 0; const r = await __g(12); __v2.LOOK.aoAmount.value = a; return r; })()", "wait": 300 },
+  { "label": "no shadows", "js": "(async () => { __v2.renderer.shadowMap.enabled = false; const r = await __g(12); __v2.renderer.shadowMap.enabled = true; return r; })()", "wait": 300 },
+  { "label": "all again", "js": "__g(12)", "wait": 300 }
+]

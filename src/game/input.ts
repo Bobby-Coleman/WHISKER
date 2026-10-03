@@ -11,6 +11,7 @@ export type InputFrame = {
   resetPressed: boolean;
   skipPressed: boolean;
   jumpPressed: boolean;
+  jumpHeld: boolean; // the jump button is down (a held jump rises higher)
   hintPressed: boolean;
   zoom: number;
   any: boolean;
@@ -30,6 +31,8 @@ export class KeyboardMouseGamepad {
   touchMode = false;
   onTouchMode?: () => void;
   private stick: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
+  // On-screen buttons held down (touch).
+  private touchHeld = new Set<string>();
   private lookId = -1;
   private lastLook = { x: 0, y: 0 };
   private stickEl?: HTMLDivElement;
@@ -105,10 +108,14 @@ export class KeyboardMouseGamepad {
     this.knobEl = document.createElement('div'); this.knobEl.className = 'kk-knob';
     const pad = document.createElement('div'); pad.className = 'kk-pad';
     pad.innerHTML = '<button data-c="KeyG" aria-label="Hint">Hint</button><button data-c="Tab" aria-label="Switch character">Switch</button><button data-c="KeyQ" aria-label="Companion waits or follows">Wait</button><button class="act" data-c="KeyE" aria-label="Interact">Act</button><span></span><button class="act" data-c="Space" aria-label="Jump">Jump</button>';
-    pad.querySelectorAll('button').forEach((b) => b.addEventListener('pointerdown', (e) => {
-      e.stopPropagation(); e.preventDefault();
-      this.pressed.add((b as HTMLElement).dataset.c!);
-    }));
+    pad.querySelectorAll('button').forEach((b) => {
+      const code = (b as HTMLElement).dataset.c!;
+      b.addEventListener('pointerdown', (e) => {
+        e.stopPropagation(); e.preventDefault();
+        this.pressed.add(code); this.touchHeld.add(code);
+      });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => this.touchHeld.delete(code));
+    });
     document.body.append(this.stickEl, this.knobEl, pad);
     this.onTouchMode?.();
   }
@@ -141,6 +148,7 @@ export class KeyboardMouseGamepad {
     const p = this.pressed;
     let sw = p.has('Tab'), inter = p.has('KeyE') || p.has('Enter'), wait = p.has('KeyQ'), reset = p.has('KeyR');
     let jump = p.has('Space'), hint = p.has('KeyG');
+    let jumpHeld = k.has('Space') || this.touchHeld.has('Space');
     let skip = p.has('Space') || p.has('Escape') || p.has('Enter') || p.has('Pointer');
     let walk = k.has('ShiftLeft') || k.has('ShiftRight');
     // Gamepad: left stick move, right stick camera, A/Cross jump, X/Square interact, Y/Triangle switch,
@@ -163,11 +171,12 @@ export class KeyboardMouseGamepad {
       if (edge(8)) reset = true;
       if (edge(9)) skip = true;
       if (b[5]) walk = true;
+      if (b[0]) jumpHeld = true;
       this.padPrev = b;
     }
     const zoom = this.zoomDelta; this.zoomDelta = 0;
     const any = p.size > 0 || mv.lengthSq() > 0;
     p.clear();
-    return { move: mv, look, walk, switchPressed: sw, interactPressed: inter, waitPressed: wait, resetPressed: reset, skipPressed: skip, jumpPressed: jump, hintPressed: hint, zoom, any };
+    return { move: mv, look, walk, switchPressed: sw, interactPressed: inter, waitPressed: wait, resetPressed: reset, skipPressed: skip, jumpPressed: jump, jumpHeld, hintPressed: hint, zoom, any };
   }
 }

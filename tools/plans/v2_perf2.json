@@ -1,0 +1,10 @@
+[
+  { "label": "settle", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; window.__t = (n) => { const t0 = performance.now(); for (let i = 0; i < n; i++) __v2.pipeline.render(); return ((performance.now() - t0) / n).toFixed(2); }; return 1; })()", "wait": 8000 },
+  { "label": "render all", "js": "__t(20)", "wait": 300 },
+  { "label": "no level", "js": "(() => { __v2.level.root.visible = false; const r = __t(20); __v2.level.root.visible = true; return r; })()", "wait": 300 },
+  { "label": "no grass", "js": "(() => { __v2.grass.group.visible = false; const r = __t(20); __v2.grass.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no veg", "js": "(() => { __v2.veg.group.visible = false; const r = __t(20); __v2.veg.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no chars", "js": "(() => { __v2.kitten.group.visible = false; __v2.knight.group.visible = false; const r = __t(20); __v2.kitten.group.visible = true; __v2.knight.group.visible = true; return r; })()", "wait": 300 },
+  { "label": "no shadows", "js": "(() => { __v2.renderer.shadowMap.enabled = false; const r = __t(20); __v2.renderer.shadowMap.enabled = true; return r; })()", "wait": 300 },
+  { "label": "gpu idle wait", "js": "(async () => { const t0 = performance.now(); for (let i = 0; i < 10; i++) { __v2.pipeline.render(); await __v2.renderer.backend.device.queue.onSubmittedWorkDone(); } return ((performance.now() - t0) / 10).toFixed(2); })()", "wait": 300 }
+]

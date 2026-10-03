@@ -1,0 +1,8 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; return JSON.stringify(__v2.state()); })()", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state())", "out": "v2_01_start.png", "wait": 1500 },
+  { "label": "run north", "js": "(() => { __v2.simMove(0, 1, 2.0); return JSON.stringify(__v2.state()); })()", "wait": 1000 },
+  { "js": "JSON.stringify(__v2.state())", "out": "v2_02_run.png", "wait": 1200 },
+  { "label": "knight", "js": "(() => { __v2.setActive('knight'); return JSON.stringify(__v2.state()); })()", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state())", "out": "v2_03_knight.png", "wait": 300 }
+]

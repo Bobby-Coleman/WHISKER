@@ -23,6 +23,8 @@ export class CharacterBody {
   // Strength of the last landing (0..1), eased off by the pose: a dip in the knees and pelvis.
   landing = 0;
   climb: ClimbState | null = null;
+  // Visual-only height offset that eases to zero: a step up taken in one physics step reads as a quick hop.
+  visualDY = 0;
   constructor(radius: number, height: number) { this.radius = radius; this.height = height; }
 }
 
@@ -85,6 +87,11 @@ export abstract class Character {
   updateVisual(alpha: number, ctx: PoseContext) {
     const b = this.body;
     this.renderPos.lerpVectors(b.prevPos, b.pos, alpha);
+    if (b.visualDY !== 0) {
+      this.renderPos.y += b.visualDY;
+      b.visualDY *= Math.exp(-Math.max(1e-4, ctx.dt) * 18);
+      if (Math.abs(b.visualDY) < 1e-4) b.visualDY = 0;
+    }
     let dy = b.yaw - b.prevYaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.renderYaw = b.prevYaw + dy * alpha;
