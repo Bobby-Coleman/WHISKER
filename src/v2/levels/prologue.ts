@@ -469,7 +469,7 @@ let director: Director | null = null;
 let mother: THREE.Group | null = null;
 
 // Chapter One is reachable from the end of the prologue once it is finished.
-const CH1_READY = false;
+const CH1_READY = true;
 
 // What he says to her, through his helm.
 const LINES = [

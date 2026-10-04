@@ -29,7 +29,7 @@ const n1 = new Simplex2(31), n2 = new Simplex2(43), n3 = new Simplex2(59);
 // The yard's walls (x, z) and their height; north is -Z.
 const Y = { minX: -9, maxX: 9, minZ: -7, maxZ: 7, wallH: 2.8, wallT: 0.6 };
 const GATE = { x: 0, half: 1.4, h: 2.5 };
-const POSTERN = { z: 3, half: 0.55, h: 1.9 };
+const POSTERN = { z: 3, half: 0.62, h: 2.0 };
 const HOIST = { x: -8.2, z: -3.4, crankX: -7.0, crankZ: -2.0 };
 const FORGE = { x: -6.6, z: 2.4 };
 const TOWER = { x: -6.4, z: 5.0 };
@@ -43,6 +43,7 @@ const MILL = { x0: 25, x1: 30.5, z0: -12.2, z1: -7.6 };
 // The fallen ash, root to crown, outside the gate; where the winch drags it.
 const ASH = { a: new THREE.Vector3(-5.4, 0, -8.3), b: new THREE.Vector3(7.2, 0, -9.1), r: 0.42 };
 const ROAD_END_Z = -24;
+const DRAG = { x: 8.0, z: -0.5, yaw: -0.06 };
 
 const water = new Water();
 let Y0 = 0; // the yard's ground
@@ -121,8 +122,8 @@ export const watchhouse: LevelModule = {
     lv.box([(gr + Y.maxX) / 2, Y0, Y.minZ], [Y.maxX - gr, Hh, W], 0, wall);
     lv.box([GATE.x, Y0 + GATE.h, Y.minZ], [GATE.half * 2 + 0.02, Hh - GATE.h, W], 0, { ...wall, bevel: 0.02 });
     const pl = POSTERN.z - POSTERN.half, pr = POSTERN.z + POSTERN.half;
-    lv.box([Y.maxX, Y0, (Y.minZ + pl) / 2], [W, Hh, pl - Y.minZ + W], 0, wall);
-    lv.box([Y.maxX, Y0, (pr + Y.maxZ) / 2], [W, Hh, Y.maxZ - pr + W], 0, wall);
+    lv.box([Y.maxX, Y0, (Y.minZ - W / 2 + pl) / 2], [W, Hh, pl - Y.minZ + W / 2], 0, wall);
+    lv.box([Y.maxX, Y0, (pr + Y.maxZ + W / 2) / 2], [W, Hh, Y.maxZ + W / 2 - pr], 0, wall);
     lv.box([Y.maxX, Y0 + POSTERN.h, POSTERN.z], [W, Hh - POSTERN.h, POSTERN.half * 2 + 0.02], 0, { ...wall, bevel: 0.02 });
     // Gate posts and a few merlons along the wall-walk's outer edge.
     for (const x of [gl - 0.25, gr + 0.25]) lv.box([x, Y0, Y.minZ - 0.35], [0.5, Hh + 0.3, 0.3], 0, { color: STONE, tiles: 0.5 });
@@ -159,11 +160,21 @@ export const watchhouse: LevelModule = {
       void crankPost;
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 14).rotateZ(Math.PI / 2), paintMaterial(DARK, 0.8));
       wheel.position.set(HOIST.crankX + 0.15, Y0 + 0.82, HOIST.crankZ); root.add(wheel);
-      const basket = lv.moverBox([0.86, 0.12, 0.86], (_t, p, q) => { p.set(fx, Y0 + 0.06 + hoist.y * (Hh - 0.06), fz); q.identity(); }, { color: WOOD, rough: 0.8 });
-      void basket;
+      // Its floor flush with the yard's at the bottom, with the wall-walk's at the top. A fixed collider moved with
+      // it (the character controller sticks on moving bodies); whoever stands in it is carried up and down
+      // (Director.update).
+      const basket = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.86), paintMaterial(WOOD, 0.8));
+      basket.castShadow = true; basket.receiveShadow = true;
+      root.add(basket);
+      for (const [dx, dz, w, d] of [[0.43, 0, 0.04, 0.86], [-0.43, 0, 0.04, 0.86], [0, 0.43, 0.86, 0.04]] as const) {
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), paintMaterial(WOOD, 0.8));
+        rim.position.set(dx, 0.1, dz); basket.add(rim);
+      }
+      const col = physics.addBox(new THREE.Vector3(fx, Y0, fz), new THREE.Vector3(0.43, 0.03, 0.43), undefined, { kind: 'wood' }, L.detail);
+      basketVis = { mesh: basket, col, x: fx, z: fz };
       const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 5), paintMaterial('#8a7a5a', 0.9));
       root.add(rope);
-      hoistVis = { wheel, rope, top: new THREE.Vector3(fx, Y0 + Hh + 0.85, fz), base: Y0 + 0.12 };
+      hoistVis = { wheel, rope, top: new THREE.Vector3(fx, Y0 + Hh + 0.85, fz), base: Y0 + 0.03 };
     }
 
     // ---- The gate's two leaves (they open outward, and the ash lies against them) and the postern's door.
@@ -180,7 +191,7 @@ export const watchhouse: LevelModule = {
     {
       const hinge = new THREE.Vector3(Y.maxX + 0.2, Y0, POSTERN.z - POSTERN.half);
       lv.moverBox([0.12, POSTERN.h - 0.04, POSTERN.half * 2 - 0.04], (_t, p, q) => {
-        q.copy(yawQ(-postern.open * 1.6));
+        q.copy(yawQ(postern.open * 1.6)); // outward
         p.copy(hinge).add(new THREE.Vector3(0, (POSTERN.h - 0.04) / 2 + 0.02, POSTERN.half).applyQuaternion(q));
       }, { color: WOOD, rough: 0.85 });
     }
@@ -213,13 +224,18 @@ export const watchhouse: LevelModule = {
       const crown: THREE.Matrix4[] = [];
       for (let i = 0; i < 9; i++) crown.push(new THREE.Matrix4().compose(new THREE.Vector3((i % 3 - 1) * 1.1, -0.3 + (i % 2) * 0.4, len / 2 - 2.6 + Math.floor(i / 3) * 1.4), yawQ(i), new THREE.Vector3(1.3, 1.1, 1.3)));
       props.push(instanceProp('nature/Bush_Common', crown, g, { Leaves_TwistedTree: '#55663a' }));
-      const body = physics.addPlatform(g, [RAPIER.ColliderDesc.capsule(len / 2, ASH.r).setRotation({ x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 })], (_t, p, q) => {
-        // Dragged east toward the mill, swinging its root end round off the gate.
+      // A fixed collider moved by hand while it is dragged (characters can walk along the trunk).
+      const col = physics.addFixed(RAPIER.ColliderDesc.capsule(len / 2, ASH.r), { kind: 'wood' });
+      const place = () => {
         const s = ash.t * ash.t * (3 - 2 * ash.t);
-        p.set(mid.x + 4.2 * s, Y0 + ASH.r - 0.05, mid.z - 2.6 * s);
-        q.copy(yawQ(yaw + 0.42 * s));
-      }, { kind: 'wood' });
-      void body;
+        // Hauled east along its length, clear of the gate, its crown into the pond's edge.
+        g.position.set(mid.x + DRAG.x * s, Y0 + ASH.r - 0.05, mid.z + DRAG.z * s);
+        g.rotation.y = yaw + DRAG.yaw * s;
+        const q = yawQ(g.rotation.y).multiply(new THREE.Quaternion(Math.SQRT1_2, 0, 0, Math.SQRT1_2));
+        col.setTranslation(g.position); col.setRotation(q);
+      };
+      place();
+      ashPlace = place;
       ashMid = mid;
     }
     // The winch rope, from the mill to the ash (shown once he ties it on).
@@ -338,7 +354,9 @@ export const watchhouse: LevelModule = {
 };
 
 let hoistVis: { wheel: THREE.Mesh; rope: THREE.Mesh; top: THREE.Vector3; base: number } | null = null;
+let basketVis: { mesh: THREE.Mesh; col: RAPIER.Collider; x: number; z: number } | null = null;
 let ashMid = new THREE.Vector3();
+let ashPlace: (() => void) | null = null;
 const state: any = {};
 
 // The knight's lines as play goes on, each said once (and not over another).
@@ -387,7 +405,7 @@ class Director {
 
   start() {
     const c = this.c, g = c.game, I = g.interactions;
-    LOOK.fogDistance.value = 110;
+    LOOK.fogDistance.value = 180;
     c.kitten.setBare(false);
     c.kitten.defaultPose = null;
     g.canSwitch = true;
@@ -466,9 +484,12 @@ class Director {
       name: 'opening', length: 17, skippable: true,
       fades: [{ at: 0, dur: 0, to: 1 }, { at: 0.3, dur: 2.0, to: 0 }],
       shots: [
-        { at: 0, dur: 7, from: { pos: [FORGE.x + 1.9, Y0 + 0.95, FORGE.z + 1.3], look: [FORGE.x, anvilTop + 0.2, FORGE.z], mm: 40, dof: 0.4 }, to: { pos: [FORGE.x + 1.6, Y0 + 0.9, FORGE.z + 1.0], look: [FORGE.x, anvilTop + 0.22, FORGE.z], mm: 44, dof: 0.4 }, ease: 'smooth' },
-        { at: 7, dur: 4, from: { pos: [FORGE.x + 0.55, anvilTop + 0.3, FORGE.z + 0.5], look: [FORGE.x, anvilTop + 0.22, FORGE.z], mm: 55, dof: 0.6 }, to: { pos: [FORGE.x + 0.5, anvilTop + 0.28, FORGE.z + 0.45], look: [FORGE.x, anvilTop + 0.24, FORGE.z], mm: 58, dof: 0.6 }, ease: 'smooth' },
-        { at: 11, dur: 6, from: { pos: [3, Y0 + 4.5, 4], look: [GATE.x, Y0 + 0.5, Y.minZ - 1.5], mm: 32 }, to: { pos: [2.4, Y0 + 5.2, 2.6], look: [GATE.x, Y0 + 0.3, Y.minZ - 2], mm: 32 }, ease: 'smooth' },
+        // The two of them in profile at the anvil, the forge's fire behind.
+        { at: 0, dur: 7, from: { pos: [FORGE.x + 1.5, Y0 + 1.4, FORGE.z - 1.6], look: [FORGE.x + 0.35, Y0 + 0.85, FORGE.z], mm: 34, dof: 0.3 }, to: { pos: [FORGE.x + 1.3, Y0 + 1.3, FORGE.z - 1.35], look: [FORGE.x + 0.3, Y0 + 0.8, FORGE.z], mm: 37, dof: 0.3 }, ease: 'smooth' },
+        // Her, close, the ribbon on her head (from upwind, so the cape blows away from the lens).
+        { at: 7, dur: 4, from: { pos: [FORGE.x + 0.6, anvilTop + 0.32, FORGE.z - 0.5], look: [FORGE.x, anvilTop + 0.22, FORGE.z], mm: 52, dof: 0.6 }, to: { pos: [FORGE.x + 0.55, anvilTop + 0.3, FORGE.z - 0.45], look: [FORGE.x, anvilTop + 0.24, FORGE.z], mm: 55, dof: 0.6 }, ease: 'smooth' },
+        // Over the wall: the ash across the gate.
+        { at: 11, dur: 6, from: { pos: [-1.5, Y0 + 4.4, Y.minZ + 0.6], look: [GATE.x + 1.5, Y0 + 0.2, Y.minZ - 2.4], mm: 28 }, to: { pos: [-1.2, Y0 + 4.8, Y.minZ + 0.9], look: [GATE.x + 2, Y0 + 0.2, Y.minZ - 2.6], mm: 28 }, ease: 'smooth' },
       ],
       marks: [
         { at: 0, who: 'kitten', path: [[kp.x, kp.y, kp.z]], face: Math.PI / 2, probe: 0.3 },
@@ -476,6 +497,9 @@ class Director {
         { at: 13, who: 'kitten', path: [[FORGE.x + 0.9, Y0, FORGE.z - 0.4]], face: Math.PI / 2 },
       ],
       cues: [
+        // Her cape laid out again where she now stands (on the anvil).
+        { at: 0.02, run: () => c.kitten.resetCloth() },
+        { at: 13.05, run: () => c.kitten.resetCloth() },
         { at: 0.6, run: () => this.c.audio.play('clank', kp, 0.4), onSkip: false },
         { at: 2.0, run: () => { kn.reachWant = 1; const b = new THREE.Vector3(0, 0.05, 0).applyMatrix4(c.kitten.parts.head.matrixWorld); kn.reachL.copy(b).add(new THREE.Vector3(0.05, 0.04, 0.06)); kn.reachR.copy(b).add(new THREE.Vector3(0.05, 0.04, -0.06)); } },
         { at: 4.6, run: () => { kn.reachWant = 0; } },
@@ -507,13 +531,13 @@ class Director {
       name: 'drag', length: 11, skippable: true,
       shots: [
         { at: 0, dur: 3.5, from: { pos: [WHEEL.x - 3.2, Y0 + 1.4, WHEEL.z + 2.6], look: [WHEEL.x, Y0, WHEEL.z], mm: 34 }, to: { pos: [WHEEL.x - 2.8, Y0 + 1.3, WHEEL.z + 2.3], look: [WHEEL.x, Y0, WHEEL.z], mm: 36 }, ease: 'smooth' },
-        { at: 3.5, dur: 7.5, from: { pos: [GATE.x - 3, Y0 + 3.2, Y.minZ - 6.5], look: [ashMid.x + 1, Y0 + 0.3, ashMid.z], mm: 30 }, to: { pos: [GATE.x - 2, Y0 + 3.6, Y.minZ - 7.5], look: [ashMid.x + 2.5, Y0 + 0.3, ashMid.z - 1], mm: 30 }, ease: 'smooth' },
+        { at: 3.5, dur: 7.5, from: { pos: [GATE.x - 6, Y0 + 5.5, Y.minZ - 9], look: [ashMid.x + 2, Y0 + 0.2, ashMid.z + 0.5], mm: 28 }, to: { pos: [GATE.x - 5, Y0 + 6.2, Y.minZ - 10], look: [ashMid.x + 5, Y0 + 0.2, ashMid.z], mm: 28 }, ease: 'smooth' },
       ],
       cues: [
         { at: 0.2, run: () => c.audio.play('creak', new THREE.Vector3(WHEEL.x, Y0, WHEEL.z), 1.2) },
         { at: 3.8, run: () => { this.dragging = true; c.audio.play('gate', ashMid, 1.2); } },
         { at: 8.2, run: () => { this.gateOpening = true; c.audio.play('door', new THREE.Vector3(GATE.x, Y0 + 1, Y.minZ), 1); } },
-        { at: 10.9, run: () => { state.ash.t = 1; state.gate.open = 1; }, onSkip: true },
+        { at: 10.9, run: () => { state.ash.t = 1; state.gate.open = 1; ashPlace?.(); }, onSkip: true },
       ],
       onEnd: () => {
         this.stage = 'road';
@@ -527,6 +551,7 @@ class Director {
   private dragging = false;
   private gateOpening = false;
   private hinted = new Set<string>();
+  private riding = false;
 
   update(dt: number, t: number, c: StoryContext) {
     this.fire.update(dt, t, c.camera);
@@ -535,12 +560,29 @@ class Director {
     if (!S.hoist) return;
     this.crankT = Math.max(0, this.crankT - dt);
     if (this.crankT <= 0 && c.knight.reachWant > 0 && this.stage === 'play') c.knight.reachWant = 0;
-    // The hoist eases toward where the crank sends it.
+    // The hoist eases toward where the crank sends it, carrying whoever stands in the basket.
     const hs = (S.hoist.want - S.hoist.y);
     S.hoist.y += THREE.MathUtils.clamp(hs, -dt / 3, dt / 3);
+    if (basketVis) {
+      const top = Y0 + S.hoist.y * (Y.wallH - 0.03);
+      basketVis.mesh.position.set(basketVis.x, top, basketVis.z);
+      basketVis.col.setTranslation({ x: basketVis.x, y: top, z: basketVis.z });
+      const k = this.kitten, kb = k.char.body;
+      const inBasket = Math.abs(kb.pos.x - basketVis.x) < 0.42 && Math.abs(kb.pos.z - basketVis.z) < 0.42 && Math.abs(kb.pos.y - (top + 0.03)) < 0.25;
+      if (Math.abs(hs) > 1e-4 && (inBasket || this.riding)) {
+        this.riding = true;
+        k.motor.mode = 'held';
+        kb.prevPos.copy(kb.pos);
+        kb.pos.y = top + 0.03; kb.prevPos.y = kb.pos.y; kb.vel.set(0, 0, 0); kb.grounded = true;
+        k.motor.syncCollider();
+      } else if (this.riding) {
+        this.riding = false;
+        k.motor.place(new THREE.Vector3(kb.pos.x, top + 0.03, kb.pos.z), kb.yaw);
+      }
+    }
     if (hoistVis) {
       hoistVis.wheel.rotation.x += hs !== 0 ? dt * 4 * Math.sign(hs) : 0;
-      const by = hoistVis.base + S.hoist.y * (Y.wallH - 0.06), top = hoistVis.top.y;
+      const by = hoistVis.base + S.hoist.y * (Y.wallH - 0.03), top = hoistVis.top.y;
       hoistVis.rope.position.set(hoistVis.top.x, (by + top) / 2, hoistVis.top.z);
       hoistVis.rope.scale.y = Math.max(0.05, top - by);
     }
@@ -565,13 +607,13 @@ class Director {
     this.wheelSpin += (spin - this.wheelSpin) * Math.min(1, dt * 0.8);
     S.wheel.rotation.z -= this.wheelSpin * dt * 1.1;
     if (spin && this.stage === 'play' && this.roped) this.drag();
-    if (this.dragging) S.ash.t = Math.min(1, S.ash.t + dt / 4.2);
+    if (this.dragging) { S.ash.t = Math.min(1, S.ash.t + dt / 4.2); ashPlace?.(); }
     if (this.gateOpening) S.gate.open = Math.min(1, S.gate.open + dt / 2.2);
     // The rope from the mill's wall to the ash's crown end.
     if (S.rope.visible) {
       const a = new THREE.Vector3(MILL.x0, Y0 + 1.2, MILL.z0 + 1.0);
       const s = S.ash.t * S.ash.t * (3 - 2 * S.ash.t);
-      const b = ASH.b.clone().add(new THREE.Vector3(4.2 * s, Y0 + 0.35, -2.6 * s));
+      const b = ASH.b.clone().add(new THREE.Vector3(DRAG.x * s, Y0 + 0.35, DRAG.z * s));
       const mid = a.clone().add(b).multiplyScalar(0.5), len = a.distanceTo(b);
       S.rope.position.copy(mid); S.rope.scale.set(1, len, 1);
       S.rope.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
