@@ -1,0 +1,8 @@
+[
+  { "label": "title", "js": "1", "wait": 1500, "out": "live_0_title.png" },
+  { "label": "opening", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('opening'); return 1; })()", "wait": 5000, "out": "live_1_open.png" },
+  { "label": "sit", "js": "(() => { __v2.timeline.t = 19.5; return 1; })()", "wait": 1500, "out": "live_2_sit.png" },
+  { "label": "camp", "js": "(() => { __v2.timeline.t = 27.4; return 1; })()", "wait": 1200, "out": "live_3_camp.png" },
+  { "label": "play", "js": "(() => { __v2.timeline.t = 38.3; return 1; })()", "wait": 2500, "out": "live_4_play.png" },
+  { "label": "state", "js": "__prologue.stage + ' ' + JSON.stringify(__v2.state().kitten)", "wait": 100 }
+]

@@ -1,7 +1,7 @@
 // Review captures and frame timing on this machine's real GPU through installed Chrome (WebGPU, D3D12).
 // Usage: node tools/cap.mjs <url> <plan.json> [outDir]
 //   plan: [{ "js": "<expression run in the page>", "out": "name.png", "wait": ms }, ...]
-// Env: W, H (viewport), HEADED=1 (show the window), GPU=intel (prefer the integrated adapter).
+// Env: W, H (viewport), HEADED=1 (show the window), GPU=intel (prefer the integrated adapter), MOBILE=1 (touch phone).
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,9 @@ const browser = await chromium.launch({
   headless: process.env.HEADED !== '1',
   args,
 });
-const page = await browser.newPage({ viewport: { width: +(process.env.W || 1280), height: +(process.env.H || 720) }, deviceScaleFactor: 1 });
+// MOBILE=1: a touch phone (coarse pointer, on-screen controls).
+const mobile = process.env.MOBILE === '1' ? { isMobile: true, hasTouch: true } : {};
+const page = await browser.newPage({ viewport: { width: +(process.env.W || 1280), height: +(process.env.H || 720) }, deviceScaleFactor: 1, ...mobile });
 const logs = [];
 page.on('console', (m) => { if (m.type() !== 'debug') logs.push(m.type() + ': ' + m.text()); });
 page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));

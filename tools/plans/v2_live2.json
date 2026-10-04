@@ -1,0 +1,10 @@
+[
+  { "label": "walk", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return 1; })()", "wait": 4000 },
+  { "label": "found", "js": "(() => { __v2.story('found'); return 1; })()", "wait": 2500, "out": "live_5_found.png" },
+  { "label": "face", "js": "(() => { __v2.timeline.t = 9.7; return 1; })()", "wait": 900, "out": "live_6_face.png" },
+  { "label": "ending", "js": "(() => { __v2.timeline.t = 11.9; return 1; })()", "wait": 1500 },
+  { "label": "lap", "js": "(() => { __v2.story('ending'); return 1; })()", "wait": 7000, "out": "live_7_lap.png" },
+  { "label": "night", "js": "(() => { __v2.timeline.t = 15; return 1; })()", "wait": 2500, "out": "live_8_night.png" },
+  { "label": "dawn", "js": "(() => { __v2.timeline.t = 27; return 1; })()", "wait": 3000, "out": "live_9_dawn.png" },
+  { "label": "title", "js": "(() => { __v2.timeline.t = 41.9; return 1; })()", "wait": 3500, "out": "live_10_title.png" }
+]

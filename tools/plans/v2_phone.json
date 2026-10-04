@@ -1,0 +1,4 @@
+[
+  { "label": "title", "js": "document.querySelector('.kk-pad') ? 'pad' : 'no pad'", "wait": 1500, "out": "ph_0_title.png" },
+  { "label": "walk", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return [...document.querySelectorAll('.kk-pad button')].map((b) => b.textContent + ':' + getComputedStyle(b).display).join(' '); })()", "wait": 3000, "out": "ph_1_play.png" }
+]
