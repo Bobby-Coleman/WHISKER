@@ -7,7 +7,8 @@ import * as THREE from 'three/webgpu';
 import { Fn, uniform, uniformArray, vec2, vec3, float, positionWorld, attribute, smoothstep, mix, color, normalize, cos, exp, length, transformNormalToView } from 'three/tsl';
 import { bakedNoise } from '../render/noisetex';
 
-export type Pool = { x: number; z: number; rx: number; rz: number; rot: number; level: number; depth: number; seed: number };
+// `carve: false` leaves the ground as the level shaped it (a stone-lined channel); `wobble: 0` keeps a clean edge.
+export type Pool = { x: number; z: number; rx: number; rz: number; rot: number; level: number; depth: number; seed: number; carve?: boolean; wobble?: number; bounds?: { x0: number; x1: number; z0: number; z1: number }; mesh?: THREE.Mesh; base?: number };
 
 const RIPPLES = 10;
 
@@ -21,7 +22,13 @@ export class Water {
 
   constructor() { this.group.name = 'Water'; }
 
-  add(p: Omit<Pool, 'seed'> & { seed?: number }) { this.pools.push({ seed: this.pools.length * 1.7 + 0.4, ...p }); }
+  add(p: Omit<Pool, 'seed'> & { seed?: number }) { const q = { seed: this.pools.length * 1.7 + 0.4, ...p }; this.pools.push(q); return q; }
+
+  // Raises or lowers a pond (a sluice opening): its surface moves with it.
+  setLevel(p: Pool, level: number) {
+    p.level = level;
+    if (p.mesh) p.mesh.position.y = level - (p.base ?? level);
+  }
 
   // How far out from a pond's middle a point is: 1 on its (wandering) shore.
   q(p: Pool, x: number, z: number) {
@@ -29,20 +36,27 @@ export class Water {
     const dx = x - p.x, dz = z - p.z;
     const lx = (c * dx + s * dz) / p.rx, lz = (-s * dx + c * dz) / p.rz;
     const a = Math.atan2(lz, lx);
-    const wob = 1 + 0.11 * Math.sin(3 * a + p.seed) + 0.06 * Math.sin(5 * a + p.seed * 2.3) + 0.04 * Math.sin(8 * a + p.seed * 4.1);
+    const k = p.wobble ?? 1;
+    const wob = 1 + k * (0.11 * Math.sin(3 * a + p.seed) + 0.06 * Math.sin(5 * a + p.seed * 2.3) + 0.04 * Math.sin(8 * a + p.seed * 4.1));
     return Math.hypot(lx, lz) / wob;
   }
 
   // The water's surface over (x, z), or null where there is no pond.
   surfaceAt(x: number, z: number): number | null {
-    for (const p of this.pools) if (this.q(p, x, z) < 1.3) return p.level;
+    for (const p of this.pools) if (this.q(p, x, z) < 1.3 && this.inBounds(p, x, z)) return p.level;
     return null;
+  }
+
+  private inBounds(p: Pool, x: number, z: number) {
+    const b = p.bounds;
+    return !b || (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1);
   }
 
   // The moor's height with the ponds' beds carved in: a bowl down to `depth` under the surface, banks that rise
   // out of the water and blend back into the moor.
   carve(h: number, x: number, z: number) {
     for (const p of this.pools) {
+      if (p.carve === false) continue;
       const q = this.q(p, x, z);
       if (q >= 2.2) continue;
       if (q < 1) {
@@ -79,12 +93,14 @@ export class Water {
       const idx = g.index!.array, keep: number[] = [];
       for (let i = 0; i < idx.length; i += 3) {
         const d = Math.max(depth[idx[i]], depth[idx[i + 1]], depth[idx[i + 2]]);
-        if (d > -0.02) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+        const cxm = (pos.getX(idx[i]) + pos.getX(idx[i + 1]) + pos.getX(idx[i + 2])) / 3, czm = (pos.getZ(idx[i]) + pos.getZ(idx[i + 1]) + pos.getZ(idx[i + 2])) / 3;
+        if (d > -0.02 && this.inBounds(p, cxm, czm)) keep.push(idx[i], idx[i + 1], idx[i + 2]);
       }
       g.setIndex(keep);
       g.computeVertexNormals();
       g.computeBoundingSphere();
       const m = new THREE.Mesh(g, mat);
+      p.mesh = m; p.base = p.level;
       m.receiveShadow = true;
       m.castShadow = false;
       m.renderOrder = 2;

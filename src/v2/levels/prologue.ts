@@ -23,6 +23,7 @@ import type { LevelInfo } from '../game';
 import type { Cutscene } from '../timeline';
 import type { LevelModule, StoryContext } from './types';
 import { DrivenAvatar } from '../driven';
+import { Subtitles, say } from '../speech';
 
 type P2 = [number, number];
 const n1 = new Simplex2(71), n2 = new Simplex2(83), n3 = new Simplex2(97);
@@ -467,6 +468,9 @@ const PLUMES: [number, number, number][] = [[30, -38, 34], [-42, -24, 28], [44, 
 let director: Director | null = null;
 let mother: THREE.Group | null = null;
 
+// Chapter One is reachable from the end of the prologue once it is finished.
+const CH1_READY = false;
+
 // What he says to her, through his helm.
 const LINES = [
   'What’s your name, little one?',
@@ -482,7 +486,7 @@ class Director {
   private plumes: SmokePlume[] = [];
   private rain: ReturnType<typeof createRain>;
   private black: HTMLDivElement;
-  private sub: HTMLDivElement;
+  private subs: Subtitles;
   private hintsShown = new Set<string>();
   // Where she sits in his lap.
   private lapTop = new THREE.Vector3();
@@ -497,10 +501,7 @@ class Director {
     this.black = document.createElement('div');
     this.black.style.cssText = 'position:fixed;inset:0;background:#0b0c0c;opacity:0;pointer-events:none;z-index:5';
     document.body.appendChild(this.black);
-    // Subtitles: low on the screen, over the letterbox.
-    this.sub = document.createElement('div');
-    this.sub.style.cssText = 'position:fixed;left:0;right:0;bottom:calc(11vh + 14px);text-align:center;z-index:6;pointer-events:none;color:#f1ece2;font:italic clamp(17px,2.4vw,26px) "Cormorant Garamond",Georgia,serif;letter-spacing:.02em;text-shadow:0 1px 3px #000,0 0 14px rgba(0,0,0,.7);padding:0 16px;opacity:0;transition:opacity .35s';
-    document.body.appendChild(this.sub);
+    this.subs = new Subtitles();
   }
 
   private get kitten() { return this.c.game.kitten; }
@@ -591,14 +592,8 @@ class Director {
 
   // He speaks (muffled in the helm); the words under the picture.
   private say(line: string) {
-    const head = new THREE.Vector3(0, 0.1, 0.1).applyMatrix4(this.c.knight.parts.head.matrixWorld);
-    const dur = this.c.audio.speak(line, head, 1.0);
-    this.sub.textContent = line;
-    this.sub.style.opacity = '1';
-    clearTimeout(this.subT);
-    this.subT = setTimeout(() => { this.sub.style.opacity = '0'; }, (dur + 1.3) * 1000) as unknown as number;
+    say(this.c.audio, this.subs, line, new THREE.Vector3(0, 0.1, 0.1).applyMatrix4(this.c.knight.parts.head.matrixWorld));
   }
-  private subT = 0;
 
   // She called. Lost in the fog, he answers (a breath, a murmur) so she can find him.
   heard(_kind: string) {
@@ -783,7 +778,7 @@ class Director {
     this.stage = 'end';
     this.black.style.transition = 'none';
     this.black.style.opacity = '1';
-    this.sub.style.opacity = '0';
+    this.subs.hide();
     const t = document.createElement('div');
     t.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:6;pointer-events:none;color:#ece8de;font-family:"Cormorant Garamond",Georgia,serif;text-align:center;transition:opacity 2.2s;opacity:0;padding:0 16px';
     t.innerHTML = '<div style="font-size:clamp(44px,9vw,104px);letter-spacing:.2em;padding-left:.2em">WHISKER</div>';
@@ -799,7 +794,7 @@ class Director {
     const d = document.createElement('div');
     d.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#0c0d0d;color:#ece8de;font:16px Georgia,serif;z-index:7;text-align:center;padding:24px';
     d.innerHTML = `<div style="font-size:clamp(22px,3vw,34px);letter-spacing:.14em;text-transform:uppercase">End of the prologue</div>
-      <div style="opacity:.8;font-style:italic;max-width:34em">Chapter One, the Watch-House, comes next.</div>`;
+      <div style="opacity:.8;font-style:italic;max-width:34em">Chapter One: the Watch-House${CH1_READY ? '' : ', coming next'}.</div>`;
     const btn = (label: string, fn: () => void) => {
       const b = document.createElement('button');
       b.textContent = label;
@@ -807,6 +802,7 @@ class Director {
       b.onclick = fn;
       d.appendChild(b);
     };
+    if (CH1_READY) btn('Continue to Chapter One', () => { const u = new URL(location.href); u.searchParams.set('level', 'ch1'); location.href = u.toString(); });
     btn('Play the prologue again', () => location.reload());
     btn('Engine test course', () => { const u = new URL(location.href); u.searchParams.set('level', 'test'); location.href = u.toString(); });
     btn('The old version (five chapters)', () => { const u = new URL(location.href); u.searchParams.delete('v2'); u.searchParams.delete('level'); location.href = u.toString(); });

@@ -9,6 +9,7 @@ import { Climber } from './climb';
 import { Carry } from './carry';
 import { Follower } from './follow';
 import { FollowCamera, Subject } from './camera';
+import { Interactions } from './interact';
 import type { CharacterBody, PoseContext } from '../chars/character';
 import type { InputFrame } from '../game/input';
 import type { Cutscene } from './timeline';
@@ -39,6 +40,8 @@ export class Game {
   kitten: Actor & { climber: Climber };
   knight: Actor;
   carry: Carry;
+  // Levers, cranks, doors and plates the level adds.
+  interactions = new Interactions();
   // The one not played follows the one who is (Q: wait / follow).
   follower = new Follower();
   private leaderJumped = false;
@@ -111,9 +114,13 @@ export class Game {
       else if (a === this.kitten && a.char.body.climb) this.climbJump = true;
       else a.motor.queueJump();
     }
-    if (inp.interactPressed && a === this.knight) {
-      if (this.carry.holding) { this.knight.char.play?.('OverhandThrow'); this.carry.throw(); this.switchTo(this.kitten); }
-      else if (this.carry.canLift()) this.carry.lift();
+    if (inp.interactPressed) {
+      const u = this.carry.holding ? null : this.interactions.nearest(a);
+      if (u) u.use(a);
+      else if (a === this.knight) {
+        if (this.carry.holding) { this.knight.char.play?.('OverhandThrow'); this.carry.throw(); this.switchTo(this.kitten); }
+        else if (this.carry.canLift()) this.carry.lift();
+      }
     }
     if (inp.waitPressed) {
       if (a === this.knight && this.carry.holding) this.carry.putDown();
@@ -132,6 +139,8 @@ export class Game {
   // What the played character can do here, for the on-screen prompt.
   prompt(): { text: string; key: 'act' | 'jump' } | null {
     if (this.locked) return null;
+    const u = this.carry.holding ? null : this.interactions.nearest(this.active);
+    if (u) return { text: u.text, key: 'act' };
     if (this.active === this.knight) {
       if (this.carry.holding) return { text: 'Throw her up (Q sets her down)', key: 'act' };
       if (this.carry.canLift()) return { text: 'Lift the kitten', key: 'act' };
@@ -172,6 +181,7 @@ export class Game {
     if (!this.locked) this.follower.record(this.active, this.leaderJumped);
     this.leaderJumped = false;
     this.carry.step();
+    this.interactions.step([this.kitten, this.knight], dt);
     this.brushPast();
     this.checkFalls(dt);
   }

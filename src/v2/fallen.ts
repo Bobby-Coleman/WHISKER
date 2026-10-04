@@ -136,7 +136,7 @@ export function horseGeometry(coat: 'bay' | 'grey' | 'black') {
   const base = { bay: '#5a3a24', grey: '#8d8a84', black: '#2a2522' }[coat];
   const c0 = new THREE.Color(base), dark = new THREE.Color('#1e1714'), pale = c0.clone().lerp(new THREE.Color('#d8d0c4'), 0.25);
   const lin = (c: THREE.Color) => [c.r, c.g, c.b] as [number, number, number];
-  return polygonize(L, new THREE.Vector3(-0.85, -0.05, -1.35), new THREE.Vector3(1.35, 0.78, 1.65), 78, (x, y, z) => {
+  return polygonize(L, new THREE.Vector3(-1.15, -0.05, -1.35), new THREE.Vector3(1.4, 0.78, 1.65), 80, (x, y, z) => {
     const sy = 1.25 - x; // standing height
     // Dark points (lower legs, mane and tail), a paler belly.
     if (coat !== 'grey' && (sy < 0.62 || (z < -0.82 && sy > 0.85))) return lin(dark);

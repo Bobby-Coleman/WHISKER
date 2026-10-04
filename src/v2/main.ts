@@ -30,6 +30,7 @@ import { Physics } from './physics';
 import { LevelBuilder } from './level';
 import { prepareField, buildPlayground } from './levels/playground';
 import { prologue, debugStage } from './levels/prologue';
+import { watchhouse, debugStageCh1 } from './levels/watchhouse';
 import type { LevelModule, StoryContext } from './levels/types';
 
 // The engine test course, as a level.
@@ -52,7 +53,7 @@ export async function run(params: URLSearchParams) {
 
   const load = new LoadTracker([
     ['files', 'Downloading the kitten and the knight', 30],
-    ['world', 'Building the course', 16],
+    ['world', 'Building the world', 16],
     ['characters', 'Dressing the characters', 8],
     ['shaders', 'Preparing shaders', 38],
     ['warmup', 'Drawing the first frame', 8],
@@ -88,7 +89,8 @@ export async function run(params: URLSearchParams) {
   statsPanel.gpuSupported = (renderer.backend as any).trackTimestamp === true;
   const weather = new Weather(renderer);
   // The level: the prologue by default; ?level=test, the engine test course.
-  const mod: LevelModule = params.get('level') === 'test' ? playground : prologue;
+  const levelId = params.get('level');
+  const mod: LevelModule = levelId === 'test' ? playground : levelId === 'ch1' ? watchhouse : prologue;
   const startWeather = (params.get('weather') as WeatherId) || mod.weather || 'morning';
   const weatherReady = weather.load(startWeather);
   weatherReady.catch(() => {});
@@ -363,7 +365,7 @@ export async function run(params: URLSearchParams) {
   W.__v2 = {
     game, physics, kitten, knight, scene, renderer, LOOK, timeline, pipeline, level: lv, grass, veg, mist,
     play: () => level.intro && timeline.play(level.intro),
-    story: (stage: string) => { started = true; audio.start(); return stage === 'opening' ? mod.begin?.(story) : debugStage(story, stage); },
+    story: (stage: string) => { started = true; audio.start(); return stage === 'opening' ? mod.begin?.(story) : mod === watchhouse ? debugStageCh1(story, stage) : debugStage(story, stage); },
     skipCut: () => timeline.skip(),
     setActive: (k: 'kitten' | 'knight') => game.switchTo(k === 'kitten' ? game.kitten : game.knight),
     teleport: (k: 'kitten' | 'knight', x: number, y: number, z: number, yaw = 0) => {

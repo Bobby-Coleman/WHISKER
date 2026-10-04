@@ -331,7 +331,7 @@ export class Knight extends Character {
     this.armL.target.copy(wound).lerp(over, this.shelterNow);
     this.armL.pole.set(1, -0.5, 0.3).lerp(new THREE.Vector3(1, 0.4, 0.1), this.shelterNow);
     this.solveArms();
-    this.poseSkirt(ctx);
+    this.poseSkirt(ctx, true);
   };
 
   private poseSword(ctx: PoseContext, speed: number) {
@@ -414,7 +414,9 @@ export class Knight extends Character {
   }
 
   // Skirt panels and tassets swing out of the way of the thighs and lift a little in the wind.
-  private poseSkirt(ctx: PoseContext) {
+  // Sitting on the ground, the skirt spreads on the earth round him instead of hanging (behind and at the sides it
+  // lies flat out; in front it lies along his thighs).
+  private poseSkirt(ctx: PoseContext, sitting = false) {
     const P = this.parts;
     const pitch = (thigh: THREE.Object3D, shin: THREE.Object3D) => Math.atan2(shin.position.z - thigh.position.z, Math.max(0.05, thigh.position.y - shin.position.y));
     const pL = pitch(P.thighL, P.shinL), pR = pitch(P.thighR, P.shinR);
@@ -426,8 +428,8 @@ export class Knight extends Character {
       const th = p.side > 0 ? pL : pR;
       let target = 0;
       if (p.kind === 'front') target = Math.max(0, th) * 0.85;
-      else if (p.kind === 'back') target = Math.max(0, -th) * 0.8;
-      else target = Math.abs(th) * 0.12;
+      else if (p.kind === 'back') target = sitting ? 1.3 : Math.max(0, -th) * 0.8;
+      else target = sitting ? 0.95 : Math.abs(th) * 0.12;
       const downwind = p.out.x * wx + p.out.z * wz;
       target += Math.max(-0.02, downwind) * (0.05 + gust * 0.12) + Math.sin(t * 2.7 + p.phase) * 0.012 * (0.3 + gust);
       const cur = this.flap.get(p.g) ?? 0;
