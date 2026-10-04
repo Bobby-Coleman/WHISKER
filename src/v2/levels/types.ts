@@ -33,4 +33,6 @@ export type LevelModule = {
   update?(dt: number, t: number, c: StoryContext): void;
   // She called (the call button): 'meow', 'mew' or 'mrrp'.
   call?(c: StoryContext, kind: string): void;
+  // Camera views drawn once while loading (behind the loading screen), so what the opening shows is compiled.
+  warmViews?(): { pos: [number, number, number]; look: [number, number, number] }[];
 };

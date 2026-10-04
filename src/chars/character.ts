@@ -23,6 +23,8 @@ export class CharacterBody {
   // Strength of the last landing (0..1), eased off by the pose: a dip in the knees and pelvis.
   landing = 0;
   climb: ClimbState | null = null;
+  // In water too deep to stand in: she swims at the surface (v2's motor sets it).
+  swimming = false;
   // Visual-only height offset that eases to zero: a step up taken in one physics step reads as a quick hop.
   visualDY = 0;
   constructor(radius: number, height: number) { this.radius = radius; this.height = height; }
@@ -59,6 +61,8 @@ export abstract class Character {
   carriedBy: Character | null = null;
   holding: Character | null = null;
   override: ((c: Character, ctx: PoseContext) => void) | null = null;
+  // The pose used when no story pose is set (the prologue kitten's four-legged gait); null for the biped.
+  defaultPose: ((c: Character, ctx: PoseContext) => void) | null = null;
   // 0 on the ground .. 1 on a climbing face (eased by the pose).
   climbBlend = 0;
   // How quickly a story pose blends in and out over the animated body, per second (driven mode).
@@ -105,14 +109,43 @@ export abstract class Character {
     this.accel.subVectors(b.vel, this.lastVel).divideScalar(dt);
     this.lastVel.copy(b.vel);
     // A story pose (sitting against a tree, curled up asleep) replaces the whole body's pose.
-    if (this.override) {
-      this.override(this, ctx);
-      return;
+    // A change of pose (a story pose set or cleared) eases from where the body was.
+    const pose = this.override ?? this.defaultPose;
+    const parts = [...Object.values(this.parts), ...this.blendExtras()];
+    if (pose !== this.lastPose) {
+      if (this.lastPose !== undefined) {
+        for (const o of parts) {
+          let s = this.poseSnap.get(o);
+          if (!s) { s = { p: new THREE.Vector3(), q: new THREE.Quaternion() }; this.poseSnap.set(o, s); }
+          s.p.copy(o.position); s.q.copy(o.quaternion);
+        }
+        this.poseBlendT = 0;
+      }
+      this.lastPose = pose;
     }
-    if (this.carriedBy) {
-      this.poseCarried(ctx);
-      return;
+    if (pose) pose(this, ctx);
+    else if (this.carriedBy) this.poseCarried(ctx);
+    else this.poseBiped(ctx);
+    if (this.poseBlendT < 1) {
+      this.poseBlendT = Math.min(1, this.poseBlendT + dt / 0.35);
+      const x = 1 - this.poseBlendT, w = x * x * (3 - 2 * x);
+      for (const o of parts) {
+        const s = this.poseSnap.get(o);
+        if (!s) continue;
+        o.position.lerp(s.p, w); o.quaternion.slerp(s.q, w);
+        o.updateMatrix();
+      }
     }
+  }
+  private lastPose: ((c: Character, ctx: PoseContext) => void) | null | undefined = undefined;
+  private poseBlendT = 1;
+  private poseSnap = new Map<THREE.Object3D, { p: THREE.Vector3; q: THREE.Quaternion }>();
+  // Parts beyond the body's own that a change of pose eases too (a tail).
+  protected blendExtras(): THREE.Object3D[] { return []; }
+
+  // Walking upright on the gait's planted feet (and climbing).
+  protected poseBiped(ctx: PoseContext) {
+    const b = this.body, dt = Math.max(1e-4, ctx.dt);
     // In the air the feet plan their steps on a ground just under the body: the legs tuck instead of reaching for
     // the earth below. On landing they plant again and the body dips with the impact.
     const tuck = this.gait.p.hipY * 0.42;

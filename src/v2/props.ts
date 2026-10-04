@@ -50,3 +50,35 @@ export async function placeProp(id: string, p: Place, parent: THREE.Object3D) {
   o.updateMatrixWorld(true);
   return o;
 }
+
+// Many copies of one prop as instanced meshes (a hedgerow of bushes, a field of spears): one draw per mesh in it.
+export async function instanceProp(id: string, mats: THREE.Matrix4[], parent: THREE.Object3D, tint?: Record<string, string>) {
+  const src = await loadProp(id);
+  src.updateMatrixWorld(true);
+  const out: THREE.InstancedMesh[] = [];
+  src.traverse((o: any) => {
+    if (!o.isMesh) return;
+    let mat = o.material as THREE.Material;
+    const c = tint?.[mat.name];
+    if (c) { mat = mat.clone(); (mat as any).color = new THREE.Color(c); }
+    const im = new THREE.InstancedMesh(o.geometry, mat, mats.length);
+    const m = new THREE.Matrix4();
+    mats.forEach((t, i) => im.setMatrixAt(i, m.multiplyMatrices(t, o.matrixWorld)));
+    im.castShadow = true; im.receiveShadow = true;
+    im.computeBoundingSphere();
+    parent.add(im);
+    out.push(im);
+  });
+  return out;
+}
+
+// Baked pieces (fallen.ts) placed many times.
+export function instanceBaked(pieces: { geometry: THREE.BufferGeometry; material: THREE.Material }[], mats: THREE.Matrix4[], parent: THREE.Object3D) {
+  for (const p of pieces) {
+    const im = new THREE.InstancedMesh(p.geometry, p.material, mats.length);
+    mats.forEach((t, i) => im.setMatrixAt(i, t));
+    im.castShadow = true; im.receiveShadow = true;
+    im.computeBoundingSphere();
+    parent.add(im);
+  }
+}

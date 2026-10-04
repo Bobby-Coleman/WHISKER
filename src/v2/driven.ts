@@ -193,7 +193,7 @@ export class DrivenAvatar {
   }
 
   private pose(alpha: number, ctx: PoseContext) {
-    const story = !!this.char.override;
+    const story = !!(this.char.override || this.char.defaultPose);
     const want = this.char.body.climb || this.char.carriedBy || story ? 1 : 0;
     this.procW += (want - this.procW) * Math.min(1, Math.max(1e-4, ctx.dt) * (story || this.procW > want && this.char.overrideBlend !== 8 ? this.char.overrideBlend : 8));
     if (this.procW < 0.002) this.procW = 0;

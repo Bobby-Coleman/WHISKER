@@ -38,6 +38,7 @@ import { Game, Avatar } from './game';
 import { SkinnedAvatar } from './avatar';
 import { DrivenAvatar, KITTEN_PROPS, KNIGHT_PROPS } from './driven';
 import { Timeline } from './timeline';
+import { fovFromMM } from './camera';
 
 const W = window as any;
 const HZ = 60, H = 1 / HZ;
@@ -266,6 +267,7 @@ export async function run(params: URLSearchParams) {
   let acc = 0, clockT = 0;
   const gustNoise = new Simplex2(5);
   const sim = { move: new THREE.Vector2(), until: 0, jumpHeld: false };
+  let freeCam: { pos: THREE.Vector3; look: THREE.Vector3; mm?: number } | null = null;
   const frame = (dt: number, render = true) => {
     clockT += dt;
     WIND.time.value = clockT;
@@ -305,6 +307,8 @@ export async function run(params: URLSearchParams) {
     // Camera: a cutscene's shots, or the follow camera.
     if (timeline.playing) { if (inp.skipPressed && timeline.t > 0.5) timeline.skip(); else timeline.update(dt, camera); }
     else game.camera.update(dt, game.subject(), started ? inp.look : new THREE.Vector2(), inp.zoom, physics);
+    // A fixed camera for tests (__v2.camAt).
+    if (freeCam) { camera.position.copy(freeCam.pos); camera.lookAt(freeCam.look); if (freeCam.mm) camera.fov = fovFromMM(freeCam.mm); camera.updateProjectionMatrix(); }
     // The knight between the lens and the kitten (or against the lens) dissolves until he is clear.
     {
       let want = 1;
@@ -387,6 +391,15 @@ export async function run(params: URLSearchParams) {
     },
     audio,
     camYaw: (y: number, p = 0.3) => { game.camera.yaw = y; game.camera.pitch = p; },
+    camAt: (px: number, py: number, pz: number, lx: number, ly: number, lz: number, mm?: number) => { freeCam = { pos: new THREE.Vector3(px, py, pz), look: new THREE.Vector3(lx, ly, lz), mm }; },
+    camFollow: () => { freeCam = null; },
+    // The camera a short way from a character, looking at it (tests): yaw round it, distance, height.
+    camOn: (k: 'kitten' | 'knight', yaw: number, dist: number, h: number, mm = 40) => {
+      const a = k === 'kitten' ? game.kitten : game.knight, p = a.char.body.pos;
+      const lookH = k === 'kitten' ? 0.12 : 0.9;
+      freeCam = { pos: new THREE.Vector3(p.x + Math.sin(yaw) * dist, p.y + h, p.z + Math.cos(yaw) * dist), look: new THREE.Vector3(p.x, p.y + lookH, p.z), mm };
+    },
+    begin: () => hud.begin(),
     step: (n: number, dt = H) => { for (let i = 0; i < n; i++) frame(dt, false); },
     render: () => frame(1e-4, true),
     state: () => {
@@ -423,6 +436,15 @@ export async function run(params: URLSearchParams) {
   load.done('shaders');
   await nextPaint();
   const gpuIdle = () => (renderer as any).backend?.device?.queue?.onSubmittedWorkDone?.() ?? Promise.resolve();
+  // The level's own views (its opening's shots), each drawn once: shaders, shadow casters and anything culled from
+  // the play camera's first view are made ready before play, not in the middle of the opening.
+  for (const v of mod.warmViews?.() ?? []) {
+    camera.position.set(...v.pos); camera.lookAt(...v.look); camera.updateMatrixWorld();
+    const focus = new THREE.Vector3(...v.look);
+    sun.position.set(focus.x - 18, focus.y + 26, focus.z - 24); sun.target.position.copy(focus); sun.target.updateMatrixWorld();
+    pipeline.render();
+    await gpuIdle();
+  }
   frame(H, true);
   await gpuIdle();
   frame(H, true);

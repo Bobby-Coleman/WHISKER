@@ -157,6 +157,9 @@ export class Soundscape {
       case 'bolt': noise(0.25, 1400, 4, 'bandpass', 0.4, 1.0); noise(0.5, 200, 1, 'lowpass', 0.4, 0.5); break;
       case 'door': { const f = noise(2.2, 380, 6, 'bandpass', 0.3, 0.5); f.frequency.linearRampToValueAtTime(260, t0 + 2); break; }
       case 'thud': noise(0.3, 160, 1, 'lowpass', 0.8, 0.6); break;
+      // Into the water: a slap and a wash; a paddle stroke, small.
+      case 'splash': noise(0.45, 900, 0.8, 'bandpass', 0.5, 0.9, 0.2); noise(0.9, 380, 0.7, 'lowpass', 0.35, 0.5, 0.25); break;
+      case 'paddle': noise(0.18, 1300, 1.2, 'bandpass', 0.12, 1.1, 0.15); break;
       case 'clank': bell(2200, 0.05 * gainIn * gain, 0.2, 0.25); break;
       case 'bell': bell(330, 0.22 * gainIn, 0.6, 6.0); break;
       case 'castleBell': bell(196, 0.06 * gainIn, 1.0, 9.0, 900); bell(196, 0.05 * gainIn, 1.0, 9.0, 900, t0 + 2.4); break;
@@ -201,6 +204,70 @@ export class Soundscape {
         break;
       }
     }
+  }
+
+  // A man speaking inside a closed helm, tired and quiet: a low voice running through a syllable per vowel group of
+  // the line (vowel formants shifting, a breath of consonant before each), falling in pitch toward the end (rising
+  // for a question), then muffled by the steel: lowpassed hard, a short ringing comb, a little hollow resonance. The
+  // words cannot be made out; the subtitles carry them. Returns how long it runs (s).
+  speak(line: string, pos?: THREE.Vector3, gainIn = 1) {
+    const words = line.replace(/[^a-zA-Z' ,.?!]/g, '').split(/\s+/).filter(Boolean);
+    const sylls: { pause: number }[] = [];
+    for (const w of words) {
+      const n = Math.max(1, (w.toLowerCase().match(/[aeiouy]+/g) ?? []).length - (/[^aeiou]e$/i.test(w) && w.length > 3 ? 1 : 0));
+      for (let i = 0; i < n; i++) sylls.push({ pause: i === n - 1 ? (/[,.?!]$/.test(w) ? 0.26 : 0.05) : 0 });
+    }
+    let total = 0;
+    const durs = sylls.map((s) => { const d = 0.13 + Math.random() * 0.09; total += d + s.pause; return d; });
+    if (!this.ctx) return total;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
+    const { pan, gain } = this.panFor(pos);
+    const o = this.out(pan, gain * gainIn * 0.22, 0.12);
+    // The helm: muffled, a faint metal ring and a hollow peak.
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 620; lp.Q.value = 0.9;
+    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 900;
+    const peak = ctx.createBiquadFilter(); peak.type = 'peaking'; peak.frequency.value = 480; peak.Q.value = 3; peak.gain.value = 7;
+    const comb = ctx.createDelay(0.05); comb.delayTime.value = 0.0031;
+    const fb = ctx.createGain(); fb.gain.value = 0.42;
+    lp.connect(lp2).connect(peak).connect(o);
+    peak.connect(comb); comb.connect(fb).connect(comb); comb.connect(o);
+    const env = ctx.createGain(); env.gain.value = 0;
+    env.connect(lp);
+    // The voice: a low buzz and some breath, through three formant bands.
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    const breath = ctx.createBufferSource(); breath.buffer = this.noiseBuf; breath.loop = true;
+    const bg = ctx.createGain(); bg.gain.value = 0.18; breath.connect(bg);
+    const VOW: [number, number, number][] = [[730, 1090, 2440], [530, 1840, 2480], [300, 2200, 2900], [570, 840, 2410], [320, 870, 2240], [660, 1720, 2410]];
+    const bands = [0, 1, 2].map((i) => {
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = [6, 9, 11][i];
+      const g = ctx.createGain(); g.gain.value = [1.6, 0.8, 0.35][i];
+      osc.connect(f); bg.connect(f); f.connect(g).connect(env);
+      return f;
+    });
+    // A breath of consonant before most syllables.
+    const cons = ctx.createBufferSource(); cons.buffer = this.noiseBuf; cons.loop = true; cons.playbackRate.value = 1.6;
+    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 2400; cf.Q.value = 1.2;
+    const cg = ctx.createGain(); cg.gain.value = 0;
+    cons.connect(cf).connect(cg).connect(lp);
+    const question = /\?\s*$/.test(line);
+    const f0 = 96 + Math.random() * 8;
+    let t = t0;
+    sylls.forEach((s, i) => {
+      const d = durs[i], a = i / Math.max(1, sylls.length - 1);
+      const v = VOW[Math.floor(Math.random() * VOW.length)];
+      bands.forEach((b, k) => b.frequency.setTargetAtTime(v[k] * (0.95 + Math.random() * 0.1), t, 0.025));
+      const pitch = f0 * (1.12 - 0.22 * a + (question && a > 0.75 ? (a - 0.75) * 1.4 : 0)) * (0.96 + Math.random() * 0.08);
+      osc.frequency.setTargetAtTime(pitch, t, 0.04);
+      const amp = 0.55 + 0.45 * Math.random();
+      env.gain.setTargetAtTime(amp, t + 0.012, 0.025);
+      env.gain.setTargetAtTime(0.06, t + d * 0.78, 0.03);
+      if (Math.random() < 0.7) { cg.gain.setTargetAtTime(0.2, t - 0.03, 0.01); cg.gain.setTargetAtTime(0, t + 0.01, 0.015); }
+      t += d;
+      if (s.pause) { env.gain.setTargetAtTime(0, t, 0.03); t += s.pause; }
+    });
+    env.gain.setTargetAtTime(0, t, 0.05);
+    for (const src of [osc, breath, cons]) { src.start(t0); src.stop(t + 0.4); }
+    return total;
   }
 
   // A kitten's voice: a bright, reedy tone whose pitch rises and falls while her mouth opens and rounds (m-i-a-o-w):

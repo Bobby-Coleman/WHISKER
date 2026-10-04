@@ -12,7 +12,8 @@ type V3 = THREE.Vector3 | [number, number, number] | (() => THREE.Vector3);
 export type CamKey = { pos: V3; look: V3; mm?: number; dof?: number };
 export type Shot = { at: number; dur: number; from: CamKey; to?: CamKey; ease?: 'linear' | 'smooth' | 'in' | 'out'; blend?: number; handheld?: number };
 // `probe`: how far above the path the ground is looked for (lower it under an overhang: a lap under a chest).
-export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number; probe?: number };
+// `arc`: a leap from the path's first point to its last, this high (m) over the straight line between them.
+export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number; probe?: number; arc?: number };
 export type Cue = { at: number; run: () => void; onSkip?: boolean };
 export type Fade = { at: number; dur: number; to: number };
 export type Cutscene = {
@@ -33,7 +34,7 @@ const easeOf = (e: Shot['ease'], x: number) => {
 
 const _p0 = new THREE.Vector3(), _p1 = new THREE.Vector3(), _l0 = new THREE.Vector3(), _l1 = new THREE.Vector3();
 
-type MarkRun = { m: Mark; actor: Actor; pts: THREE.Vector3[]; len: number; dur: number };
+type MarkRun = { m: Mark; actor: Actor; pts: THREE.Vector3[]; len: number; dur: number; y0?: number; y1?: number };
 
 export class Timeline {
   scene: Cutscene | null = null;
@@ -61,7 +62,8 @@ export class Timeline {
       const pts = m.path.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
       let len = 0;
       for (let i = 1; i < pts.length; i++) len += pts[i].distanceTo(pts[i - 1]);
-      return { m, actor, pts, len, dur: len / (m.speed ?? 1.6) };
+      const run: MarkRun = { m, actor, pts, len, dur: len / (m.speed ?? 1.6) };
+      return run;
     });
     if (cs.letterbox !== false) this.ui.letterbox(true);
   }
@@ -141,10 +143,35 @@ export class Timeline {
     const seg = a.distanceTo(c) || 1;
     const p = a.clone().lerp(c, Math.min(1, d / seg));
     const probe = m.probe ?? 0.6;
+    const moving = s < r.len;
+    if (m.arc !== undefined) {
+      // A leap: from the ground at the start to the ground at the end, over an arc.
+      if (r.y0 === undefined) {
+        const a0 = r.pts[0], a1 = r.pts[r.pts.length - 1];
+        r.y0 = this.game.physics.groundY(a0.x, a0.y + 0.6, a0.z, 3) ?? a0.y;
+        r.y1 = this.game.physics.groundY(a1.x, a1.y + probe, a1.z, probe + 2.4) ?? a1.y;
+      }
+      const u = r.len > 0 ? s / r.len : 1;
+      p.y = THREE.MathUtils.lerp(r.y0, r.y1!, u) + m.arc * 4 * u * (1 - u);
+      const prevY = b.pos.y;
+      b.prevPos.copy(b.pos); b.prevYaw = b.yaw;
+      b.vel.set(0, 0, 0);
+      if (moving && dt > 0) b.vel.subVectors(p, b.pos).divideScalar(dt);
+      b.vy = moving && dt > 0 ? (p.y - prevY) / dt : 0;
+      b.vel.y = 0;
+      b.pos.copy(p); b.prevPos.copy(p);
+      const want = m.face ?? b.yaw;
+      const dy = Math.atan2(Math.sin(want - b.yaw), Math.cos(want - b.yaw));
+      b.yaw += dy * Math.min(1, dt * 8); b.prevYaw = b.yaw;
+      b.turnRate = 0;
+      if (!moving && !b.grounded) b.landing = Math.max(b.landing, 0.5);
+      b.grounded = !moving;
+      r.actor.motor.syncCollider();
+      return;
+    }
     const gy = this.game.physics.groundY(p.x, p.y + probe, p.z, probe + 2.4);
     if (gy !== null) p.y = gy;
     b.prevPos.copy(b.pos); b.prevYaw = b.yaw;
-    const moving = s < r.len;
     if (moving && dt > 0) b.vel.subVectors(p, b.pos).divideScalar(dt); else b.vel.set(0, 0, 0);
     b.vel.y = 0;
     b.pos.copy(p);

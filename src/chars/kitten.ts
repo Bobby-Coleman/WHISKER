@@ -593,6 +593,153 @@ export class Kitten extends Character {
     this.poseAccessories(ctx.dt);
   }
 
+  // ---- On all fours, as a cat walks (the prologue, before she learned to walk upright beside him). Her gait comes
+  // from her speed: a walk (one foot at a time), a trot (diagonal pairs) and, flat out, a bounding gallop with the
+  // spine flexing. Each paw steps on the ground under it. A leap stretches her out and a fall reaches the forepaws
+  // down for the landing; swimming, she paddles all four under the surface with her chin up. A climb is still done
+  // upright, paws on the face. Changes of mode ease from the last pose.
+  private quad = { phase: 0, mv: 0, speed: 0, air: 0, swim: 0, pitch: 0, mode: '', blendT: 1, snap: new Map<THREE.Object3D, { p: THREE.Vector3; q: THREE.Quaternion }>() };
+  readonly poseQuadruped = (_c: Character, ctx: PoseContext) => {
+    const b = this.body, q = this.quad, dt = Math.max(1e-4, ctx.dt);
+    const mode = this.carriedBy ? 'carried' : b.climb ? 'climb' : 'fours';
+    const parts = [...Object.values(this.parts), this.tail];
+    if (mode !== q.mode) {
+      if (q.mode) {
+        for (const o of parts) {
+          let s = q.snap.get(o);
+          if (!s) { s = { p: new THREE.Vector3(), q: new THREE.Quaternion() }; q.snap.set(o, s); }
+          s.p.copy(o.position); s.q.copy(o.quaternion);
+        }
+        q.blendT = 0;
+      }
+      if (mode === 'climb') this.gait.reset(this.renderPos, this.renderYaw, ctx.ground);
+      q.mode = mode;
+    }
+    if (mode === 'carried') this.poseCarried(ctx);
+    else if (mode === 'climb') this.poseBiped(ctx);
+    else this.poseFours(ctx, dt);
+    if (q.blendT < 1) {
+      q.blendT = Math.min(1, q.blendT + dt / 0.25);
+      const w = 1 - sm(q.blendT);
+      for (const o of parts) {
+        const s = q.snap.get(o);
+        if (!s) continue;
+        o.position.lerp(s.p, w); o.quaternion.slerp(s.q, w);
+        o.updateMatrix();
+      }
+    }
+  };
+
+  private poseFours(ctx: PoseContext, dt: number) {
+    const P = this.parts, b = this.body, q = this.quad, g = this.gait.p;
+    this.breath += dt;
+    const sp = Math.hypot(b.vel.x, b.vel.z);
+    q.speed += (sp - q.speed) * Math.min(1, dt * 10);
+    const s = q.speed;
+    q.mv += ((s > 0.06 ? 1 : 0) - q.mv) * Math.min(1, dt * 8);
+    const airborne = !b.grounded && !b.swimming;
+    q.air += ((airborne ? 1 : 0) - q.air) * Math.min(1, dt * (airborne ? 12 : 18));
+    q.swim += ((b.swimming ? 1 : 0) - q.swim) * Math.min(1, dt * 5);
+    b.landing = Math.max(0, b.landing - dt * 3.5);
+    // The gait: phase offsets per leg (left hind, right hind, left fore, right fore) blended walk, trot, gallop.
+    const trot = sm((s - 0.55) / 0.6), gallop = sm((s - 2.1) / 0.9);
+    const OFF = [[0, 0.5, 0.25, 0.75], [0, 0.5, 0.5, 1.0], [0, 0.1, 0.55, 0.65]];
+    const off = (i: number) => THREE.MathUtils.lerp(THREE.MathUtils.lerp(OFF[0][i], OFF[1][i], trot), OFF[2][i], gallop);
+    const cyc = 0.13 + 0.09 * s; // metres a full stride covers
+    const beta = THREE.MathUtils.lerp(THREE.MathUtils.lerp(0.62, 0.5, trot), 0.38, gallop); // of it with the paw down
+    q.phase = (q.phase + (q.swim > 0.5 ? dt * (0.9 + s * 0.8) : (s * dt) / cyc)) % 1;
+    const R = Math.min(0.12, beta * cyc) * q.mv;
+    const lift = (0.016 + 0.014 * gallop) * q.mv;
+    const ph = q.phase * Math.PI * 2;
+    // The body: level with the ground under it (uphill, nose up), bobbing with the steps; at a gallop the spine
+    // flexes and the body rocks. A leap tips the nose up, a fall tips it down.
+    const fw = this.toWorld(new THREE.Vector3(0, 0, 0.07), new THREE.Vector3()), bw = this.toWorld(new THREE.Vector3(0, 0, -0.07), new THREE.Vector3());
+    const slope = b.grounded && !b.swimming ? THREE.MathUtils.clamp(Math.atan2(ctx.ground(fw.x, fw.z) - ctx.ground(bw.x, bw.z), 0.14), -0.6, 0.6) : 0;
+    q.pitch += (slope - q.pitch) * Math.min(1, dt * 10);
+    const flex = gallop * q.mv * Math.sin(ph - Math.PI / 2);
+    const airPitch = q.air * THREE.MathUtils.clamp(b.vy * 0.09, -0.35, 0.3);
+    const pitch = q.pitch + flex * 0.14 + airPitch + q.swim * 0.22;
+    const bob = q.mv * (0.0022 * Math.cos(ph * 2) * (1 - gallop) + 0.007 * Math.sin(ph) * gallop);
+    const hipH = 0.09 + bob - b.landing * 0.022 - q.swim * 0.012 + Math.sin(this.breath * 1.8) * 0.0005;
+    const roll = THREE.MathUtils.clamp(-b.turnRate * s * 0.025, -0.25, 0.25) * (1 - q.swim);
+    P.pelvis.position.set(0, hipH, -0.046 - flex * 0.006);
+    P.pelvis.rotation.set(Math.PI / 2 - 0.05 - pitch, roll, 0, 'XYZ'); // (y: a roll about the spine)
+    P.pelvis.updateMatrix();
+    P.chest.position.copy(new THREE.Vector3(0, 0.034 + flex * 0.012, 0.004).applyMatrix4(P.pelvis.matrix));
+    P.chest.rotation.set(Math.PI / 2 - 0.2 - pitch + flex * 0.1, roll * 0.6, 0, 'XYZ');
+    P.chest.updateMatrix();
+    const S = new THREE.Vector3(0, this.dims.shoulderY, this.dims.shoulderZ ?? 0).applyMatrix4(P.chest.matrix);
+    const Hp = new THREE.Vector3(0, 0, 0).applyMatrix4(P.pelvis.matrix);
+    // Where each paw goes (in her own space): on the ground under its hip or shoulder, carried through its stride.
+    const ground = (x: number, z: number) => {
+      const w = this.toWorld(new THREE.Vector3(x, 0, z), new THREE.Vector3());
+      return THREE.MathUtils.clamp(ctx.ground(w.x, w.z) - this.renderPos.y, -0.07, 0.07);
+    };
+    const target = (i: number) => {
+      const hind = i < 2, side = i % 2 === 0 ? 1 : -1;
+      const base = new THREE.Vector3(side * (hind ? 0.026 : 0.03), 0, hind ? Hp.z - 0.004 : S.z + 0.006);
+      const u = (((q.phase - off(i)) % 1) + 1) % 1;
+      let dz: number, dy = 0;
+      if (u < beta) dz = R * (0.5 - u / beta);
+      else { const v = (u - beta) / (1 - beta); dz = R * (-0.5 + sm(v)); dy = lift * Math.sin(Math.PI * v); }
+      const end = hind ? g.ankleH : 0.021; // the wrist stands a paw's height off the ground
+      const t = base.clone();
+      t.z += dz;
+      t.y = (b.grounded ? ground(t.x, t.z) : 0) + end + dy;
+      // In the air: stretched out rising (hind legs back, forepaws reaching on), forepaws down to land falling.
+      if (q.air > 0.001) {
+        const up = b.vy > 0 ? 1 : 0;
+        const a = hind ? new THREE.Vector3(base.x, hipH - (up ? 0.075 : 0.068), base.z + (up ? -0.065 : 0.012))
+          : new THREE.Vector3(base.x, S.y - (up ? 0.05 : 0.088), base.z + (up ? 0.07 : 0.04));
+        t.lerp(a, q.air);
+      }
+      // Swimming: paddling round under her, diagonal pairs together.
+      if (q.swim > 0.001) {
+        const a = (q.phase + (i === 0 || i === 3 ? 0 : 0.5)) * Math.PI * 2;
+        const top = hind ? hipH : S.y;
+        const w = new THREE.Vector3(base.x, top - 0.068 + 0.022 * Math.sin(a), base.z + (hind ? -0.02 : 0.02) + 0.034 * Math.cos(a));
+        t.lerp(w, q.swim);
+      }
+      return t;
+    };
+    // Hind legs: knees forward.
+    for (const side of [1, -1]) {
+      const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
+      const hip = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
+      const pole = new THREE.Vector3(side * 0.15, 0, 1);
+      const knee = new THREE.Vector3();
+      const end = solveTwoBone(hip, target(side > 0 ? 0 : 1), g.l1, g.l2, pole, knee);
+      orientBone(th, hip, knee, pole);
+      orientBone(sh, knee, end, pole);
+      ft.position.copy(end); ft.rotation.set(0, 0, 0);
+    }
+    // Forelegs: the arms, elbows back, paws flat on the ground.
+    for (const side of [1, -1]) {
+      const arm = side > 0 ? this.armL : this.armR;
+      arm.target.copy(target(side > 0 ? 2 : 3));
+      arm.pole.set(side * 0.25, 0.1, -1);
+      arm.useHandQ = false;
+    }
+    this.solveArms();
+    // The head held up and forward of the shoulders, level whatever the body does; turned toward what she watches
+    // when she stands still.
+    let tYaw = 0, tPitch = 0;
+    if (ctx.lookAt && q.mv < 0.5 && q.swim < 0.5) {
+      const l = this.toLocal(ctx.lookAt, new THREE.Vector3());
+      const yaw = Math.atan2(l.x, l.z), dist = Math.hypot(l.x, l.z);
+      if (Math.abs(yaw) < 1.5 && dist < 6) { tYaw = THREE.MathUtils.clamp(yaw, -0.9, 0.9); tPitch = THREE.MathUtils.clamp(-Math.atan2(l.y - S.y - 0.05, Math.max(0.2, dist)), -0.7, 0.3); }
+    }
+    this.lookYaw += (tYaw - this.lookYaw) * Math.min(1, dt * 2.5);
+    this.lookPitch += (tPitch - this.lookPitch) * Math.min(1, dt * 2.5);
+    P.head.position.copy(S).add(new THREE.Vector3(0, 0.05 + q.swim * 0.018, 0.026 + q.swim * 0.008));
+    P.head.quaternion.setFromEuler(new THREE.Euler(this.lookPitch - pitch * 0.4 + 0.05 * q.mv - q.swim * 0.22, this.lookYaw, -roll * 0.5, 'YXZ'));
+    P.head.updateMatrix();
+    this.poseAccessories(dt);
+    // The tail from the top of her rump: carried up and curving back as she trots, out behind her on the water.
+    const sway = Math.sin(this.tailPhase) * (0.3 - 0.15 * q.mv);
+    this.tail.rotation.set(THREE.MathUtils.lerp(-2.25 + 0.35 * q.mv, -2.95, q.swim) - airPitch * 0.8, sway, 0);
+  }
+
   // Before she had any armour (the prologue): plate, sword, cape and bow put away, fur in their place.
   setBare(on: boolean) {
     this.bare = on;
@@ -691,6 +838,7 @@ export class Kitten extends Character {
   }
 
   protected leanScale() { return 0.18; }
+  protected blendExtras() { return [this.tail]; }
   protected crouchAmount(speed: number) { return 0.004 + 0.006 * Math.min(1, speed / GAME.runSpeed); }
 
   protected poseCarried(ctx: PoseContext) {

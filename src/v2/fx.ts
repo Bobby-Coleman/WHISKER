@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, instanceIndex, positionGeometry, vec3, vec4, float, hash, uint, fract, cameraPosition, normalize, cross, length,
-  smoothstep, uniform, positionPrevious, uv, sin, time, mix, vec2, color,
+  smoothstep, uniform, positionPrevious, uv, sin, time, mix, vec2, color, attribute, positionWorld,
 } from 'three/tsl';
 import { WIND, LOOK } from '../render/settings';
 
@@ -136,5 +136,51 @@ export class Campfire {
       p.a.value = Math.sin(Math.PI * p.t) * this.heat;
       p.m.visible = this.heat > 0.02;
     }
+  }
+}
+
+// A column of smoke from something burning far off: dark puffs rising thirty metres and leaning downwind, drawn
+// over the fog (it stands up out of the mist as a landmark). One instanced draw; each puff faces the camera.
+export class SmokePlume {
+  mesh: THREE.InstancedMesh;
+  private puffs: { t: number; speed: number; side: number; spin: number }[] = [];
+  private alpha: THREE.InstancedBufferAttribute;
+  private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private p = new THREE.Vector3(); private s = new THREE.Vector3();
+  constructor(public at: THREE.Vector3, public height = 30, count = 26, shade = 0.42) {
+    const geo = new THREE.PlaneGeometry(1, 1);
+    this.alpha = new THREE.InstancedBufferAttribute(new Float32Array(count), 1);
+    geo.setAttribute('puffA', this.alpha);
+    const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    mat.fog = false;
+    mat.colorNode = Fn(() => {
+      const st = uv();
+      const d = length(st.sub(0.5)).mul(2);
+      const lumpy = hash(st.mul(7).floor().dot(vec2(1, 31))).mul(0.25);
+      const dist = length(positionWorld.sub(cameraPosition));
+      const far = smoothstep(25.0, 140.0, dist);
+      const c = mix(LOOK.fogColor.mul(shade), LOOK.fogColor.mul(0.8), far.mul(0.6));
+      return vec4(c, smoothstep(1.0, 0.1, d.add(lumpy)).mul(attribute('puffA', 'float')).mul(mix(float(1), float(0.6), far)));
+    })();
+    this.mesh = new THREE.InstancedMesh(geo, mat, count);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 4;
+    this.mesh.name = 'SmokePlume';
+    for (let i = 0; i < count; i++) this.puffs.push({ t: i / count, speed: 0.028 + Math.random() * 0.012, side: Math.random() * 2 - 1, spin: Math.random() * 6.28 });
+  }
+  update(dt: number, cam: THREE.Camera) {
+    const H = this.height;
+    this.puffs.forEach((pf, i) => {
+      pf.t = (pf.t + dt * pf.speed) % 1;
+      const h = pf.t * H;
+      this.p.set(this.at.x + WIND.dir.x * h * 0.45 + pf.side * (0.5 + h * 0.06), this.at.y + 1 + h, this.at.z + WIND.dir.y * h * 0.45);
+      this.q.copy(cam.quaternion);
+      const sz = 2.2 + pf.t * 11;
+      this.s.set(sz, sz, sz);
+      this.m.compose(this.p, this.q, this.s);
+      this.mesh.setMatrixAt(i, this.m);
+      this.alpha.array[i] = Math.pow(Math.sin(Math.PI * pf.t), 0.7) * 0.32 * Math.min(1, pf.t * 8);
+    });
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.alpha.needsUpdate = true;
   }
 }

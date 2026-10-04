@@ -294,8 +294,9 @@ export class Knight extends Character {
     this.headUpNow += (this.headUp - this.headUpNow) * Math.min(1, dt * 1.4);
     this.shelterNow += (this.shelter - this.shelterNow) * Math.min(1, dt * 0.9);
     const br = Math.sin(this.breath * 0.9) * 0.005;
-    P.pelvis.position.set(0, 0.16, 0);
-    P.pelvis.rotation.set(-0.3, 0, 0.04);
+    // Sitting on the ground: the seat of his hips on the earth, leaning back.
+    P.pelvis.position.set(0, 0.115, 0);
+    P.pelvis.rotation.set(-0.34, 0, 0.04);
     P.pelvis.updateMatrix();
     const g = this.gait.p;
     for (const side of [-1, 1]) {
@@ -313,7 +314,7 @@ export class Knight extends Character {
     }
     // Back against the trunk, breathing slow and shallow.
     P.chest.position.copy(new THREE.Vector3(0, 0.1 + br, -0.02).applyMatrix4(P.pelvis.matrix));
-    P.chest.rotation.set(-0.42 + br * 2, 0.06, -0.05);
+    P.chest.rotation.set(-0.5 + br * 2, 0.06, -0.05);
     P.chest.updateMatrix();
     // Chin down on his chest; up, slowly, to look at her.
     P.head.position.copy(new THREE.Vector3(0, 0.445, 0).applyMatrix4(P.chest.matrix));

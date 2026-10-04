@@ -26,6 +26,12 @@ export const MOVE = {
 };
 export const jumpSpeed = () => Math.sqrt(2 * MOVE.gUp * MOVE.jumpHeight);
 
+// Water (water.ts), where a level has it: the surface over (x, z), or null. The kitten swims where it is deeper than
+// she is tall at the shoulder (slower, floating, a lunge to get out); the knight walks the bottom, slowed as it rises
+// up his legs, and can barely jump in it.
+export const WATER: { surface: ((x: number, z: number) => number | null) | null } = { surface: null };
+export const SWIM = { speed: 1.5, accel: 7, decel: 4, float: 0.1, enter: 0.15, leave: 0.1, lunge: 0.85 };
+
 export type Kind = 'kitten' | 'knight';
 // Size and weight: a capsule from the feet (radius, total height), the step it walks up, how far down it sticks to
 // the ground, its skin (gap kept to surfaces), its mass for pushing props, and what stops it.
@@ -55,6 +61,10 @@ export class Motor {
   jumping = false;
   coyote = 0; buffer = 0;
   airTime = 0;
+  // Swimming (the kitten), or how deep the water is round its legs (m).
+  swimming = false;
+  wade = 0;
+  onSplash?: (strength: number) => void;
   // 'move': the motor runs. 'held': something else places it each step (a climb, a carry, a cutscene).
   mode: 'move' | 'held' = 'move';
   // The last firm, open ground it stood on, where a fall returns it.
@@ -97,6 +107,7 @@ export class Motor {
     b.vel.set(0, 0, 0); b.vy = 0; b.visualDY = 0;
     this.vel.set(0, 0, 0);
     this.jumping = false; this.buffer = 0; this.coyote = 0; this.airTime = 0;
+    this.swimming = b.swimming = false;
     this.mode = 'move';
     this.syncCollider();
     this.probeGround();
@@ -134,9 +145,25 @@ export class Motor {
       b.yaw += this.platform.yawDelta();
     }
 
-    // Horizontal: toward the stick at run or walk speed.
+    // Water: how deep it stands over the ground here.
+    const surf = WATER.surface ? WATER.surface(b.pos.x, b.pos.z) : null;
+    let floor = b.pos.y;
+    if (surf !== null) floor = this.physics.groundY(b.pos.x, Math.max(b.pos.y, surf) + 0.3, b.pos.z, 4, SOLID) ?? b.pos.y - 3;
+    const deep = surf === null ? 0 : surf - floor;
+    this.wade = surf === null ? 0 : Math.max(0, surf - b.pos.y);
+    if (B.kind === 'kitten') {
+      const was = this.swimming;
+      if (!this.swimming && deep > SWIM.enter && b.pos.y < surf! - SWIM.float * 0.5 && this.vel.y <= 0.5) this.swimming = true;
+      else if (this.swimming && (deep < SWIM.leave || surf === null)) this.swimming = false;
+      if (this.swimming && !was) { this.onSplash?.(THREE.MathUtils.clamp(-this.vel.y / 4, 0.25, 1)); this.vel.y *= 0.2; this.jumping = false; }
+      b.swimming = this.swimming;
+    }
+    if (this.swimming) { this.swimStep(dt, input, surf!); return; }
+
+    // Horizontal: toward the stick at run or walk speed (slower wading deep).
     const wl = Math.min(1, input.wish.length());
-    const top = input.walk ? MOVE.walk : MOVE.run;
+    const wadeK = B.kind === 'knight' ? 1 - 0.5 * THREE.MathUtils.clamp((this.wade - 0.3) / 0.7, 0, 1) : 1 - 0.25 * THREE.MathUtils.clamp(this.wade / 0.12, 0, 1);
+    const top = (input.walk ? MOVE.walk : MOVE.run) * wadeK;
     const inv = wl > 0.01 ? (wl * top) / input.wish.length() : 0;
     const tx = input.wish.x * inv, tz = input.wish.y * inv;
     let vx = this.vel.x, vz = this.vel.z, vy = this.vel.y;
@@ -162,7 +189,7 @@ export class Motor {
     this.buffer = Math.max(0, this.buffer - dt);
     if (!this.grounded) this.coyote = Math.max(0, this.coyote - dt);
     if (this.buffer > 0 && (this.grounded || this.coyote > 0) && this.canJump()) {
-      vy = jumpSpeed();
+      vy = jumpSpeed() * (this.wade > 0.6 ? 0.55 : 1);
       if (this.platform) {
         const pv = this.platform.pointVel(this.centerOf(b.pos, _c), dt, _c2);
         vx += pv.x; vz += pv.z; vy += Math.max(0, pv.y);
@@ -241,6 +268,58 @@ export class Motor {
       this.safeT = 0.25;
       if (this.openGround()) this.safe.copy(b.pos);
     }
+  }
+
+  // Swimming: paddling at the surface, slower than on land, the body held afloat (feet `SWIM.float` under it); a
+  // jump is a lunge up out of the water (onto a bank or a log).
+  private swimStep(dt: number, input: MotorInput, surf: number) {
+    const b = this.body, B = this.build;
+    const wl = Math.min(1, input.wish.length());
+    const inv = wl > 0.01 ? (wl * SWIM.speed) / input.wish.length() : 0;
+    const tx = input.wish.x * inv, tz = input.wish.y * inv;
+    let vx = this.vel.x, vz = this.vel.z;
+    const dvx = tx - vx, dvz = tz - vz, dl = Math.hypot(dvx, dvz) || 1;
+    const k = Math.min(1, ((wl < 0.01 ? SWIM.decel : SWIM.accel) * dt) / dl);
+    vx += dvx * k; vz += dvz * k;
+    // Afloat: eased to the surface, with a slow bob.
+    const want = surf - SWIM.float + Math.sin(performance.now() / 1000 * 2.6) * 0.004;
+    let vy = THREE.MathUtils.clamp((want - b.pos.y) * 7, -1.2, 1.2);
+    this.buffer = Math.max(0, this.buffer - dt);
+    let lunge = false;
+    if (this.buffer > 0 && this.canJump()) {
+      vy = jumpSpeed() * SWIM.lunge; lunge = true; this.buffer = 0;
+      this.onJump?.();
+    }
+    this.cc.disableSnapToGround();
+    this.cc.computeColliderMovement(this.collider, { x: vx * dt, y: vy * dt, z: vz * dt }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, this.query, this.filter);
+    const m = this.cc.computedMovement();
+    for (let i = 0, n = this.cc.numComputedCollisions(); i < n; i++) {
+      const c = this.cc.computedCollision(i);
+      if (!c || Math.abs(c.normal1.y) >= 0.7) continue;
+      const hl = Math.hypot(c.normal1.x, c.normal1.z) || 1, hx = c.normal1.x / hl, hz = c.normal1.z / hl;
+      const into = vx * hx + vz * hz;
+      if (into < 0) { vx -= hx * into; vz -= hz * into; }
+    }
+    const t = this.collider.translation();
+    this.center.set(t.x + m.x, t.y + m.y, t.z + m.z);
+    this.collider.setTranslation(this.center);
+    b.pos.set(this.center.x, this.center.y - B.height / 2 - B.skin, this.center.z);
+    this.grounded = b.grounded = false;
+    this.coyote = 0; this.airTime = 0;
+    if (lunge) { this.swimming = b.swimming = false; this.jumping = true; }
+    this.platform = null; this.groundCollider = null;
+    const sp = Math.hypot(vx, vz);
+    if (sp > 0.1 || wl > 0.2) {
+      const want = sp > 0.1 ? Math.atan2(vx, vz) : Math.atan2(input.wish.x, input.wish.y);
+      const d = Math.atan2(Math.sin(want - b.yaw), Math.cos(want - b.yaw));
+      const r = MOVE.turn * 0.6 * dt;
+      b.yaw += THREE.MathUtils.clamp(d, -r, r);
+    }
+    const dyaw = Math.atan2(Math.sin(b.yaw - b.prevYaw), Math.cos(b.yaw - b.prevYaw));
+    b.turnRate = dyaw / dt;
+    this.vel.set(vx, vy, vz);
+    b.vel.set(m.x / dt, m.y / dt, m.z / dt);
+    b.vy = vy;
   }
 
   // What it stands on: the collider under its foot sphere (a moving platform carries it), the slope and the surface.
