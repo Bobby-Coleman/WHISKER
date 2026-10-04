@@ -1,0 +1,6 @@
+[
+  { "label": "climb stage", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('climb'); return 1; })()", "wait": 3000 },
+  { "label": "side", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const x = -1.6, z = 0.9; const y = __v2.physics.groundY(x, 5, z, 10); g.kitten.motor.place(new V(x, y, z), -1.57); __v2.camYaw(-1.57 + 0.0, 0.05); return y; })()", "wait": 2500, "out": "st_1_side.png" },
+  { "label": "front", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const x = 0.35, z = 2.3; const y = __v2.physics.groundY(x, 5, z, 10); g.kitten.motor.place(new V(x, y, z), 3.0); __v2.camYaw(0.15, 0.1); return y; })()", "wait": 2500, "out": "st_2_front.png" },
+  { "label": "parts", "js": "(() => { const P = __v2.knight.char ? __v2.knight.char.parts : __v2.knight.parts; const o = {}; for (const n of ['pelvis','chest','head','thighL','thighR','shinL','shinR','footL','footR']) { const p = P[n].getWorldPosition(new (P[n].position.constructor)()); o[n] = p.toArray().map((v) => +v.toFixed(2)); } return JSON.stringify(o); })()", "wait": 100 }
+]

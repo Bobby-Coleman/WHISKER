@@ -47,6 +47,11 @@ export class Kitten extends Character {
   hangTarget = new THREE.Vector3();
 
   private shellCount = 14;
+  // Plate, mail and belts (hidden while she is still a plain kitten, before the knight made her armour) and the fur
+  // that shows in their place.
+  private armorParts: THREE.Object3D[] = [];
+  private bareParts: THREE.Object3D[] = [];
+  bare = false;
 
   constructor(shells: number, private assets: KittenAssets | null = null) {
     const body = new CharacterBody(0.09, 0.34);
@@ -102,6 +107,7 @@ export class Kitten extends Character {
     this.buildFace(shells, fur);
     // Blender plate and sword replace the code-built pieces when the hero assets are loaded.
     const hero = !!this.assets;
+    const before = this.meshSet();
     if (this.assets) this.buildHeroArmor(this.assets.armor);
 
     // --- Chest: cuirass with large rounded pauldrons; plated arms; rounded gauntlet paws.
@@ -119,6 +125,7 @@ export class Kitten extends Character {
     }
     // Fauld and fur hips.
     if (!hero) P.pelvis.add(makePart(lathe([[0.022, 0.044], [0.004, 0.048], [0.004, 0.05], [-0.012, 0.053], [-0.012, 0.055], [-0.028, 0.058]], { sz: 0.82, segs: 32 }), plate));
+    for (const m of this.meshSet()) if (!before.has(m)) this.armorParts.push(m);
     const body = this.assets?.body ?? null;
     if (body) this.buildHeroBody(body);
     const hipFur = body ? null : this.furBlob(ellipsoid(0, 0.0, 0, 0.042, 0.03, 0.036), 0.06, mixc(COAT, CREAM, 0.35));
@@ -141,6 +148,7 @@ export class Kitten extends Character {
     }
 
     // --- Legs: fluffy fur thighs and shins, small knee cops, cream paws.
+    const legsBefore = this.meshSet();
     for (const side of [-1, 1]) {
       const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
       if (!hero) th.add(makePart(lathe(smoothProfile([[0.006, 0.0215], [-0.018, 0.0205], [-0.043, 0.0165]], 8), { sz: 1.08, segs: 20 }), legPlate));
@@ -157,7 +165,12 @@ export class Kitten extends Character {
       ft.add(makePart(pawGeo, fur));
       this.addShells(ft, pawGeo, Math.max(3, Math.round(shells * 0.5)), 0.004, 2600, [0, -0.2, 0.4]);
     }
+    // The leg plates among them (code-built kittens) are armour too.
+    for (const m of this.meshSet()) if (!legsBefore.has(m) && (m as THREE.Mesh).material === legPlate) this.armorParts.push(m);
+    // Arm plates (code-built kittens).
+    for (const p of [P.uarmL, P.uarmR, P.farmL, P.farmR, P.handL, P.handR]) p.traverse((o: any) => { if (o.isMesh && o.material === plate) this.armorParts.push(o); });
     this.buildSwordAndShield(plate, leather, brass);
+    this.buildBareFur(shells, fur, !!body);
   }
 
   private buildCodeTail(shells: number, fur: THREE.Material) {
@@ -462,6 +475,155 @@ export class Kitten extends Character {
     return { outer, inner };
   }
 
+  private meshSet() {
+    const s = new Set<THREE.Object3D>();
+    this.group.traverse((o: any) => { if (o.isMesh || o.isPoints || o.isLine) s.add(o); });
+    return s;
+  }
+
+  // Fur for where her plate would be: chest, arms, paws and (where the hero coat leaves them bare) legs. Hidden
+  // until setBare(true).
+  private buildBareFur(shells: number, fur: THREE.Material, heroBody: boolean) {
+    const P = this.parts;
+    const n = (k: number) => Math.max(3, Math.round(shells * k));
+    const blob = (parent: THREE.Object3D, sdf: SDF, lo: [number, number, number], hi: [number, number, number], col: (x: number, y: number, z: number) => [number, number, number], len: number, groom: [number, number, number], k: number) => {
+      const g = polygonize(sdf, new THREE.Vector3(...lo), new THREE.Vector3(...hi), 30, col);
+      this.addFurAttrs(g, () => [0.6, 0]);
+      const base = makePart(g, fur);
+      parent.add(base);
+      this.bareParts.push(base);
+      const mark = this.furLayers.length;
+      this.addShells(parent, g, n(k), len, 2400, groom);
+      for (const m of this.furLayers.slice(mark)) this.bareParts.push(m);
+    };
+    // Chest and belly: peach on the back, pale cream down the front.
+    blob(P.chest, union(0.012, ellipsoid(0, 0.046, 0.002, 0.041, 0.05, 0.036), ellipsoid(0, 0.014, 0.01, 0.037, 0.032, 0.031)),
+      [-0.065, -0.03, -0.055], [0.065, 0.105, 0.06], (_x, _y, z) => mixc(COAT, CREAM, ss(z, -0.01, 0.025)), 0.007, [0, -0.5, 0.1], 0.6);
+    for (const side of [-1, 1]) {
+      const ua = side > 0 ? P.uarmL : P.uarmR, fa = side > 0 ? P.farmL : P.farmR, hand = side > 0 ? P.handL : P.handR;
+      blob(ua, capsule(0, 0.002, 0, 0, -0.044, 0, 0.0128, 0.0118), [-0.025, -0.065, -0.025], [0.025, 0.02, 0.025], () => mixc(COAT, CREAM, 0.25), 0.005, [0, -0.7, 0], 0.4);
+      blob(fa, capsule(0, 0.002, 0, 0, -0.058, 0, 0.0118, 0.0105), [-0.024, -0.08, -0.024], [0.024, 0.02, 0.024], () => mixc(COAT, CREAM, 0.45), 0.005, [0, -0.7, 0], 0.4);
+      blob(hand, union(0.004, ellipsoid(0, -0.01, 0.003, 0.0126, 0.013, 0.012), capsule(0, 0.004, 0, 0, -0.004, 0, 0.0105)), [-0.024, -0.032, -0.022], [0.024, 0.014, 0.024], () => CREAM, 0.004, [0, -0.3, 0.4], 0.4);
+      if (heroBody) {
+        const sh = side > 0 ? P.shinL : P.shinR;
+        blob(sh, capsule(0, 0, 0, 0, -0.048, 0.002, 0.0135, 0.011), [-0.025, -0.07, -0.025], [0.025, 0.02, 0.025], () => mixc(COAT, CREAM, 0.7), 0.005, [0, -0.6, 0.1], 0.4);
+      }
+    }
+    for (const m of this.bareParts) m.visible = false;
+  }
+
+  // Story poses (the prologue), set as `override`. Nudging her mother: crouched low, reaching with her head and paws.
+  readonly poseNudge = (_c: Character, ctx: PoseContext) => {
+    const P = this.parts;
+    this.breath += ctx.dt;
+    const push = Math.max(0, Math.sin(this.breath * 2.2)) * 0.012;
+    this.crouchPose(0.07, 1.05 + push * 6, 0.25, ctx);
+    for (const side of [-1, 1]) {
+      const arm = side > 0 ? this.armL : this.armR;
+      arm.target.set(side * 0.026, 0.018, 0.11 + push); arm.pole.set(side, -0.2, -0.6);
+    }
+    this.solveArms();
+  };
+
+  // Asleep: lying on her front, hind legs folded under her, chin down on her paws, the tail laid round her side;
+  // breathing slow.
+  readonly poseCurled = (_c: Character, ctx: PoseContext) => {
+    const P = this.parts, g = this.gait.p;
+    this.breath += ctx.dt;
+    const br = Math.sin(this.breath * 1.5) * 0.0015;
+    // The spine laid forward, the hips low.
+    P.pelvis.position.set(0, 0.046 + br * 0.3, -0.07);
+    P.pelvis.rotation.set(1.3, 0, 0);
+    P.pelvis.updateMatrix();
+    const pole = new THREE.Vector3();
+    for (const side of [-1, 1]) {
+      const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
+      const hipP = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
+      // Folded under: the knee forward beside the belly, the foot back under the hip.
+      const ankle = new THREE.Vector3(side * (g.hipW + 0.01), g.ankleH, hipP.z - 0.02);
+      pole.set(side * 0.35, 0.1, 1);
+      const knee = new THREE.Vector3();
+      const end = solveTwoBone(hipP, ankle, g.l1, g.l2, pole, knee);
+      orientBone(th, hipP, knee, pole);
+      orientBone(sh, knee, end, pole);
+      ft.position.copy(end); ft.rotation.set(0, 0, 0);
+    }
+    // Chest along the ground in front, the breath lifting it.
+    P.chest.position.copy(new THREE.Vector3(0, 0.026, 0).applyMatrix4(P.pelvis.matrix));
+    P.chest.position.y += br;
+    P.chest.rotation.set(1.36, 0, 0);
+    P.chest.updateMatrix();
+    // Head down on her paws, turned a little and tipped, nose tucked.
+    P.head.position.copy(new THREE.Vector3(0, 0.112, 0.004).applyMatrix4(P.chest.matrix));
+    P.head.position.y -= 0.012;
+    P.head.quaternion.setFromEuler(new THREE.Euler(0.95, 0.25, 0.22, 'YXZ'));
+    // Paws crossed under the chin.
+    for (const side of [-1, 1]) {
+      const arm = side > 0 ? this.armL : this.armR;
+      arm.target.set(-side * 0.01, 0.014, P.head.position.z - 0.012); arm.pole.set(side, -0.1, -0.4);
+    }
+    this.poseAccessories(ctx.dt);
+    this.solveArms();
+    // The tail round her side, its tip by her paws.
+    this.tail.rotation.set(-0.2, 1.25, 1.45);
+  };
+
+  // A low crouch: hips at `hip` metres, chest pitched forward, head bowed; feet planted under her.
+  private crouchPose(hip: number, chestPitch: number, headPitch: number, ctx: PoseContext) {
+    const P = this.parts, g = this.gait.p;
+    const br = Math.sin(this.breath * 2.0) * 0.0008;
+    P.pelvis.position.set(0, hip, -0.01);
+    P.pelvis.rotation.set(0.25, 0, 0);
+    P.pelvis.updateMatrix();
+    for (const side of [-1, 1]) {
+      const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
+      const hipP = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
+      const ankle = new THREE.Vector3(side * (g.hipW + 0.004), g.ankleH, 0.012);
+      const knee = new THREE.Vector3();
+      const end = solveTwoBone(hipP, ankle, g.l1, g.l2, new THREE.Vector3(side * 0.2, 0, 1), knee);
+      orientBone(th, hipP, knee, new THREE.Vector3(side * 0.2, 0, 1));
+      orientBone(sh, knee, end, new THREE.Vector3(side * 0.2, 0, 1));
+      ft.position.copy(end); ft.rotation.set(0, 0, 0);
+    }
+    P.chest.position.copy(new THREE.Vector3(0, 0.018 + br, 0).applyMatrix4(P.pelvis.matrix));
+    P.chest.rotation.set(chestPitch, 0, 0);
+    P.chest.updateMatrix();
+    P.head.position.copy(new THREE.Vector3(0, 0.122, 0.008).applyMatrix4(P.chest.matrix));
+    P.head.quaternion.setFromEuler(new THREE.Euler(headPitch - chestPitch * 0.6, 0, 0, 'YXZ'));
+    this.poseAccessories(ctx.dt);
+  }
+
+  // Before she had any armour (the prologue): plate, sword, cape and bow put away, fur in their place.
+  setBare(on: boolean) {
+    this.bare = on;
+    for (const m of this.armorParts) m.visible = !on;
+    for (const m of this.bareParts) m.visible = on;
+    this.sword.visible = !on;
+    this.bow.visible = !on;
+    this.cape.mesh.visible = !on;
+    this.shield.visible = !on && this.hasShield;
+  }
+
+  // Her call: the head lifts with the voice (and tips, for the rolled greeting), the ears go back a touch on a cry.
+  private meowT = -1; private meowDur = 0.6; private meowAmt = 0.3; private meowRoll = 0;
+  meow(kind: 'meow' | 'mew' | 'mrrp' | 'cry' = 'meow') {
+    const [dur, amt, roll] = { meow: [0.6, 0.3, 0], mew: [0.32, 0.17, 0.06], mrrp: [0.36, 0.12, 0.24], cry: [0.95, 0.42, 0] }[kind];
+    this.meowT = 0; this.meowDur = dur; this.meowAmt = amt; this.meowRoll = roll * (Math.random() < 0.5 ? -1 : 1);
+  }
+  // Over whatever else posed her (walking, a story pose, climbing), once per frame.
+  poseMeow(dt: number) {
+    if (this.meowT < 0) return;
+    this.meowT += dt;
+    const a = this.meowT / (this.meowDur + 0.3);
+    if (a >= 1) { this.meowT = -1; return; }
+    const e = Math.pow(Math.sin(Math.PI * a), 0.7);
+    const P = this.parts;
+    P.head.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-this.meowAmt * e, 0, this.meowRoll * e)));
+    P.head.updateMatrix();
+    const back = this.meowAmt > 0.35 ? e * 0.35 : 0;
+    this.earL.rotation.x -= back; this.earR.rotation.x -= back;
+  }
+
   private furBlob(sdf: SDF, size: number, col: [number, number, number]) {
     const g = polygonize(sdf, new THREE.Vector3(-size, -size * 2.2, -size), new THREE.Vector3(size, size * 0.8, size * 1.3), 28, () => col);
     this.addFurAttrs(g, () => [0.6, 0]);
@@ -511,6 +673,7 @@ export class Kitten extends Character {
 
   update(dt: number, ctx: PoseContext) {
     const P = this.parts;
+    if (this.bare) return; // no cape yet
     this.group.updateMatrixWorld(true);
     for (let i = 0; i < CAPE_COLS; i++) this.cape.setPin(i, this.capePin(i).applyMatrix4(P.chest.matrixWorld));
     const wp = (o: THREE.Object3D, x: number, y: number, z: number) => new THREE.Vector3(x, y, z).applyMatrix4(o.matrixWorld);
@@ -604,6 +767,7 @@ export class Kitten extends Character {
     const P = this.parts;
     this.poseAccessories(ctx.dt);
     P.chest.updateMatrix();
+    if (this.bare) return; // no sword yet: her arms move with the body
     if (this.armsDriven) {
       this.sword.position.copy(new THREE.Vector3(0.03, -0.012, -0.062).applyMatrix4(P.chest.matrix));
       this.sword.quaternion.copy(P.chest.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, 0, 0.5)));

@@ -117,7 +117,18 @@ export class KeyboardMouseGamepad {
       for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => this.touchHeld.delete(code));
     });
     document.body.append(this.stickEl, this.knobEl, pad);
+    for (const [code, text] of this.labels) this.label(code, text);
     this.onTouchMode?.();
+  }
+
+  // Renames an on-screen button (by its key code), or hides it with null.
+  labels = new Map<string, string | null>();
+  label(code: string, text: string | null) {
+    this.labels.set(code, text);
+    const b = document.querySelector<HTMLButtonElement>(`.kk-pad button[data-c="${code}"]`);
+    if (!b) return;
+    b.style.display = text === null ? 'none' : '';
+    if (text) { b.textContent = text; b.setAttribute('aria-label', text); }
   }
 
   private drawStick() {

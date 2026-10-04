@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Character, CharacterBody, PoseContext } from './character';
 import { lathe, smoothProfile, bladeGeometry, capGeometry, transformed, shellPanel } from './shapes';
 import { armorMaterial, clothMaterial, leatherMaterial, plainMaterial } from './materials';
-import { makePart } from './rig';
+import { makePart, orientBone } from './rig';
 import { polygonize, union, ellipsoid, capsule, box } from './sdf';
 import { GAME, WIND } from '../render/settings';
 
@@ -27,6 +27,11 @@ export class Knight extends Character {
   private moveTimer = 0;
   private lookYaw = 0; private lookPitch = 0;
   private idleShift = 0;
+  // The prologue: wounded (one hand pressed to his side, the sword dragging), then slumped against the hawthorn,
+  // lifting his head to her (headUp) and at the last sheltering her under his gauntlet (shelter).
+  wounded = false;
+  headUp = 0; shelter = 0;
+  private headUpNow = 0; private shelterNow = 0;
   private panels: Panel[] = [];
   private flap = new Map<THREE.Group, number>();
 
@@ -268,7 +273,68 @@ export class Knight extends Character {
 
   // The sword and the arms that hold it: presented at rest, on the shoulder while moving, slung on the back while
   // the arms hold the kitten (or reach for a handle).
+  // Wounded: the left hand pressed to the wound low on his right side, the right arm hanging with the sword's point
+  // trailing behind on the ground.
+  private poseWounded() {
+    const P = this.parts;
+    const wound = new THREE.Vector3(-0.07, 0.02, 0.2).applyMatrix4(P.chest.matrix);
+    this.armL.target.copy(wound); this.armL.pole.set(1, -0.4, 0.6);
+    const sh = new THREE.Vector3(-this.dims.shoulderW, this.dims.shoulderY, 0).applyMatrix4(P.chest.matrix);
+    const hand = sh.clone().add(new THREE.Vector3(-0.07, -0.54, 0.06));
+    this.armR.target.copy(hand); this.armR.pole.set(-1, -0.3, -0.5);
+    // Point down and back, dragging.
+    this.sword.position.copy(hand).add(new THREE.Vector3(0, -0.02, 0));
+    this.sword.quaternion.setFromEuler(new THREE.Euler(Math.PI - 0.55, 0, 0.12));
+  }
+
+  // Slumped against a tree behind him, legs out on the ground, his sword lying by his right hand.
+  readonly poseSlumped = (_c: Character, ctx: PoseContext) => {
+    const P = this.parts, dt = ctx.dt;
+    this.breath += dt;
+    this.headUpNow += (this.headUp - this.headUpNow) * Math.min(1, dt * 1.4);
+    this.shelterNow += (this.shelter - this.shelterNow) * Math.min(1, dt * 0.9);
+    const br = Math.sin(this.breath * 0.9) * 0.005;
+    P.pelvis.position.set(0, 0.16, 0);
+    P.pelvis.rotation.set(-0.3, 0, 0.04);
+    P.pelvis.updateMatrix();
+    const g = this.gait.p;
+    for (const side of [-1, 1]) {
+      const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
+      const hip = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
+      // One knee up a little more than the other.
+      const lift = side > 0 ? 0.3 : 0.16;
+      const knee = hip.clone().add(new THREE.Vector3(side * 0.04, lift, Math.sqrt(Math.max(0.01, g.l1 * g.l1 - lift * lift - 0.0016))));
+      const drop = knee.y - g.ankleH;
+      const ankle = new THREE.Vector3(knee.x + side * 0.02, g.ankleH, knee.z + Math.sqrt(Math.max(0.01, g.l2 * g.l2 - drop * drop)));
+      orientBone(th, hip, knee, new THREE.Vector3(0, 1, 0.2));
+      orientBone(sh, knee, ankle, new THREE.Vector3(0, 1, 0.5));
+      ft.position.copy(ankle);
+      ft.rotation.set(-1.0, side * 0.3, 0);
+    }
+    // Back against the trunk, breathing slow and shallow.
+    P.chest.position.copy(new THREE.Vector3(0, 0.1 + br, -0.02).applyMatrix4(P.pelvis.matrix));
+    P.chest.rotation.set(-0.42 + br * 2, 0.06, -0.05);
+    P.chest.updateMatrix();
+    // Chin down on his chest; up, slowly, to look at her.
+    P.head.position.copy(new THREE.Vector3(0, 0.445, 0).applyMatrix4(P.chest.matrix));
+    P.head.quaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.lerp(0.5, -0.05, this.headUpNow), THREE.MathUtils.lerp(0.2, 0.0, this.headUpNow), 0.06, 'YXZ'));
+    // The sword on the ground at his right, hilt by his hand; the ribbon on its grip.
+    this.sword.position.set(-0.36, 0.05, 0.12);
+    this.sword.quaternion.setFromEuler(new THREE.Euler(Math.PI / 2 - 0.08, 0.15, Math.PI / 2));
+    this.sword.updateMatrix();
+    this.armR.target.copy(new THREE.Vector3(0, -0.12, 0.02).applyMatrix4(this.sword.matrix));
+    this.armR.pole.set(-1, 0.2, -0.4);
+    // Left hand on the wound; at the last, over her as she sleeps in his lap, out of the rain.
+    const wound = new THREE.Vector3(-0.07, 0.04, 0.2).applyMatrix4(P.chest.matrix);
+    const over = new THREE.Vector3(0.03, 0.37, 0.15);
+    this.armL.target.copy(wound).lerp(over, this.shelterNow);
+    this.armL.pole.set(1, -0.5, 0.3).lerp(new THREE.Vector3(1, 0.4, 0.1), this.shelterNow);
+    this.solveArms();
+    this.poseSkirt(ctx);
+  };
+
   private poseSword(ctx: PoseContext, speed: number) {
+    if (this.wounded) { this.poseWounded(); return; }
     const P = this.parts, g = this.gait;
     const dt = ctx.dt;
     // Sword: presented point-up before the chest at rest; carried on the right shoulder while moving;

@@ -61,6 +61,8 @@ export abstract class Character {
   override: ((c: Character, ctx: PoseContext) => void) | null = null;
   // 0 on the ground .. 1 on a climbing face (eased by the pose).
   climbBlend = 0;
+  // How quickly a story pose blends in and out over the animated body, per second (driven mode).
+  overrideBlend = 8;
   // Driven mode: while the animation plays an arm action (a throw), the arms keep the bones' pose.
   armsDriven = false;
 
@@ -102,6 +104,11 @@ export abstract class Character {
     const dt = Math.max(1e-4, ctx.dt);
     this.accel.subVectors(b.vel, this.lastVel).divideScalar(dt);
     this.lastVel.copy(b.vel);
+    // A story pose (sitting against a tree, curled up asleep) replaces the whole body's pose.
+    if (this.override) {
+      this.override(this, ctx);
+      return;
+    }
     if (this.carriedBy) {
       this.poseCarried(ctx);
       return;

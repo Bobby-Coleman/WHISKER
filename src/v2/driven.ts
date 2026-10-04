@@ -188,16 +188,25 @@ export class DrivenAvatar {
   private saved = new Map<PartName, { p: THREE.Vector3; q: THREE.Quaternion }>();
 
   updateVisual(alpha: number, ctx: PoseContext) {
-    const want = this.char.body.climb || this.char.carriedBy ? 1 : 0;
-    this.procW += (want - this.procW) * Math.min(1, Math.max(1e-4, ctx.dt) * 8);
+    this.pose(alpha, ctx);
+    (this.char as any).poseMeow?.(ctx.dt);
+  }
+
+  private pose(alpha: number, ctx: PoseContext) {
+    const story = !!this.char.override;
+    const want = this.char.body.climb || this.char.carriedBy || story ? 1 : 0;
+    this.procW += (want - this.procW) * Math.min(1, Math.max(1e-4, ctx.dt) * (story || this.procW > want && this.char.overrideBlend !== 8 ? this.char.overrideBlend : 8));
     if (this.procW < 0.002) this.procW = 0;
     this.anim.updateVisual(alpha, ctx);
     for (const [part, o] of this.offsets) this.mats[part]!.multiplyMatrices(o.bone.matrixWorld, o.m);
     this.char.armsDriven = this.anim.busy;
     this.char.gait.phase = this.anim.phase;
     if (this.procW === 0) { this.char.poseDriven(this.anim.renderPos, this.anim.renderYaw, ctx, this.mats); return; }
-    // The procedural pose first; remembered; then the driven one; then a blend of the two.
+    // The procedural pose first; remembered; then the driven one; then a blend of the two (the sword too).
     this.char.updateVisual(alpha, ctx);
+    if (this.procW > 0.999) return;
+    const sword = (this.char as any).sword as THREE.Object3D | undefined;
+    if (sword) { this.swordP.copy(sword.position); this.swordQ.copy(sword.quaternion); }
     for (const part of this.offsets.keys()) {
       const g = this.char.parts[part];
       let s = this.saved.get(part);
@@ -212,7 +221,10 @@ export class DrivenAvatar {
       g.quaternion.slerp(s.q, w);
       g.updateMatrix();
     }
+    if (sword) { sword.position.lerp(this.swordP, w); sword.quaternion.slerp(this.swordQ, w); }
   }
+  private swordP = new THREE.Vector3();
+  private swordQ = new THREE.Quaternion();
 
   update(dt: number, ctx: PoseContext) { this.char.update(dt, ctx); }
   // Where v1's arms hold the kitten (its own carry pose holds her there).

@@ -11,7 +11,8 @@ import type { Game, Actor } from './game';
 type V3 = THREE.Vector3 | [number, number, number] | (() => THREE.Vector3);
 export type CamKey = { pos: V3; look: V3; mm?: number; dof?: number };
 export type Shot = { at: number; dur: number; from: CamKey; to?: CamKey; ease?: 'linear' | 'smooth' | 'in' | 'out'; blend?: number; handheld?: number };
-export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number };
+// `probe`: how far above the path the ground is looked for (lower it under an overhang: a lap under a chest).
+export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number; probe?: number };
 export type Cue = { at: number; run: () => void; onSkip?: boolean };
 export type Fade = { at: number; dur: number; to: number };
 export type Cutscene = {
@@ -115,15 +116,15 @@ export class Timeline {
       }
       cam.updateProjectionMatrix();
     }
-    // Fades: the latest that has started sets the level, eased from where it was.
-    for (const f of cs.fades ?? []) {
-      if (t >= f.at && t <= f.at + f.dur + dt) {
-        const a = THREE.MathUtils.clamp((t - f.at) / Math.max(1e-3, f.dur), 0, 1);
-        if (!this.fadeFrom.has(f)) this.fadeFrom.set(f, this.fadeLevel);
-        const from = this.fadeFrom.get(f)!;
-        this.fadeLevel = THREE.MathUtils.lerp(from, f.to, a * a * (3 - 2 * a));
-        this.ui.fade(this.fadeLevel);
-      }
+    // Fades: the latest that has started sets the level, eased from where it was (and held once done, so a long
+    // frame cannot step over its end).
+    let fade: Fade | null = null;
+    for (const f of cs.fades ?? []) if (t >= f.at && (!fade || f.at >= fade.at)) fade = f;
+    if (fade) {
+      const a = THREE.MathUtils.clamp((t - fade.at) / Math.max(1e-3, fade.dur), 0, 1);
+      if (!this.fadeFrom.has(fade)) this.fadeFrom.set(fade, this.fadeLevel);
+      const level = THREE.MathUtils.lerp(this.fadeFrom.get(fade)!, fade.to, a * a * (3 - 2 * a));
+      if (level !== this.fadeLevel) { this.fadeLevel = level; this.ui.fade(level); }
     }
     if (t >= cs.length) this.finish();
     return this.scene !== null;
@@ -139,7 +140,8 @@ export class Timeline {
     const a = r.pts[Math.max(0, i - 1)], c = r.pts[Math.min(i, r.pts.length - 1)];
     const seg = a.distanceTo(c) || 1;
     const p = a.clone().lerp(c, Math.min(1, d / seg));
-    const gy = this.game.physics.groundY(p.x, p.y + 0.6, p.z, 3);
+    const probe = m.probe ?? 0.6;
+    const gy = this.game.physics.groundY(p.x, p.y + probe, p.z, probe + 2.4);
     if (gy !== null) p.y = gy;
     b.prevPos.copy(b.pos); b.prevYaw = b.yaw;
     const moving = s < r.len;
@@ -161,7 +163,8 @@ export class Timeline {
     // Every mark at its end, and the characters handed back to their motors where they stand.
     for (const r of this.runs) {
       const end = r.pts[r.pts.length - 1].clone();
-      const gy = g.physics.groundY(end.x, end.y + 0.6, end.z, 3);
+      const probe = r.m.probe ?? 0.6;
+      const gy = g.physics.groundY(end.x, end.y + probe, end.z, probe + 2.4);
       if (gy !== null) end.y = gy;
       r.actor.motor.place(end, r.m.face ?? r.actor.char.body.yaw);
     }

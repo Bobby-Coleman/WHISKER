@@ -1,0 +1,20 @@
+[
+  { "label": "walk stage", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return 1; })()", "wait": 2000 },
+  { "label": "levels", "js": "(async () => { const a = __v2.audio; a.start(); await a.ctx.resume(); const an = a.ctx.createAnalyser(); an.fftSize = 2048; a.master.connect(an); const buf = new Float32Array(2048); const measure = async (ms) => { let peak = 0, sum = 0, n = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { an.getFloatTimeDomainData(buf); for (const v of buf) { peak = Math.max(peak, Math.abs(v)); sum += v * v; n++; } await new Promise((r) => setTimeout(r, 20)); } return [+peak.toFixed(3), +Math.sqrt(sum / n).toFixed(4)]; }; const out = { state: a.ctx.state }; out.bed = await measure(1200); const p = __v2.game.kitten.char.body.pos.clone(); for (const k of ['meow', 'mew', 'mrrp', 'cry', 'purr', 'hum', 'breath', 'caw', 'horn']) { a.play(k, p, 1); out[k] = await measure(k === 'purr' ? 3500 : k === 'horn' ? 3000 : 1300); } return JSON.stringify(out); })()", "wait": 200 },
+  { "label": "body profile", "js": "(() => { const P = __v2.physics; const r = []; for (let z = 1.7; z >= -0.1; z -= 0.1) { r.push(z.toFixed(1) + ':' + [-0.15, 0, 0.15].map((x) => { const y = P.groundY(x, 4, z, 5); return y == null ? '-' : y.toFixed(2); }).join('/')); } return r.join(' '); })()", "wait": 100 },
+  { "label": "to the plank", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const x = -4.62, z = 8.5; const y = __v2.physics.groundY(x, 5, z, 10); g.kitten.motor.place(new V(x, y, z), 2.7); __v2.camYaw(-0.2, 0.12); __v2.simMove(0, 1, 4.5); return y; })()", "wait": 1300 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "p4_1_plank.png", "wait": 1500 },
+  { "label": "top?", "js": "JSON.stringify(__v2.state().kitten)", "wait": 2000 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "p4_2_over.png", "wait": 100 },
+  { "label": "meow in the fog", "js": "(() => { __v2.simMove(0, 0, 0.1); __v2.call(); return 1; })()", "out": "p4_3_meow.png", "wait": 250 },
+  { "label": "to the knight", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const y = __v2.physics.groundY(-1.2, 5, 3.4, 10); g.kitten.motor.place(new V(-1.2, y, 3.4), 2.8); __v2.camYaw(-0.4, 0.15); __v2.simMove(0.2, 1, 1.0); return 1; })()", "wait": 2200 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "p4_4_found1.png", "wait": 4300 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "p4_5_found2.png", "wait": 3600 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "p4_6_found3.png", "wait": 3500 },
+  { "label": "climb stage", "js": "__v2.timeline.playing + ' ' + JSON.stringify(__v2.state().kitten)", "out": "p4_7_climbstage.png", "wait": 300 },
+  { "label": "hop on", "js": "(() => { __v2.camYaw(0, 0.25); __v2.simMove(0, 1, 6, true); __v2.jump(); return JSON.stringify(__v2.state().kitten); })()", "wait": 700 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "p4_8_onboot.png", "wait": 1200 },
+  { "js": "JSON.stringify(__v2.state().kitten) + ' ' + __v2.timeline.playing", "out": "p4_9_up.png", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state().kitten) + ' ' + __v2.timeline.playing", "out": "p4_10_up2.png", "wait": 2500 },
+  { "js": "JSON.stringify(__v2.state().kitten) + ' ' + __v2.timeline.playing + ' ' + (__v2.timeline.t||0).toFixed(1)", "out": "p4_11_end1.png", "wait": 100 }
+]

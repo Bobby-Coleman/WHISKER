@@ -1,0 +1,13 @@
+[
+  { "label": "walk stage", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return JSON.stringify(__v2.state().kitten.pos); })()", "wait": 2500 },
+  { "label": "to the cart", "js": "(() => { const g = __v2.game; g.kitten.motor.place(new (g.kitten.char.body.pos.constructor)(-10.6, -0.2, 20.6), 2.6); __v2.camYaw(-0.5, 0.15); __v2.simMove(0, 1, 2.2); return 1; })()", "wait": 900 },
+  { "js": "JSON.stringify(__v2.state().kitten.pos)", "out": "pw_1_cart.png", "wait": 1600 },
+  { "label": "after cart", "js": "JSON.stringify(__v2.state().kitten.pos)", "wait": 100 },
+  { "label": "to the log", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const y = __v2.physics.groundY(-7.4, 5, 14.3, 10); g.kitten.motor.place(new V(-7.4, y, 14.3), 2.6); __v2.camYaw(-0.55, 0.12); return y; })()", "wait": 1200 },
+  { "js": "1", "out": "pw_2_log.png", "wait": 200 },
+  { "label": "jump the log", "js": "(() => { __v2.simMove(0, 1, 1.2, true); setTimeout(() => __v2.jump(), 300); return 1; })()", "wait": 1600 },
+  { "js": "JSON.stringify(__v2.state().kitten.pos)", "out": "pw_3_overlog.png", "wait": 200 },
+  { "label": "to the crates", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const y = __v2.physics.groundY(-4.45, 5, 8.6, 10); g.kitten.motor.place(new V(-4.45, y, 8.6), 2.68); __v2.camYaw(-0.4, 0.15); __v2.simMove(0, 1, 3.0); return y; })()", "wait": 1500 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "pw_4_climb.png", "wait": 1600 },
+  { "label": "on top?", "js": "JSON.stringify(__v2.state().kitten)", "wait": 100 }
+]

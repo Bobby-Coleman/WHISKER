@@ -1,0 +1,11 @@
+[
+  { "label": "opening", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('opening'); return 1; })()", "wait": 3500, "out": "op_1.png" },
+  { "label": "t10", "js": "(() => { __v2.timeline.t = 11; return 1; })()", "wait": 1200, "out": "op_2_limp.png" },
+  { "label": "t19", "js": "(() => { __v2.timeline.t = 19.5; return 1; })()", "wait": 1500, "out": "op_3_sit.png" },
+  { "label": "t23", "js": "(() => { __v2.timeline.t = 23.5; return 1; })()", "wait": 800, "out": "op_4_ribbon.png" },
+  { "label": "t27", "js": "(() => { __v2.timeline.t = 27.4; return 1; })()", "wait": 1000, "out": "op_5_camp.png" },
+  { "label": "t32", "js": "(() => { __v2.timeline.t = 32.0; return 1; })()", "wait": 600, "out": "op_6_cry.png" },
+  { "label": "t35", "js": "(() => { __v2.timeline.t = 35.5; return 1; })()", "wait": 1500, "out": "op_7_leave.png" },
+  { "label": "end", "js": "(() => { __v2.timeline.t = 38.3; return 1; })()", "wait": 2500, "out": "op_8_play.png" },
+  { "label": "state", "js": "__prologue.stage + ' ' + JSON.stringify(__v2.state().kitten)", "wait": 100 }
+]

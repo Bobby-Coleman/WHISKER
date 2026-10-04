@@ -1,0 +1,42 @@
+[
+ {
+  "label": "walk then found",
+  "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return 1; })()",
+  "wait": 4000
+ },
+ {
+  "label": "found",
+  "js": "(() => { __v2.story('found'); return 1; })()",
+  "wait": 1500
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 1200,
+  "out": "fo_1.png"
+ },
+ {
+  "label": "t",
+  "js": "(() => { __v2.timeline.t = 3.6; return 1; })()",
+  "wait": 400,
+  "out": "fo_2.png"
+ },
+ {
+  "label": "t",
+  "js": "(() => { __v2.timeline.t = 6.5; return 1; })()",
+  "wait": 400,
+  "out": "fo_3.png"
+ },
+ {
+  "label": "t",
+  "js": "(() => { __v2.timeline.t = 9.6; return 1; })()",
+  "wait": 500,
+  "out": "fo_4.png"
+ },
+ {
+  "label": "t",
+  "js": "(() => { __v2.timeline.t = 11.5; return JSON.stringify(__v2.state().kitten); })()",
+  "wait": 1500,
+  "out": "fo_5_after.png"
+ }
+]

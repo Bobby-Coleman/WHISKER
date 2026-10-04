@@ -10,7 +10,7 @@ const url = process.argv[2];
 const plan = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 const outDir = process.argv[4] || 'caps';
 fs.mkdirSync(outDir, { recursive: true });
-const args = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'];
+const args = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'];
 if (process.env.GPU === 'intel') args.push('--force_low_power_gpu');
 else args.push('--force_high_performance_gpu');
 const browser = await chromium.launch({

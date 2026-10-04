@@ -1,0 +1,11 @@
+[
+  { "label": "walk stage", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('walk'); return 1; })()", "wait": 2000 },
+  { "label": "to the plank", "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const x = -4.62, z = 8.5; const y = __v2.physics.groundY(x, 5, z, 10); g.kitten.motor.place(new V(x, y, z), 2.7); __v2.camYaw(-0.2, 0.12); __v2.simMove(0, 1, 4.5); return y; })()", "wait": 1300 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "pw_5_plank.png", "wait": 1500 },
+  { "label": "top?", "js": "JSON.stringify(__v2.state().kitten)", "wait": 2000 },
+  { "js": "JSON.stringify(__v2.state().kitten)", "out": "pw_6_over.png", "wait": 100 },
+  { "label": "to the knight", "js": "(() => { __v2.simMove(0,0,0.1); const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const y = __v2.physics.groundY(-1.2, 5, 3.4, 10); g.kitten.motor.place(new V(-1.2, y, 3.4), 2.8); __v2.camYaw(-0.4, 0.15); __v2.simMove(0.2, 1, 1.0); return 1; })()", "wait": 2500 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "pw_7_found.png", "wait": 4000 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "pw_8_found2.png", "wait": 4500 },
+  { "js": "__v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1)", "out": "pw_9_climbstage.png", "wait": 200 }
+]

@@ -1,0 +1,7 @@
+[
+  { "label": "climb", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('climb'); __v2.game.kitten.motor.place(new (__v2.game.kitten.char.body.pos.constructor)(2.2, 1.0, 3.2), 0); return 1; })()", "wait": 3000 },
+  { "label": "lines", "js": "__v2.debugPhysics(0, 1.6, 0.6, 1.0)", "wait": 300 },
+  { "label": "side view", "js": "(() => { __v2.timeline.play({ name: 'dbg', length: 1000, shots: [{ at: 0, dur: 1000, from: { pos: [-1.9, 1.75, 0.75], look: [0, 1.6, 0.7], mm: 45 } }], letterbox: false, skippable: true }); return 1; })()", "wait": 1500, "out": "co_1_side.png" },
+  { "label": "front view", "js": "(() => { __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [-0.5, 2.3, 2.2], look: [0, 1.6, 0.7], mm: 40 } }]; __v2.timeline.lastShot = null; return 1; })()", "wait": 1500, "out": "co_2_front.png" },
+  { "label": "top view", "js": "(() => { __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [0.01, 3.4, 0.8], look: [0, 1.5, 0.75], mm: 40 } }]; __v2.timeline.lastShot = null; return 1; })()", "wait": 1500, "out": "co_3_top.png" }
+]

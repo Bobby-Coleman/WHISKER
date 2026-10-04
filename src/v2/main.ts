@@ -29,6 +29,11 @@ import { StatsPanel } from '../ui/stats';
 import { Physics } from './physics';
 import { LevelBuilder } from './level';
 import { prepareField, buildPlayground } from './levels/playground';
+import { prologue, debugStage } from './levels/prologue';
+import type { LevelModule, StoryContext } from './levels/types';
+
+// The engine test course, as a level.
+const playground: LevelModule = { prepareField, build: async (physics, lv) => buildPlayground(physics, lv) };
 import { Game, Avatar } from './game';
 import { SkinnedAvatar } from './avatar';
 import { DrivenAvatar, KITTEN_PROPS, KNIGHT_PROPS } from './driven';
@@ -81,7 +86,9 @@ export async function run(params: URLSearchParams) {
   hud.setBackend(backend);
   statsPanel.gpuSupported = (renderer.backend as any).trackTimestamp === true;
   const weather = new Weather(renderer);
-  const startWeather = (params.get('weather') as WeatherId) || 'morning';
+  // The level: the prologue by default; ?level=test, the engine test course.
+  const mod: LevelModule = params.get('level') === 'test' ? playground : prologue;
+  const startWeather = (params.get('weather') as WeatherId) || mod.weather || 'morning';
   const weatherReady = weather.load(startWeather);
   weatherReady.catch(() => {});
   const scene = new THREE.Scene();
@@ -95,7 +102,7 @@ export async function run(params: URLSearchParams) {
 
   // ---- Physics, the moor and the course.
   const physics = await Physics.create(H);
-  prepareField();
+  mod.prepareField();
   const terrain = createTerrain();
   scene.add(terrain.near, terrain.far, createDistantWater());
   const fieldMaps = bakeFieldMaps(terrain.near, FIELD.nearHalf, 0.8);
@@ -104,7 +111,7 @@ export async function run(params: URLSearchParams) {
   load.progress('world', 0.45);
   await nextPaint();
   const lv = new LevelBuilder(physics);
-  const level = buildPlayground(physics, lv);
+  const level = await mod.build(physics, lv, scene);
   scene.add(lv.root);
   const grass = createGrass(fieldMaps, tier.grassDensity);
   scene.add(grass.group);
@@ -166,6 +173,18 @@ export async function run(params: URLSearchParams) {
   const audio = new Soundscape();
   game.onSwitch = (to) => audio.play('clank', to.char.body.pos, 0.15);
   game.onWait = (who, waiting) => hud.say(`The ${who === game.knight ? 'knight' : 'kitten'} ${waiting ? 'waits here' : 'follows'}.`, 2.5);
+  // Her meow on the call button; the level may answer it.
+  let lastCall = -1;
+  game.onCall = (who) => {
+    const now = performance.now() / 1000;
+    if (who !== game.kitten || now - lastCall < 0.5) return;
+    lastCall = now;
+    const kinds = ['meow', 'meow', 'mew', 'mrrp'] as const;
+    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    kittenV1.meow(kind);
+    audio.play(kind, game.kitten.char.body.pos);
+    mod.call?.(story, kind);
+  };
   // A fall fades out, the character returns to firm ground, and it fades back in.
   const fade = document.createElement('div');
   fade.style.cssText = 'position:fixed;inset:0;background:#101212;opacity:0;pointer-events:none;transition:opacity .28s;z-index:4';
@@ -185,6 +204,14 @@ export async function run(params: URLSearchParams) {
     fade: (o) => { cutFade.style.opacity = String(o); },
     letterbox: (on) => { bars.forEach((b, i) => { b.style.transform = on ? 'translateY(0)' : `translateY(${i ? '' : '-'}100%)`; }); },
   });
+  // The level's story, now that the characters exist.
+  const story: StoryContext = {
+    game, timeline, hud, audio, scene, physics, camera, renderer, sun,
+    kitten: kittenV1, knight: knightV1, avatars: { kitten, knight },
+    touch: () => input.touchMode, restart: () => location.reload(),
+    padLabel: (code, text) => input.label(code, text),
+  };
+  await mod.start?.(story);
 
   // Prime poses and cloth.
   const ctx0 = (a: typeof game.kitten | typeof game.knight): PoseContext => ({ dt: H, time: 0, ground: a.ground, lookAt: null, active: true });
@@ -217,6 +244,7 @@ export async function run(params: URLSearchParams) {
     onBegin: () => {
       audio.start(); started = true;
       const tip = () => hud.say(input.touchMode ? 'Switch changes between the kitten and the knight; Wait tells the other to stay.' : 'Tab switches between the kitten and the knight. Q tells the other to wait or follow.', 6);
+      if (mod.begin && !params.has('nointro')) { mod.begin(story); return; }
       if (level.intro && !params.has('nointro')) { timeline.play({ ...level.intro, onEnd: tip }); cutFade.style.opacity = '1'; } else tip();
     },
     onSkipReveal: () => {}, onTreatment: (v: number) => { LOOK.treatment.value = v; }, onClean: (on: boolean) => { LOOK.treatment.value = on ? 0 : 0.6; LOOK.grade.value = on ? 0 : 1; },
@@ -246,7 +274,8 @@ export async function run(params: URLSearchParams) {
     let inp: InputFrame = input.poll(dt);
     if (sim.until > clockT) inp = { ...inp, move: sim.move.clone(), jumpHeld: inp.jumpHeld || sim.jumpHeld };
     if (!started) inp = { ...inp, move: new THREE.Vector2(), jumpPressed: false, switchPressed: false, interactPressed: false };
-    if (inp.resetPressed) game.placeAt(level.spawn);
+    if (inp.resetPressed && mod === playground) game.placeAt(level.spawn);
+    mod.update?.(dt, clockT, story);
     game.handleInput(inp);
     acc += Math.min(dt, 0.1);
     while (acc >= H) { game.fixedStep(H, inp); acc -= H; }
@@ -280,7 +309,7 @@ export async function run(params: URLSearchParams) {
     {
       let want = 1;
       const cp = camera.position, np = knight.body.pos;
-      if (game.active === game.kitten) {
+      if (game.active === game.kitten && !timeline.playing) {
         const kp = kitten.renderPos;
         const sx = kp.x - cp.x, sz = kp.z - cp.z, sl2 = sx * sx + sz * sz || 1;
         const t = ((np.x - cp.x) * sx + (np.z - cp.z) * sz) / sl2;
@@ -290,7 +319,7 @@ export async function run(params: URLSearchParams) {
           if (d < 0.75 && ly > np.y - 0.1 && ly < np.y + 1.95) want = 0.08;
         }
       }
-      if (cp.distanceTo(new THREE.Vector3(np.x, np.y + 1.0, np.z)) < 1.2) want = Math.min(want, 0.15);
+      if (!timeline.playing && cp.distanceTo(new THREE.Vector3(np.x, np.y + 1.0, np.z)) < 1.2) want = Math.min(want, 0.15);
       knightVis.value += (want - knightVis.value) * Math.min(1, dt * 7);
     }
     // Sun and shadows follow the played character.
@@ -330,6 +359,7 @@ export async function run(params: URLSearchParams) {
   W.__v2 = {
     game, physics, kitten, knight, scene, renderer, LOOK, timeline, pipeline, level: lv, grass, veg, mist,
     play: () => level.intro && timeline.play(level.intro),
+    story: (stage: string) => { started = true; audio.start(); return stage === 'opening' ? mod.begin?.(story) : debugStage(story, stage); },
     skipCut: () => timeline.skip(),
     setActive: (k: 'kitten' | 'knight') => game.switchTo(k === 'kitten' ? game.kitten : game.knight),
     teleport: (k: 'kitten' | 'knight', x: number, y: number, z: number, yaw = 0) => {
@@ -341,6 +371,21 @@ export async function run(params: URLSearchParams) {
     simMove: (x: number, y: number, seconds: number, jumpHeld = false) => { sim.move.set(x, y); sim.until = clockT + seconds; sim.jumpHeld = jumpHeld; },
     jump: () => { (game.active === game.kitten && kitten.body.climb) ? (game as any).climbJump = true : game.active.motor.queueJump(); },
     act: () => game.handleInput({ ...input.poll(0), interactPressed: true }),
+    call: () => game.handleInput({ ...input.poll(0), waitPressed: true }),
+    // Collider outlines within `r` of a point (tests).
+    debugPhysics: (x: number, y: number, z: number, r = 1.5) => {
+      const { vertices } = (physics as any).world.debugRender();
+      const keep: number[] = [];
+      const near = (i: number) => Math.hypot(vertices[i] - x, vertices[i + 1] - y, vertices[i + 2] - z) < r;
+      for (let i = 0; i < vertices.length; i += 6) if (near(i) && near(i + 3)) for (let k = 0; k < 6; k++) keep.push(vertices[i + k]);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(keep, 3));
+      const ls = new THREE.LineSegments(g, new THREE.LineBasicNodeMaterial({ color: 0xff2a7a, depthTest: false, transparent: true }));
+      ls.renderOrder = 999; ls.frustumCulled = false;
+      scene.add(ls);
+      return keep.length / 6;
+    },
+    audio,
     camYaw: (y: number, p = 0.3) => { game.camera.yaw = y; game.camera.pitch = p; },
     step: (n: number, dt = H) => { for (let i = 0; i < n; i++) frame(dt, false); },
     render: () => frame(1e-4, true),

@@ -49,7 +49,9 @@ export type AvatarSpec = {
 };
 
 type Layered = { lower: THREE.AnimationAction; upper: THREE.AnimationAction; dur: number; offset: number };
-const LOCO = ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'] as const;
+const LOCO = ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Zombie_Walk_Fwd_Loop'] as const;
+// Walk loops a character may use in place of the plain walk (a limp).
+const WALKS = ['Walk_Loop', 'Zombie_Walk_Fwd_Loop'];
 const _ik = { r: new THREE.Vector3(), q: new THREE.Quaternion(), w: new THREE.Quaternion(), p: new THREE.Quaternion() };
 
 export class SkinnedAvatar {
@@ -111,7 +113,7 @@ export class SkinnedAvatar {
       if (l) this.clips.set(n, l);
     }
     // The gait loops and the carrying layer are posed by phase, not by the mixer's clock.
-    for (const n of ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Walk_Carry_Loop']) { const l = this.clips.get(n); if (l) l.lower.timeScale = l.upper.timeScale = 0; }
+    for (const n of ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Walk_Carry_Loop', 'Zombie_Walk_Fwd_Loop']) { const l = this.clips.get(n); if (l) l.lower.timeScale = l.upper.timeScale = 0; }
     this.alignLoops();
     this.weights(1, 0, 0, 0);
   }
@@ -138,9 +140,14 @@ export class SkinnedAvatar {
     }
   }
 
+  // The walk loop in use: the plain walk, or a limp (the wounded knight); its natural speed, m/s.
+  walkClip = 'Walk_Loop';
+  walkSpeed: number | null = null;
+
   private weights(idle: number, walk: number, jog: number, sprint: number) {
-    const w = [idle, walk, jog, sprint];
-    LOCO.forEach((n, i) => { const l = this.clips.get(n); if (l) { l.lower.setEffectiveWeight(w[i]); l.upper.setEffectiveWeight(w[i]); } });
+    const set = (n: string, v: number) => { const l = this.clips.get(n); if (l) { l.lower.setEffectiveWeight(v); l.upper.setEffectiveWeight(v); } };
+    set('Idle_Loop', idle); set('Jog_Fwd_Loop', jog); set('Sprint_Loop', sprint);
+    for (const n of WALKS) set(n, n === this.walkClip ? walk : 0);
   }
 
   resetPose(_ground?: (x: number, z: number) => number) {
@@ -199,7 +206,7 @@ export class SkinnedAvatar {
 
     // Locomotion: weights from speed between the loops' natural speeds; one phase drives all of them.
     const sp = this.carriedBy ? 0 : Math.hypot(b.vel.x, b.vel.z);
-    const S = this.speeds;
+    const S = this.walkSpeed !== null ? { ...this.speeds, walk: this.walkSpeed } : this.speeds;
     let wi = 0, ww = 0, wj = 0, ws = 0;
     if (sp < 0.12) wi = 1;
     else if (sp < S.walk) { const t = (sp - 0.12) / (S.walk - 0.12); wi = 1 - t; ww = t; }
@@ -207,7 +214,7 @@ export class SkinnedAvatar {
     else if (sp < S.sprint) { const t = (sp - S.jog) / (S.sprint - S.jog); wj = 1 - t; ws = t; }
     else ws = 1;
     const cyc = (n: string) => this.clips.get(n);
-    const walk = cyc('Walk_Loop'), jog = cyc('Jog_Fwd_Loop'), sprint = cyc('Sprint_Loop'), idle = cyc('Idle_Loop');
+    const walk = cyc(this.walkClip), jog = cyc('Jog_Fwd_Loop'), sprint = cyc('Sprint_Loop'), idle = cyc('Idle_Loop');
     // Metres covered per cycle at natural speed; the phase advances to match the ground speed.
     const stride = (walk ? ww * S.walk * walk.dur : 0) + (jog ? wj * S.jog * jog.dur : 0) + (sprint ? ws * S.sprint * sprint.dur : 0);
     const mw = ww + wj + ws;

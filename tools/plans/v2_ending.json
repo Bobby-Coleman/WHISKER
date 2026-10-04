@@ -1,0 +1,77 @@
+[
+ {
+  "label": "climb stage",
+  "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('climb'); return 1; })()",
+  "wait": 4000
+ },
+ {
+  "label": "profile R leg",
+  "js": "(() => { const P = __v2.physics; const r = []; for (let z = 1.8; z >= 0.2; z -= 0.1) { const y = P.groundY(-0.15, 4, z, 5); r.push(z.toFixed(1) + ':' + (y == null ? '-' : y.toFixed(2))); } return r.join(' '); })()",
+  "wait": 100
+ },
+ {
+  "label": "place",
+  "js": "(() => { const g = __v2.game; const V = g.kitten.char.body.pos.constructor; const x = -0.16, z = 1.68; const y = __v2.physics.groundY(x, 5, z, 10); g.kitten.motor.place(new V(x, y, z), 3.14); __v2.camYaw(0.5, 0.25); return y; })()",
+  "wait": 1500
+ },
+ {
+  "label": "go",
+  "js": "(async () => { __v2.simMove(0.479, 0.878, 7, true); __v2.jump(); const out = ['top ' + JSON.stringify(__prologue.chestTop) + __prologue.stage]; for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 60)); const s = __v2.state().kitten; out.push(s.pos.map((v) => v.toFixed(2)).join(',') + (s.climb ? 'C' : s.grounded ? 'g' : 'a') + (__v2.timeline.playing ? '*' : '')); if (__v2.timeline.playing) break; } return out.join(' | '); })()",
+  "wait": 100,
+  "out": "ce_0.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 2500,
+  "out": "ce_1_lap.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 4500,
+  "out": "ce_2_shelter.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 7000,
+  "out": "ce_3_night.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 10000,
+  "out": "ce_4_dawn.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 6000,
+  "out": "ce_5_torch.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 8000,
+  "out": "ce_6_close.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 5500,
+  "out": "ce_7_title.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 9000,
+  "out": "ce_8_summers.png"
+ },
+ {
+  "label": "t",
+  "js": "__v2.timeline.playing + ' ' + (__v2.timeline.t || 0).toFixed(1) + ' ' + __prologue.stage",
+  "wait": 7000,
+  "out": "ce_9_panel.png"
+ }
+]

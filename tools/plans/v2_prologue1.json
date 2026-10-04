@@ -1,0 +1,12 @@
+[
+  { "label": "t", "js": "(() => { return __v2.timeline.playing + ' ' + __v2.timeline.t.toFixed(1); })()", "wait": 3500 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_01.png", "wait": 5500 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_02.png", "wait": 5000 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_03.png", "wait": 5000 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_04.png", "wait": 4500 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_05.png", "wait": 4500 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_06.png", "wait": 4000 },
+  { "js": "__v2.timeline.t.toFixed(1)", "out": "pr_07.png", "wait": 4000 },
+  { "js": "JSON.stringify([__v2.timeline.playing, __v2.state().kitten.pos, __v2.state().knight.pos])", "out": "pr_08.png", "wait": 2500 },
+  { "js": "JSON.stringify([__v2.timeline.playing, __v2.state().kitten.pos])", "out": "pr_09_play.png", "wait": 200 }
+]

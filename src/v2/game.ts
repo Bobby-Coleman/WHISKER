@@ -55,6 +55,8 @@ export class Game {
   onFall?: (actor: Actor, phase: 'out' | 'in') => void;
   onSwitch?: (to: Actor) => void;
   onWait?: (who: Actor, waiting: boolean) => void;
+  // The call button: her meow (and, where there is a companion, wait / follow).
+  onCall?: (who: Actor) => void;
 
   constructor(public physics: Physics, kittenChar: Avatar, knightChar: Avatar, public level: LevelInfo, aspect: number) {
     const mk = (char: Avatar, kind: 'kitten' | 'knight'): Actor => {
@@ -74,6 +76,8 @@ export class Game {
   }
 
   get companion() { return this.active === this.kitten ? this.knight : this.kitten; }
+  // A level may keep play with one character (the prologue is hers alone).
+  canSwitch = true;
 
   // Both characters to their marks, at rest, and the camera behind the one played.
   placeAt(s: LevelInfo['spawn']) {
@@ -101,7 +105,7 @@ export class Game {
     this.jumpHeld = inp.jumpHeld;
     if (this.locked) return;
     const a = this.active;
-    if (inp.switchPressed) this.switchTo(this.companion);
+    if (inp.switchPressed) { if (this.canSwitch) this.switchTo(this.companion); }
     else if (inp.jumpPressed) {
       if (a === this.kitten && a.char.carriedBy) this.carry.putDown();
       else if (a === this.kitten && a.char.body.climb) this.climbJump = true;
@@ -114,9 +118,13 @@ export class Game {
     if (inp.waitPressed) {
       if (a === this.knight && this.carry.holding) this.carry.putDown();
       else {
-        this.follower.mode = this.follower.mode === 'wait' ? 'follow' : 'wait';
-        this.follower.clear();
-        this.onWait?.(this.companion, this.follower.mode === 'wait');
+        this.onCall?.(a);
+        // With one character in play (the prologue) it is only the call.
+        if (this.canSwitch) {
+          this.follower.mode = this.follower.mode === 'wait' ? 'follow' : 'wait';
+          this.follower.clear();
+          this.onWait?.(this.companion, this.follower.mode === 'wait');
+        }
       }
     }
   }

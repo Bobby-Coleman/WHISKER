@@ -1,0 +1,7 @@
+[
+  { "label": "ending", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.story('ending'); return 1; })()", "wait": 5000 },
+  { "label": "A face", "js": "(() => { const L = __prologue.lapTop; __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [L.x - 0.55, L.y + 0.14, L.z + 0.04], look: [L.x, L.y + 0.05, L.z], mm: 50 } }]; __v2.timeline.lastShot = null; return JSON.stringify(__v2.state().kitten.pos); })()", "wait": 1500, "out": "sl_1_face.png" },
+  { "label": "B above", "js": "(() => { const L = __prologue.lapTop; __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [L.x + 0.05, L.y + 0.5, L.z + 0.5], look: [L.x, L.y + 0.04, L.z], mm: 50 } }]; __v2.timeline.lastShot = null; return 1; })()", "wait": 1500, "out": "sl_2_above.png" },
+  { "label": "C shot1", "js": "(() => { const L = __prologue.lapTop; __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [L.x - 0.72, L.y + 0.62, L.z + 0.6], look: [L.x, L.y + 0.06, L.z], mm: 44 } }]; __v2.timeline.lastShot = null; return 1; })()", "wait": 1500, "out": "sl_3_shot1.png" },
+  { "label": "D side", "js": "(() => { const L = __prologue.lapTop; __v2.timeline.scene.shots = [{ at: 0, dur: 1000, from: { pos: [L.x + 0.6, L.y + 0.3, L.z + 0.25], look: [L.x, L.y + 0.05, L.z], mm: 50 } }]; __v2.timeline.lastShot = null; return 1; })()", "wait": 1500, "out": "sl_4_left.png" }
+]
