@@ -1,0 +1,11 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; __v2.setActive('kitten'); window.__d = () => { const s = __v2.state(); const k = s.kitten.pos, n = s.knight.pos; return JSON.stringify({ gap: +Math.hypot(k[0]-n[0], k[2]-n[2]).toFixed(2), k: k.map(v=>+v.toFixed(1)), n: n.map(v=>+v.toFixed(1)) }); }; __v2.camYaw(0.4, 0.3); return __d(); })()", "wait": 500 },
+  { "label": "run north", "js": "(() => { __v2.simMove(0.0, 1, 2.2); return __d(); })()", "wait": 1200 },
+  { "js": "__d()", "out": "fo_1.png", "wait": 1200 },
+  { "label": "turn east", "js": "(() => { __v2.simMove(1, 0.3, 1.6); return __d(); })()", "wait": 1800 },
+  { "js": "__d()", "out": "fo_2.png", "wait": 1500 },
+  { "label": "stopped", "js": "__d()", "wait": 100 },
+  { "label": "switch, knight leads", "js": "(() => { __v2.setActive('knight'); __v2.camYaw(2.6, 0.3); __v2.simMove(0, 1, 2.5); return __d(); })()", "wait": 2600 },
+  { "js": "__d()", "out": "fo_3.png", "wait": 1500 },
+  { "label": "settled", "js": "__d()", "wait": 100 }
+]

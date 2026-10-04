@@ -1,0 +1,7 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; window.__trace = (who, n) => new Promise((res) => { const out = []; let i = 0; const g = __v2.game; const a = who === 'kitten' ? g.kitten : g.knight; const f = () => { const b = a.char.body; out.push([+(performance.now() / 1000).toFixed(3), +b.pos.y.toFixed(3), +b.vy.toFixed(2), a.motor.grounded ? 1 : 0, +Math.hypot(b.vel.x, b.vel.z).toFixed(2), +a.char.renderPos.y.toFixed(3)]); if (++i < n) requestAnimationFrame(f); else res(JSON.stringify(out)); }; requestAnimationFrame(f); }); __v2.setActive('kitten'); __v2.teleport('kitten', 0.5, 0.436, 0.5, Math.PI); __v2.camYaw(0.0, 0.25); return 1; })()", "wait": 1500 },
+  { "label": "kitten stand jump", "js": "(() => { setTimeout(() => __v2.jump(), 50); return __trace('kitten', 70); })()", "wait": 300 },
+  { "label": "kitten tap jump (released at once)", "js": "(() => { __v2.teleport('kitten', 0.5, 0.436, 0.5, Math.PI); setTimeout(() => __v2.jump(), 50); return __trace('kitten', 60); })()", "wait": 300 },
+  { "label": "kitten held jump", "js": "(() => { __v2.teleport('kitten', 0.5, 0.436, 0.5, Math.PI); __v2.simMove(0, 0, 2, true); setTimeout(() => __v2.jump(), 50); return __trace('kitten', 70); })()", "wait": 300 },
+  { "label": "kitten run jump", "js": "(() => { __v2.teleport('kitten', 0.5, 0.436, 2.5, Math.PI); __v2.simMove(0, 1, 2.5, true); setTimeout(() => __v2.jump(), 600); return __trace('kitten', 110); })()", "wait": 300 }
+]

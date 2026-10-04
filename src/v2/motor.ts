@@ -13,11 +13,13 @@ export const MOVE = {
   // The pace v1 settled on: brisk for the knight, and not a blur for the kitten a fifth of his height.
   run: 3.5, walk: 1.45, // m/s, both characters
   accel: 30, decel: 38, skid: 60, // on the ground, m/s²
-  airAccel: 12, airDrag: 0.6, // steering in the air; momentum is kept without input
+  airAccel: 10, airDrag: 0.6, // steering in the air; momentum is kept without input
   turn: 15, airTurn: 6, // facing, rad/s
-  jumpHeight: 1.3, // metres, with the button held to the apex
-  gUp: 26, gCut: 75, gDown: 44, // gravity rising (button held) / rising after letting go / falling
-  apexBand: 1.4, apexHang: 0.5, // near the apex, with the button held, gravity eases off
+  // About v1's half-metre hop for both (a leap of four times her height looked like flying), with platformer
+  // gravity: quick up, a little hang, quicker down. Gaps up to about 1.6 m at a run.
+  jumpHeight: 0.6, // metres, with the button held to the apex
+  gUp: 16, gCut: 40, gDown: 26, // gravity rising (button held) / rising after letting go / falling
+  apexBand: 1.0, apexHang: 0.6, // near the apex, with the button held, gravity eases off
   coyote: 0.11, buffer: 0.14, // grace after running off an edge, and for a press just before landing
   terminal: 24,
   maxSlope: THREE.MathUtils.degToRad(50),
@@ -178,7 +180,9 @@ export class Motor {
 
     // Move through the world.
     const dx = vx * dt + _carry.x, dz = vz * dt + _carry.z;
-    const dy = (this.grounded ? -0.04 : vy * dt) + _carry.y;
+    // On the ground the move is level and snapping keeps it there: pressing down into the floor as well made the
+    // controller now and then lose a step's motion.
+    const dy = (this.grounded ? 0 : vy * dt) + _carry.y;
     if (vy > 0) this.cc.disableSnapToGround(); else this.cc.enableSnapToGround(B.snap);
     this.cc.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, this.query, this.filter);
     const m = this.cc.computedMovement();

@@ -1,0 +1,6 @@
+[
+  { "label": "setup", "js": "(() => { document.querySelector('#hud .title').style.display = 'none'; const m = __v2.game.kitten.motor; window.__log = []; const orig = m.step.bind(m); m.step = (dt, inp) => { const p0 = m.body.pos.clone(); const t0 = performance.now(); orig(dt, inp); const n = m.cc.numComputedCollisions(); const cs = []; for (let i = 0; i < n; i++) { const c = m.cc.computedCollision(i); if (c) cs.push([+c.normal1.x.toFixed(2), +c.normal1.y.toFixed(2), +c.normal1.z.toFixed(2), c.collider.handle]); } __log.push({ t: +(performance.now()).toFixed(1), dz: +(m.body.pos.z - p0.z).toFixed(4), dy: +(m.body.pos.y - p0.y).toFixed(4), vz: +m.vel.z.toFixed(2), g: m.grounded ? 1 : 0, ms: +(performance.now() - t0).toFixed(2), cs }); }; __v2.setActive('kitten'); __v2.teleport('kitten', 0.5, 0.436, 2.5, Math.PI); __v2.camYaw(0.0, 0.25); return 1; })()", "wait": 800 },
+  { "label": "run", "js": "(() => { __log.length = 0; __v2.simMove(0, 1, 1.0); return 1; })()", "wait": 1200 },
+  { "label": "log", "js": "JSON.stringify(__log.filter((e, i) => i > 8).map(e => [e.dz, e.vz, e.g, e.ms, e.cs.length ? e.cs : 0]))", "wait": 100 },
+  { "label": "frame gaps", "js": "(() => { const t = __log.map(e => e.t); const d = t.slice(1).map((v, i) => +(v - t[i]).toFixed(1)); return JSON.stringify(d); })()", "wait": 100 }
+]

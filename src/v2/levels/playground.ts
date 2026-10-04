@@ -55,10 +55,10 @@ export function buildPlayground(_physics: Physics, lv: LevelBuilder): LevelInfo 
   // West: stairs up to a line of jumps, and a ramp back down.
   lv.stairs([-7, H, -3], 6, 0.2, 0.45, 2.4, Math.PI, { color: STEP, tiles: 0.6 });
   lv.box([-7, H, -7.2], [2.8, 1.2, 3.0], 0, { color: PILLAR, tiles: 0.6 });
-  lv.box([-7, H, -11.2], [2, 1.2, 2], 0, { color: PILLAR, tiles: 0.6 }); // 1.5 m gap
-  lv.box([-7, H, -15.4], [2, 1.5, 2], 0, { color: PILLAR, tiles: 0.6 }); // 2.2 m gap, a step up
-  lv.box([-7, H, -20.4], [3, 1.2, 3], 0, { color: PILLAR, tiles: 0.6 }); // 2.5 m gap, a step down
-  lv.ramp([-7, H, -25.4], 2.4, 3.5, 1.2, 0, { color: STEP });
+  lv.box([-7, H, -10.7], [2, 1.2, 2], 0, { color: PILLAR, tiles: 0.6 }); // 1.0 m gap
+  lv.box([-7, H, -14.0], [2, 1.5, 2], 0, { color: PILLAR, tiles: 0.6 }); // 1.3 m gap, a step up
+  lv.box([-7, H, -18.0], [3, 1.2, 3], 0, { color: PILLAR, tiles: 0.6 }); // 1.5 m gap, a step down
+  lv.ramp([-7, H, -23.0], 2.4, 3.5, 1.2, 0, { color: STEP });
 
   // Centre: a wall with a hole only the kitten fits through (the knight goes round).
   const hw = 0.17, hh = 0.42, wz = -5.5;

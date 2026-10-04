@@ -13,8 +13,9 @@ export const fovFromMM = (mm: number) => THREE.MathUtils.radToDeg(2 * Math.atan(
 
 type Framing = { dist: number; height: number; mm: number; radius: number; minDist: number; ahead: number; band: number; pitch: number };
 export const FRAMING: Record<Kind, Framing> = {
-  knight: { dist: 5.2, height: 1.45, mm: 28, radius: 0.18, minDist: 0.9, ahead: 0.55, band: 1.6, pitch: 0.3 },
-  kitten: { dist: 2.5, height: 0.3, mm: 28, radius: 0.07, minDist: 0.35, ahead: 0.3, band: 0.8, pitch: 0.32 },
+  knight: { dist: 5.2, height: 1.45, mm: 28, radius: 0.18, minDist: 0.9, ahead: 0.55, band: 0.9, pitch: 0.3 },
+  // A jump lifts her four times her height: the camera rises with her almost at once.
+  kitten: { dist: 2.5, height: 0.3, mm: 28, radius: 0.07, minDist: 0.35, ahead: 0.3, band: 0.25, pitch: 0.32 },
 };
 
 export type Subject = { pos: THREE.Vector3; vel: THREE.Vector3; grounded: boolean; climbing: boolean; kind: Kind; yaw: number };

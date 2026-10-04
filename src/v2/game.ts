@@ -7,6 +7,7 @@ import { Physics, L, SOLID } from './physics';
 import { Motor, MotorInput, BUILDS } from './motor';
 import { Climber } from './climb';
 import { Carry } from './carry';
+import { Follower } from './follow';
 import { FollowCamera, Subject } from './camera';
 import type { CharacterBody, PoseContext } from '../chars/character';
 import type { InputFrame } from '../game/input';
@@ -38,6 +39,11 @@ export class Game {
   kitten: Actor & { climber: Climber };
   knight: Actor;
   carry: Carry;
+  // The one not played follows the one who is (Q: wait / follow).
+  follower = new Follower();
+  private leaderJumped = false;
+  private frustum = new THREE.Frustum();
+  private pv = new THREE.Matrix4();
   active: Actor;
   camera: FollowCamera;
   // While a cutscene or a fade holds play, the active character gets no input.
@@ -48,6 +54,7 @@ export class Game {
   private pending: { actor: Actor; t: number }[] = [];
   onFall?: (actor: Actor, phase: 'out' | 'in') => void;
   onSwitch?: (to: Actor) => void;
+  onWait?: (who: Actor, waiting: boolean) => void;
 
   constructor(public physics: Physics, kittenChar: Avatar, knightChar: Avatar, public level: LevelInfo, aspect: number) {
     const mk = (char: Avatar, kind: 'kitten' | 'knight'): Actor => {
@@ -60,6 +67,7 @@ export class Game {
     this.kitten = { ...k, climber: new Climber(k.motor, physics) };
     this.knight = mk(knightChar, 'knight');
     this.carry = new Carry(physics, this.knight, this.kitten);
+    for (const a of [this.kitten, this.knight] as Actor[]) a.motor.onJump = () => { if (a === this.active) this.leaderJumped = true; };
     this.active = this.kitten;
     this.camera = new FollowCamera(aspect);
     this.placeAt(level.spawn);
@@ -84,6 +92,7 @@ export class Game {
   switchTo(next: Actor) {
     if (next === this.active) return;
     this.active = next;
+    this.follower.clear();
     this.onSwitch?.(next);
   }
 
@@ -102,7 +111,14 @@ export class Game {
       if (this.carry.holding) { this.knight.char.play?.('OverhandThrow'); this.carry.throw(); this.switchTo(this.kitten); }
       else if (this.carry.canLift()) this.carry.lift();
     }
-    if (inp.waitPressed && a === this.knight && this.carry.holding) this.carry.putDown();
+    if (inp.waitPressed) {
+      if (a === this.knight && this.carry.holding) this.carry.putDown();
+      else {
+        this.follower.mode = this.follower.mode === 'wait' ? 'follow' : 'wait';
+        this.follower.clear();
+        this.onWait?.(this.companion, this.follower.mode === 'wait');
+      }
+    }
   }
 
   // What the played character can do here, for the on-screen prompt.
@@ -135,7 +151,8 @@ export class Game {
         if (played) this.climbJump = false;
         continue;
       }
-      const mi: MotorInput | null = played ? { wish, walk: inp.walk, jumpHeld: this.jumpHeld } : null;
+      const mi: MotorInput | null = played ? { wish, walk: inp.walk, jumpHeld: this.jumpHeld }
+        : this.locked || this.carry.holding && a === k ? null : this.follower.step(dt, a, this.active, (p) => this.unseen(p));
       a.motor.step(dt, mi);
       // Running or jumping into a climbable face, she takes hold.
       if (a === k && played && wish.lengthSq() > 0.09) {
@@ -144,6 +161,8 @@ export class Game {
       }
     }
     k.climber.tick(dt);
+    if (!this.locked) this.follower.record(this.active, this.leaderJumped);
+    this.leaderJumped = false;
     this.carry.step();
     this.brushPast();
     this.checkFalls(dt);
@@ -187,6 +206,16 @@ export class Game {
     a.motor.place(a.motor.safe);
     a.char.resetPose(a.ground);
     if (a === this.kitten) a.char.resetCloth?.();
-    if (a === this.active) { this.camera.snap(this.subject(), this.camera.yaw); this.onFall?.(a, 'in'); }
+    if (a === this.active) { this.camera.snap(this.subject(), this.camera.yaw); this.follower.clear(); this.onFall?.(a, 'in'); }
+  }
+
+  // Out of the camera's view (or far off in the fog): where a companion may catch up without being seen to.
+  unseen(p: THREE.Vector3) {
+    const c = this.camera.cam;
+    c.updateMatrixWorld();
+    this.pv.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.pv);
+    if (c.position.distanceTo(p) > 35) return true;
+    return !this.frustum.intersectsSphere(new THREE.Sphere(new THREE.Vector3(p.x, p.y + 0.6, p.z), 0.9));
   }
 }

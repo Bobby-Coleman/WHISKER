@@ -165,6 +165,7 @@ export async function run(params: URLSearchParams) {
   if (matchMedia('(pointer: coarse)').matches) input.enterTouchMode();
   const audio = new Soundscape();
   game.onSwitch = (to) => audio.play('clank', to.char.body.pos, 0.15);
+  game.onWait = (who, waiting) => hud.say(`The ${who === game.knight ? 'knight' : 'kitten'} ${waiting ? 'waits here' : 'follows'}.`, 2.5);
   // A fall fades out, the character returns to firm ground, and it fades back in.
   const fade = document.createElement('div');
   fade.style.cssText = 'position:fixed;inset:0;background:#101212;opacity:0;pointer-events:none;transition:opacity .28s;z-index:4';
@@ -215,7 +216,7 @@ export async function run(params: URLSearchParams) {
   Object.assign(hudCb, {
     onBegin: () => {
       audio.start(); started = true;
-      const tip = () => hud.say(input.touchMode ? 'Switch changes between the kitten and the knight.' : 'Tab switches between the kitten and the knight. Hold Space to jump higher.', 6);
+      const tip = () => hud.say(input.touchMode ? 'Switch changes between the kitten and the knight; Wait tells the other to stay.' : 'Tab switches between the kitten and the knight. Q tells the other to wait or follow.', 6);
       if (level.intro && !params.has('nointro')) { timeline.play({ ...level.intro, onEnd: tip }); cutFade.style.opacity = '1'; } else tip();
     },
     onSkipReveal: () => {}, onTreatment: (v: number) => { LOOK.treatment.value = v; }, onClean: (on: boolean) => { LOOK.treatment.value = on ? 0 : 0.6; LOOK.grade.value = on ? 0 : 1; },
@@ -314,7 +315,10 @@ export async function run(params: URLSearchParams) {
     audio.update(dt);
     // HUD.
     const a = game.active;
-    hud.setWho(a === game.kitten ? 'Kitten' : 'Knight', a === game.kitten ? (kitten.body.climb ? 'Climbing' : '') : game.carry.holding ? 'Carrying the kitten' : '');
+    const other = a === game.kitten ? 'knight' : 'kitten';
+    const status = a === game.kitten && kitten.body.climb ? 'Climbing' : a === game.knight && game.carry.holding ? 'Carrying the kitten'
+      : `The ${other} ${game.follower.mode === 'wait' ? 'waits' : 'follows'}`;
+    hud.setWho(a === game.kitten ? 'Kitten' : 'Knight', status);
     const pr = started ? game.prompt() : null;
     hud.setPrompt(pr ? pr.text : null, pr ? (pr.key === 'jump' ? (input.touchMode ? 'Jump' : 'Space') : (input.touchMode ? 'Act' : 'E')) : undefined);
     hud.update(dt);
@@ -339,6 +343,7 @@ export async function run(params: URLSearchParams) {
     act: () => game.handleInput({ ...input.poll(0), interactPressed: true }),
     camYaw: (y: number, p = 0.3) => { game.camera.yaw = y; game.camera.pitch = p; },
     step: (n: number, dt = H) => { for (let i = 0; i < n; i++) frame(dt, false); },
+    render: () => frame(1e-4, true),
     state: () => {
       const s = (a: any) => ({ pos: a.char.body.pos.toArray().map((v: number) => +v.toFixed(3)), grounded: a.motor.grounded, mode: a.motor.mode, climb: !!a.char.body.climb, plat: !!a.motor.platform, vel: a.motor.vel.toArray().map((v: number) => +v.toFixed(2)) });
       return { active: game.active === game.kitten ? 'kitten' : 'knight', kitten: s(game.kitten), knight: s(game.knight), holding: game.carry.holding };

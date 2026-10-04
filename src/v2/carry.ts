@@ -7,7 +7,7 @@ import { Motor } from './motor';
 import type { Avatar } from './game';
 
 // From his hands (about 1.1 m up) she rises some 2 m: ledges up to about 3 m high, a metre or two ahead.
-export const THROW = { forward: 3.0, up: 10, reach: 1.15 };
+export const THROW = { forward: 2.6, up: 7.5, reach: 1.15 };
 
 export class Carry {
   holding = false;
