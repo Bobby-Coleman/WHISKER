@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Character, CharacterBody, PoseContext } from './character';
 import { lathe, smoothProfile, bladeGeometry, capGeometry, transformed, shellPanel } from './shapes';
 import { armorMaterial, clothMaterial, leatherMaterial, plainMaterial } from './materials';
-import { makePart, orientBone } from './rig';
+import { makePart, orientBone, solveTwoBone } from './rig';
 import { polygonize, union, ellipsoid, capsule, box } from './sdf';
 import { GAME, WIND } from '../render/settings';
 
@@ -287,51 +287,85 @@ export class Knight extends Character {
     this.sword.quaternion.setFromEuler(new THREE.Euler(Math.PI - 0.55, 0, 0.12));
   }
 
-  // Slumped against a tree behind him, legs out on the ground, his sword lying by his right hand.
+  // The prologue's seat against the hawthorn, his back to the trunk, legs out on the ground, his sword by his right
+  // hand. `slide` runs it: 0 standing with his back to the trunk (the sword hanging from his hand) .. 1 sat on the
+  // ground; beginSlide() lets him slide down it, heavily. `headUp` lifts his head off his chest to look at `lookAt`
+  // (his own space: her, in his lap); `shelter` brings his left gauntlet over `shelterAt`.
+  slide = 1; private slideNow = 1;
+  lookAt = new THREE.Vector3(0, 0.3, 0.25);
+  shelterAt = new THREE.Vector3(0.03, 0.37, 0.15);
+  // His left hand off the wound, down on the ground at his side (out of her way while she is in his lap).
+  restHand = 0; private restNow = 0;
+  beginSlide() { this.slideNow = 0; this.slide = 1; }
   readonly poseSlumped = (_c: Character, ctx: PoseContext) => {
-    const P = this.parts, dt = ctx.dt;
+    const P = this.parts, dt = ctx.dt, g = this.gait.p;
     this.breath += dt;
-    this.headUpNow += (this.headUp - this.headUpNow) * Math.min(1, dt * 1.4);
-    this.shelterNow += (this.shelter - this.shelterNow) * Math.min(1, dt * 0.9);
-    const br = Math.sin(this.breath * 0.9) * 0.005;
-    // Sitting on the ground: the seat of his hips on the earth, leaning back.
-    P.pelvis.position.set(0, 0.115, 0);
-    P.pelvis.rotation.set(-0.34, 0, 0.04);
+    this.headUpNow += (this.headUp - this.headUpNow) * Math.min(1, dt * 1.6);
+    this.shelterNow += (this.shelter - this.shelterNow) * Math.min(1, dt * 1.1);
+    this.slideNow = Math.min(this.slide, this.slideNow + dt / 2.6);
+    this.restNow += (this.restHand - this.restNow) * Math.min(1, dt * 1.8);
+    const kneeL = new THREE.Vector3();
+    const x = this.slideNow, e = x * x * x * (x * (x * 6 - 15) + 10);
+    const lerp = THREE.MathUtils.lerp;
+    const br = Math.sin(this.breath * 0.9) * 0.005 * e;
+    // Hips: from standing against the trunk down to the earth, coming forward off the bark as they drop.
+    P.pelvis.position.set(0, lerp(0.9, 0.095, e), lerp(-0.12, 0, e));
+    P.pelvis.rotation.set(lerp(-0.08, -0.34, e), 0, 0.04 * e);
     P.pelvis.updateMatrix();
-    const g = this.gait.p;
+    // Where the feet end up, sat: one knee up a little more than the other.
+    const seated = new THREE.Matrix4().compose(new THREE.Vector3(0, 0.095, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.34, 0, 0.04)), new THREE.Vector3(1, 1, 1));
     for (const side of [-1, 1]) {
       const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
-      const hip = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
-      // One knee up a little more than the other.
+      const hipS = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(seated);
       const lift = side > 0 ? 0.3 : 0.16;
-      const knee = hip.clone().add(new THREE.Vector3(side * 0.04, lift, Math.sqrt(Math.max(0.01, g.l1 * g.l1 - lift * lift - 0.0016))));
-      const drop = knee.y - g.ankleH;
-      const ankle = new THREE.Vector3(knee.x + side * 0.02, g.ankleH, knee.z + Math.sqrt(Math.max(0.01, g.l2 * g.l2 - drop * drop)));
-      orientBone(th, hip, knee, new THREE.Vector3(0, 1, 0.2));
-      orientBone(sh, knee, ankle, new THREE.Vector3(0, 1, 0.5));
-      ft.position.copy(ankle);
-      ft.rotation.set(-1.0, side * 0.3, 0);
+      const kneeS = hipS.clone().add(new THREE.Vector3(side * 0.04, lift, Math.sqrt(Math.max(0.01, g.l1 * g.l1 - lift * lift - 0.0016))));
+      const drop = kneeS.y - g.ankleH;
+      const ankleS = new THREE.Vector3(kneeS.x + side * 0.02, g.ankleH - 0.012, kneeS.z + Math.sqrt(Math.max(0.01, g.l2 * g.l2 - drop * drop)));
+      // Standing, the feet are a little forward of him (he leans back on the trunk); they slide out as he goes down.
+      const ankle = new THREE.Vector3(side * 0.12, g.ankleH, 0.06).lerp(ankleS, THREE.MathUtils.smoothstep(e, 0.05, 0.95));
+      const hip = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
+      const pole = new THREE.Vector3(side * 0.08, 0.45, 1);
+      const knee = new THREE.Vector3();
+      const end = solveTwoBone(hip, ankle, g.l1, g.l2, pole, knee);
+      orientBone(th, hip, knee, pole);
+      orientBone(sh, knee, end, pole);
+      if (side > 0) kneeL.copy(knee);
+      ft.position.copy(end);
+      ft.rotation.set(lerp(0, -1.0, e), side * 0.3 * e, 0);
     }
-    // Back against the trunk, breathing slow and shallow.
+    // Back against the trunk, breathing slow and shallow; a little more upright while he looks at her.
+    const up = this.headUpNow;
     P.chest.position.copy(new THREE.Vector3(0, 0.1 + br, -0.02).applyMatrix4(P.pelvis.matrix));
-    P.chest.rotation.set(-0.5 + br * 2, 0.06, -0.05);
+    P.chest.rotation.set(lerp(-0.1, lerp(-0.5, -0.36, up), e) + br * 2, 0.06 * e, -0.05 * e);
     P.chest.updateMatrix();
-    // Chin down on his chest; up, slowly, to look at her.
+    // The head: hanging as he slides; chin down on his chest once sat; lifted to look down at her.
     P.head.position.copy(new THREE.Vector3(0, 0.445, 0).applyMatrix4(P.chest.matrix));
-    P.head.quaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.lerp(0.5, -0.05, this.headUpNow), THREE.MathUtils.lerp(0.2, 0.0, this.headUpNow), 0.06, 'YXZ'));
-    // The sword on the ground at his right, hilt by his hand; the ribbon on its grip.
-    this.sword.position.set(-0.36, 0.05, 0.12);
-    this.sword.quaternion.setFromEuler(new THREE.Euler(Math.PI / 2 - 0.08, 0.15, Math.PI / 2));
+    const slump = new THREE.Euler(lerp(0.3, 0.5, e), 0.2 * e, 0.06, 'YXZ');
+    const hp = P.head.position, d = this.lookAt.clone().sub(hp);
+    const look = new THREE.Euler(THREE.MathUtils.clamp(Math.atan2(-d.y, Math.hypot(d.x, d.z)), -0.1, 0.72), THREE.MathUtils.clamp(Math.atan2(d.x, d.z), -0.6, 0.6), 0, 'YXZ');
+    const qs = new THREE.Quaternion().setFromEuler(slump), ql = new THREE.Quaternion().setFromEuler(look);
+    P.head.quaternion.copy(qs).slerp(ql, up);
+    P.head.updateMatrix();
+    // The sword: hanging from his right hand as he slides, then laid on the ground at his right, hilt by his hand.
+    const sh = new THREE.Vector3(-this.dims.shoulderW, this.dims.shoulderY, 0).applyMatrix4(P.chest.matrix);
+    const handHang = sh.clone().add(new THREE.Vector3(-0.07, -0.54, 0.06));
+    const lay = THREE.MathUtils.smoothstep(e, 0.6, 0.98);
+    const swordGround = new THREE.Vector3(-0.36, 0.05, 0.12);
+    const qGround = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2 - 0.08, 0.15, Math.PI / 2));
+    const qHang = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI - 0.55, 0, 0.12));
+    this.sword.position.copy(handHang).add(new THREE.Vector3(0, -0.02, 0)).lerp(swordGround, lay);
+    this.sword.quaternion.copy(qHang).slerp(qGround, lay);
     this.sword.updateMatrix();
-    this.armR.target.copy(new THREE.Vector3(0, -0.12, 0.02).applyMatrix4(this.sword.matrix));
-    this.armR.pole.set(-1, 0.2, -0.4);
+    const grip = new THREE.Vector3(0, -0.12, 0.02).applyMatrix4(this.sword.matrix);
+    this.armR.target.copy(handHang).lerp(grip, lay);
+    this.armR.pole.set(-1, lerp(-0.3, 0.2, lay), lerp(-0.5, -0.4, lay));
     // Left hand on the wound; at the last, over her as she sleeps in his lap, out of the rain.
     const wound = new THREE.Vector3(-0.07, 0.04, 0.2).applyMatrix4(P.chest.matrix);
-    const over = new THREE.Vector3(0.03, 0.37, 0.15);
-    this.armL.target.copy(wound).lerp(over, this.shelterNow);
-    this.armL.pole.set(1, -0.5, 0.3).lerp(new THREE.Vector3(1, 0.4, 0.1), this.shelterNow);
+    this.armL.target.copy(wound).lerp(new THREE.Vector3(0.4, 0.05, 0.12), this.restNow).lerp(this.shelterAt, this.shelterNow);
+    void kneeL;
+    this.armL.pole.set(1, -0.5, 0.3).lerp(new THREE.Vector3(1, 0.1, -0.6), this.restNow * (1 - this.shelterNow)).lerp(new THREE.Vector3(1, 0.5, 0.1), this.shelterNow);
     this.solveArms();
-    this.poseSkirt(ctx, true);
+    this.poseSkirt(ctx, e > 0.5);
   };
 
   private poseSword(ctx: PoseContext, speed: number) {

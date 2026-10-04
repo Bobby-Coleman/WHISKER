@@ -184,3 +184,28 @@ export class SmokePlume {
     this.alpha.needsUpdate = true;
   }
 }
+
+// Soft contact shadows: dark ovals on the ground under things that lie or sit on it (a seated man, the fallen, the
+// horses), so they rest on the earth instead of hovering over it in the flat, overcast light. One instanced draw.
+export function contactShadows(items: { x: number; y: number; z: number; rx: number; rz: number; yaw: number; tilt?: THREE.Quaternion }[], strength = 0.55) {
+  const geo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+  mat.colorNode = Fn(() => {
+    const d = length(uv().sub(0.5)).mul(2);
+    const a = smoothstep(1.0, 0.15, d);
+    return vec4(vec3(0.02, 0.02, 0.018), a.mul(a).mul(strength));
+  })();
+  const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+  items.forEach((it, i) => {
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), it.yaw);
+    if (it.tilt) q.premultiply(it.tilt);
+    m.compose(new THREE.Vector3(it.x, it.y + 0.012, it.z), q, new THREE.Vector3(it.rx, 1, it.rz));
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.renderOrder = 1;
+  mesh.castShadow = false; mesh.receiveShadow = false;
+  mesh.computeBoundingSphere();
+  mesh.name = 'ContactShadows';
+  return mesh;
+}

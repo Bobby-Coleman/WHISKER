@@ -206,6 +206,66 @@ export class Soundscape {
     }
   }
 
+  // A short score for a story moment (the prologue's ending): a slow string pad in B minor turning to D, a low
+  // drone, and over it a sparse, bell-soft melody, all in a long reverb. About 36 s; stop() fades it out.
+  theme(gainIn = 1) {
+    if (!this.ctx) return { stop: (_f?: number) => {} };
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.1;
+    const bus = ctx.createGain(); bus.gain.value = 0;
+    bus.gain.linearRampToValueAtTime(0.9 * gainIn, t0 + 4);
+    bus.connect(this.master);
+    const wet = ctx.createGain(); wet.gain.value = 0.9; bus.connect(wet).connect(this.reverb);
+    const hz = (n: string) => {
+      const m = /^([A-G])(#?)(\d)$/.exec(n)!;
+      const semi = { C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2 }[m[1] as 'A'] + (m[2] ? 1 : 0) + (+m[3] - 4) * 12;
+      return 440 * Math.pow(2, semi / 12);
+    };
+    const BAR = 4.5;
+    const chords = [['B2', 'F#3', 'B3', 'D4'], ['G2', 'D3', 'B3', 'D4'], ['D3', 'A3', 'D4', 'F#4'], ['A2', 'E3', 'C#4', 'E4'],
+      ['B2', 'F#3', 'B3', 'D4'], ['G2', 'D3', 'B3', 'G4'], ['E3', 'B3', 'E4', 'G4'], ['D3', 'A3', 'D4', 'F#4']];
+    // The pad: two slightly detuned soft voices per note, swelling in and out across each bar.
+    const padF = ctx.createBiquadFilter(); padF.type = 'lowpass'; padF.frequency.value = 900; padF.Q.value = 0.4; padF.connect(bus);
+    chords.forEach((ch, i) => {
+      const at = t0 + i * BAR, end = at + BAR + 1.2;
+      for (const n of ch) for (const det of [-4, 4]) {
+        const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = hz(n); o.detune.value = det;
+        const e = ctx.createGain(); e.gain.setValueAtTime(0, at); e.gain.linearRampToValueAtTime(0.022, at + 1.4); e.gain.setValueAtTime(0.022, at + BAR - 0.4); e.gain.linearRampToValueAtTime(0, end);
+        o.connect(e).connect(padF); o.start(at); o.stop(end + 0.1);
+      }
+      // The drone under it, a slow-bowed low root.
+      const d = ctx.createOscillator(); d.type = 'sawtooth'; d.frequency.value = hz(ch[0]) / 2;
+      const dv = ctx.createOscillator(); dv.frequency.value = 4.8; const dg = ctx.createGain(); dg.gain.value = 0.6; dv.connect(dg).connect(d.frequency);
+      const dl = ctx.createBiquadFilter(); dl.type = 'lowpass'; dl.frequency.value = 280;
+      const de = ctx.createGain(); de.gain.setValueAtTime(0, at); de.gain.linearRampToValueAtTime(0.03, at + 1.8); de.gain.linearRampToValueAtTime(0, end);
+      d.connect(dl).connect(de).connect(bus); d.start(at); d.stop(end + 0.1); dv.start(at); dv.stop(end + 0.1);
+    });
+    // The melody: [bar, beat (s into the bar), note, length (s)].
+    const mel: [number, number, string, number][] = [
+      [0, 0.6, 'F#5', 1], [0, 1.6, 'D5', 1], [0, 2.6, 'B4', 1.8],
+      [1, 0.6, 'D5', 1], [1, 1.6, 'B4', 1], [1, 2.6, 'G4', 1.8],
+      [2, 0.6, 'A4', 1], [2, 1.6, 'D5', 1], [2, 2.6, 'F#5', 1], [2, 3.6, 'E5', 1.2],
+      [3, 0.6, 'E5', 1], [3, 1.6, 'C#5', 1], [3, 2.6, 'A4', 1.8],
+      [4, 0.6, 'F#5', 1], [4, 1.6, 'E5', 1], [4, 2.6, 'D5', 1], [4, 3.6, 'B4', 1.2],
+      [5, 0.6, 'D5', 1], [5, 1.6, 'E5', 1], [5, 2.6, 'F#5', 1.8],
+      [6, 0.6, 'G5', 1], [6, 1.6, 'F#5', 1], [6, 2.6, 'E5', 1.8],
+      [7, 0.6, 'F#5', 2.2], [7, 2.8, 'D5', 3.0],
+    ];
+    for (const [bar, beat, n, len] of mel) {
+      const at = t0 + bar * BAR + beat, f = hz(n);
+      for (const [ratio, amp] of [[1, 0.05], [2, 0.012], [3, 0.004]] as const) {
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * ratio;
+        const e = ctx.createGain(); e.gain.setValueAtTime(0, at); e.gain.linearRampToValueAtTime(amp, at + 0.012); e.gain.exponentialRampToValueAtTime(amp * 0.25, at + len * 0.6); e.gain.exponentialRampToValueAtTime(0.0001, at + len + 1.2);
+        o.connect(e).connect(bus); o.start(at); o.stop(at + len + 1.3);
+      }
+    }
+    return {
+      stop: (fade = 3) => {
+        const t = ctx.currentTime;
+        bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(bus.gain.value, t); bus.gain.linearRampToValueAtTime(0, t + fade);
+      },
+    };
+  }
+
   // A man speaking inside a closed helm, tired and quiet: a low voice running through a syllable per vowel group of
   // the line (vowel formants shifting, a breath of consonant before each), falling in pitch toward the end (rising
   // for a question), then muffled by the steel: lowpassed hard, a short ringing comb, a little hollow resonance. The

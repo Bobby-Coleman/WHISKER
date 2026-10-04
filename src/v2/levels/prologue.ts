@@ -15,7 +15,7 @@ import { LOOK } from '../../render/settings';
 import { RAPIER, Physics, L } from '../physics';
 import { LevelBuilder, paintMaterial } from '../level';
 import { placeProp, instanceProp, instanceBaked } from '../props';
-import { Campfire, createRain, SmokePlume } from '../fx';
+import { Campfire, createRain, SmokePlume, contactShadows } from '../fx';
 import { Water } from '../water';
 import { WATER } from '../motor';
 import { bakeSoldiers, horseGeometry } from '../fallen';
@@ -538,6 +538,24 @@ class Director {
       baked.forEach((b, i) => instanceBaked(b, mats[i], root));
       c.scene.add(root);
     }
+    // Contact shadows under the fallen, the horses and (seated by the trunk) him; tilted to the slope under each.
+    {
+      const tilt = (x: number, z: number) => {
+        const e = 0.3, n = new THREE.Vector3(height(x - e, z) - height(x + e, z), 2 * e, height(x, z - e) - height(x, z + e)).normalize();
+        return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+      };
+      const items: Parameters<typeof contactShadows>[0] = [];
+      for (const [x, z, yaw] of SOLDIERS) items.push({ x, y: height(x, z), z, rx: 0.55, rz: 1.05, yaw, tilt: tilt(x, z) });
+      for (const [x, z, yaw] of HORSES) items.push({ x, y: height(x, z), z, rx: 0.95, rz: 1.6, yaw, tilt: tilt(x, z) });
+      const sy = c.physics.groundY(SEAT.x, SEAT.y + 1, SEAT.z, 3, 1) ?? SEAT.y;
+      items.push({ x: SEAT.x, y: sy, z: SEAT.z + 0.35, rx: 0.5, rz: 0.85, yaw: 0 });
+      items.push({ x: SEAT.x - 0.05, y: sy, z: SEAT.z - 0.05, rx: 0.42, rz: 0.36, yaw: 0 });
+      c.scene.add(contactShadows(items, 0.6));
+    }
+    // A warm glow on the two of them for the ending (as from the fire down the slope); dark until then.
+    this.warmLight = new THREE.PointLight(new THREE.Color('#ffb36b'), 0, 4.5, 2);
+    this.warmLight.position.set(SEAT.x + 1.2, SEAT.y + 0.85, SEAT.z + 1.4);
+    c.scene.add(this.warmLight);
     // She is a plain kitten still, small and young, on all fours; he is wounded. Only she is played.
     c.kitten.setBare(true);
     c.kitten.defaultPose = c.kitten.poseQuadruped;
@@ -570,7 +588,8 @@ class Director {
     SEAT.y = c.physics.groundY(SEAT.x, SEAT.y + 1, SEAT.z, 3) ?? SEAT.y;
   }
 
-  private seat() {
+  // He comes to rest against the trunk: sliding down it (the opening) or already sat (a debug jump).
+  private seat(instant = false) {
     const c = this.c, kn = this.knight;
     kn.motor.place(SEAT.clone(), 0);
     kn.motor.mode = 'held';
@@ -578,8 +597,10 @@ class Director {
     const anim = this.anim(kn);
     anim.walkClip = 'Walk_Loop'; anim.walkSpeed = null;
     c.knight.wounded = false;
-    c.knight.overrideBlend = 1.6;
+    // The slide starts from standing, so the animated body hands over quickly.
+    c.knight.overrideBlend = instant ? 30 : 5;
     c.knight.override = c.knight.poseSlumped;
+    if (instant) c.knight.slide = 1; else c.knight.beginSlide();
   }
 
   private anim(a: { char: unknown }) { return (a.char as DrivenAvatar).anim; }
@@ -634,14 +655,29 @@ class Director {
     for (const [ft, sh, th] of [[P.footL, P.shinL, P.thighL], [P.footR, P.shinR, P.thighR]]) {
       const ankle = Wp(ft, 0, 0.07, 0), knee = Wp(sh, 0, 0, 0).add(new THREE.Vector3(0, 0.075, 0)), hip = Wp(th, 0, 0, 0).add(new THREE.Vector3(0, 0.1, 0));
       plank(ankle, knee, 0.22, 0.1, { kind: 'leather' });
-      plank(knee, knee.clone().lerp(hip, 0.75), 0.22, 0.12, { kind: 'cloth' });
+      void hip; void th;
     }
     for (const ft of [P.footL, P.footR]) add(ft, RAPIER.ColliderDesc.cuboid(0.07, 0.06, 0.13), new THREE.Vector3(0, -0.02, 0.07), { kind: 'leather' });
-    const lap = Wp(P.pelvis, 0, 0, 0);
-    physics.addBox(lap.clone().add(new THREE.Vector3(0, 0.02, 0.12)), new THREE.Vector3(0.21, 0.08, 0.17), undefined, { kind: 'cloth' }, L.detail);
     add(P.chest, RAPIER.ColliderDesc.cuboid(0.17, 0.23, 0.12), new THREE.Vector3(0, 0.2, 0.02), { kind: 'metal' });
     add(P.head, RAPIER.ColliderDesc.ball(0.15), new THREE.Vector3(0, 0.14, 0));
-    this.lapTop.copy(lap).add(new THREE.Vector3(0, 0.1, 0.14));
+    // His lap as drawn: rays down onto his left thigh by the hip find the top of the cloth and plate, and a small
+    // block there is what she lands on (so she stands on him, not in him).
+    const targets: THREE.Object3D[] = [];
+    for (const part of [P.pelvis, P.thighL, P.thighR]) part.traverse((o: any) => { if (o.isMesh && o.visible) targets.push(o); });
+    const ray = new THREE.Raycaster();
+    const spot = new THREE.Vector3(0.1, 0, 0.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), kb.yaw).add(kb.pos);
+    let top = -Infinity;
+    for (const dx of [-0.03, 0, 0.03]) for (const dz of [-0.04, 0, 0.04]) {
+      ray.set(new THREE.Vector3(spot.x + dx, kb.pos.y + 2, spot.z + dz), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObjects(targets, false)[0];
+      if (hit) top = Math.max(top, hit.point.y);
+    }
+    if (!Number.isFinite(top)) top = kb.pos.y + 0.3;
+    physics.addBox(new THREE.Vector3(spot.x, top - 0.04, spot.z), new THREE.Vector3(0.08, 0.04, 0.1), undefined, { kind: 'cloth' }, L.detail);
+    this.lapTop.set(spot.x, top, spot.z);
+    // Where he looks when he lifts his head (her face, sat up in his lap), and where his hand comes to rest over her.
+    c.knight.lookAt.set(0.1, top - kb.pos.y + 0.17, 0.22);
+    c.knight.shelterAt.set(0.27, top - kb.pos.y + 0.14, 0.24);
   }
 
   // ---- The opening: him limping up the road, her at the camp, the horn.
@@ -682,7 +718,7 @@ class Director {
       ],
       cues: [
         { at: 0.2, run: () => this.c.audio.play('caw', new THREE.Vector3(-4, 3, 14), 1), onSkip: false },
-        { at: 16.6, run: () => this.seat() },
+        { at: 16.4, run: () => this.seat() },
         { at: 18.5, run: () => this.c.audio.play('breath', SEAT, 1), onSkip: false },
         // She nudges her mother, and calls her, quietly.
         { at: 26.9, run: () => this.meow('mew', 0.8), onSkip: false },
@@ -709,73 +745,118 @@ class Director {
     c.hud.say(c.touch() ? 'The stick moves her. Meow, and listen.' : 'WASD moves her; the mouse turns the camera. Q: meow, and listen.', 7);
   }
 
-  // ---- She finds him. She jumps up into his lap; he lifts his head and speaks to her.
+  // ---- She finds him. Shot by shot: she creeps up to him through the rain; his helm, his head down; she goes round
+  // to his side, gathers herself and leaps up into his lap; he lifts his head and speaks to her, muffled in the
+  // helm; she sits and looks up at him; at the last she curls up and his gauntlet comes over her. Then the hawthorn
+  // from high up, and black.
   private found() {
     const c = this.c;
     this.stage = 'found';
     c.hud.objective(null);
-    const kpos = this.kitten.char.body.pos.clone();
-    const head = new THREE.Vector3(0, 0.14, 0).applyMatrix4(c.knight.parts.head.matrixWorld);
-    // A spot before his boots, between them; then up into his lap.
-    const spot = new THREE.Vector3(SEAT.x - 0.04, 0, SEAT.z + 1.22);
-    spot.y = c.physics.groundY(spot.x, SEAT.y + 0.6, spot.z, 3) ?? height(spot.x, spot.z);
+    const kb = this.kitten.char.body;
+    const kpos = kb.pos.clone();
+    const head = new THREE.Vector3(0, 0.14, 0.02).applyMatrix4(c.knight.parts.head.matrixWorld);
     const lap = this.lapTop.clone();
-    const face = lap.clone().add(new THREE.Vector3(0, 0.2, 0.06));
+    const gy = (x: number, z: number) => c.physics.groundY(x, SEAT.y + 0.7, z, 3, 1) ?? height(x, z);
+    // Round his left side (clear of his boots) to a place beside his hip, then up.
+    const side = new THREE.Vector3(SEAT.x + 0.66, 0, SEAT.z + 1.2); side.y = gy(side.x, side.z);
+    const spot = new THREE.Vector3(SEAT.x + 0.52, 0, SEAT.z + 0.26); spot.y = gy(spot.x, spot.z);
     const P = (v: THREE.Vector3) => [v.x, v.y, v.z] as [number, number, number];
+    const path: [number, number, number][] = [P(kpos)];
+    if (kpos.z < SEAT.z + 1.0) { const w = new THREE.Vector3(SEAT.x + (kpos.x >= SEAT.x ? 1.1 : -1.1), 0, SEAT.z + 2.0); w.y = gy(w.x, w.z); path.push(P(w)); }
+    path.push(P(side), P(spot));
+    let walkLen = 0;
+    for (let i = 1; i < path.length; i++) walkLen += Math.hypot(path[i][0] - path[i - 1][0], path[i][2] - path[i - 1][2]);
+    const WALK = 0.62, arrive = walkLen / WALK;
+    // The beats, from her arrival beside him.
+    const T = { crouch: arrive + 0.5, leap: arrive + 1.5 };
+    const leapLen = Math.hypot(lap.x - spot.x, lap.z - spot.z, lap.y - spot.y), LEAP = 1.2;
+    const land = T.leap + leapLen / LEAP;
+    const at = (dt: number) => land + dt; // after she lands
+    const kp = () => kb.pos;
+    const face = () => kb.pos.clone().add(new THREE.Vector3(0, 0.2, 0));
+    const lapLook = lap.clone().add(new THREE.Vector3(0, 0.12, 0));
     const cs: Cutscene = {
-      name: 'found', length: 33, skippable: false,
-      fades: [{ at: 30.2, dur: 2.2, to: 1 }],
+      name: 'found', length: at(31.5), skippable: false,
+      fades: [{ at: at(28.4), dur: 2.6, to: 1 }],
       shots: [
-        // Low behind her: the knight above, his head down on his chest.
-        { at: 0, dur: 3.2, from: { pos: [SEAT.x - 1.0, SEAT.y + 0.36, SEAT.z + 3.4], look: [SEAT.x, SEAT.y + 0.5, SEAT.z + 0.2], mm: 30 }, to: { pos: [SEAT.x - 0.85, SEAT.y + 0.34, SEAT.z + 3.05], look: [SEAT.x, SEAT.y + 0.62, SEAT.z + 0.1], mm: 32 }, ease: 'smooth' },
-        // From the side: she gathers herself and jumps up into his lap.
-        { at: 3.2, dur: 3.0, from: { pos: [SEAT.x + 2.2, SEAT.y + 0.55, SEAT.z + 1.2], look: [SEAT.x, SEAT.y + 0.35, SEAT.z + 0.75], mm: 36 }, to: { pos: [SEAT.x + 2.0, SEAT.y + 0.6, SEAT.z + 1.1], look: [SEAT.x, SEAT.y + 0.42, SEAT.z + 0.6], mm: 38 }, ease: 'smooth' },
-        // His helm, lifting to look at her.
-        { at: 6.2, dur: 4.4, from: { pos: head.clone().add(new THREE.Vector3(0.62, 0.0, 0.95)), look: head, mm: 46, dof: 0.35 }, to: { pos: head.clone().add(new THREE.Vector3(0.55, -0.04, 0.85)), look: head, mm: 50, dof: 0.35 }, ease: 'smooth' },
-        // Her, in his lap, looking up at him.
-        { at: 10.6, dur: 2.6, from: { pos: face.clone().add(new THREE.Vector3(0.2, 0.0, 0.55)), look: face, mm: 52, dof: 0.6 }, to: { pos: face.clone().add(new THREE.Vector3(0.16, -0.01, 0.48)), look: face, mm: 55, dof: 0.6 }, ease: 'smooth' },
-        // The two of them.
-        { at: 13.2, dur: 4.4, from: { pos: [SEAT.x - 1.5, SEAT.y + 0.95, SEAT.z + 2.3], look: [SEAT.x, SEAT.y + 0.6, SEAT.z + 0.3], mm: 38 }, to: { pos: [SEAT.x - 1.3, SEAT.y + 0.9, SEAT.z + 2.05], look: [SEAT.x, SEAT.y + 0.6, SEAT.z + 0.3], mm: 40 }, ease: 'smooth' },
-        // His helm again.
-        { at: 17.6, dur: 3.6, from: { pos: head.clone().add(new THREE.Vector3(-0.7, -0.05, 0.85)), look: head, mm: 48, dof: 0.35 }, to: { pos: head.clone().add(new THREE.Vector3(-0.62, -0.08, 0.78)), look: head, mm: 50, dof: 0.35 }, ease: 'smooth' },
-        // Down over his arm: she curls up in his lap; his gauntlet over her, out of the rain.
-        { at: 21.2, dur: 6.0, from: { pos: lap.clone().add(new THREE.Vector3(-0.5, 0.75, 0.66)), look: lap.clone().add(new THREE.Vector3(0, 0.05, 0)), mm: 42, dof: 0.35 }, to: { pos: lap.clone().add(new THREE.Vector3(-0.42, 0.66, 0.56)), look: lap.clone().add(new THREE.Vector3(0, 0.05, 0)), mm: 46, dof: 0.35 }, ease: 'smooth' },
-        // The hawthorn in the rain, the two of them under it, the field round them.
-        { at: 27.2, dur: 5.8, from: { pos: [-4.6, SEAT.y + 1.6, 6.2], look: [0, SEAT.y + 1.1, 0.4], mm: 35 }, to: { pos: [-5.4, SEAT.y + 2.0, 7.2], look: [0, SEAT.y + 1.2, 0.4], mm: 34 }, ease: 'linear' },
+        // Low behind her as she creeps up through the wet grass; him ahead, slumped under the tree.
+        { at: 0, dur: Math.min(4, arrive), from: { pos: () => kp().clone().add(new THREE.Vector3(0.36, 0.17, 1.15)), look: [SEAT.x, SEAT.y + 0.45, SEAT.z], mm: 26, dof: 0.2 }, to: { pos: () => kp().clone().add(new THREE.Vector3(0.32, 0.18, 1.0)), look: [SEAT.x, SEAT.y + 0.5, SEAT.z], mm: 28, dof: 0.2 }, ease: 'linear', handheld: 0.6 },
+        // His helm, chin on his chest, rain running off it.
+        { at: Math.min(4, arrive), dur: Math.max(1.6, T.crouch - Math.min(4, arrive) - 0.2), from: { pos: head.clone().add(new THREE.Vector3(0.55, -0.12, 0.8)), look: head, mm: 50, dof: 0.5 }, to: { pos: head.clone().add(new THREE.Vector3(0.5, -0.14, 0.72)), look: head, mm: 52, dof: 0.5 }, ease: 'smooth' },
+        // Beside him at her height: she looks up, gathers herself, and leaps; the lens follows her up.
+        // (In front of him and to her side, so the leap is seen side-on.)
+        { at: T.crouch - 0.2, dur: land - T.crouch + 1.2, from: { pos: [SEAT.x + 0.8, SEAT.y + 0.32, SEAT.z + 1.55], look: () => face(), mm: 32, dof: 0.2 }, to: { pos: [SEAT.x + 0.72, SEAT.y + 0.48, SEAT.z + 1.42], look: () => face(), mm: 34, dof: 0.2 }, ease: 'smooth' },
+        // Level with his lap from his side: she turns to him and sits up, small against his breastplate.
+        { at: land + 1.0, dur: 2.8, from: { pos: lapLook.clone().add(new THREE.Vector3(0.62, 0.02, 0.06)), look: lapLook.clone().add(new THREE.Vector3(-0.06, 0.02, -0.04)), mm: 46, dof: 0.55 }, to: { pos: lapLook.clone().add(new THREE.Vector3(0.54, 0.03, 0.04)), look: lapLook.clone().add(new THREE.Vector3(-0.06, 0.03, -0.04)), mm: 50, dof: 0.55 }, ease: 'smooth' },
+        // Over her shoulder, up at his helm as he lifts his head to look at her.
+        { at: at(3.8), dur: 4.6, from: { pos: lap.clone().add(new THREE.Vector3(0.12, 0.2, 0.42)), look: head, mm: 42, dof: 0.45 }, to: { pos: lap.clone().add(new THREE.Vector3(0.1, 0.24, 0.36)), look: head, mm: 46, dof: 0.45 }, ease: 'smooth' },
+        // Down past his helm at her, looking up at him.
+        { at: at(8.4), dur: 2.8, from: { pos: head.clone().add(new THREE.Vector3(0.22, 0.12, 0.12)), look: lapLook, mm: 48, dof: 0.6 }, to: { pos: head.clone().add(new THREE.Vector3(0.2, 0.1, 0.16)), look: lapLook, mm: 50, dof: 0.6 }, ease: 'smooth' },
+        // The two of them in profile, the rain between; slowly closer.
+        { at: at(11.2), dur: 4.6, from: { pos: [SEAT.x + 1.9, SEAT.y + 0.7, SEAT.z + 0.55], look: [SEAT.x + 0.05, SEAT.y + 0.55, SEAT.z + 0.15], mm: 36 }, to: { pos: [SEAT.x + 1.55, SEAT.y + 0.68, SEAT.z + 0.5], look: [SEAT.x + 0.05, SEAT.y + 0.55, SEAT.z + 0.15], mm: 40 }, ease: 'smooth' },
+        // His helm, close, three-quarter.
+        { at: at(15.8), dur: 4.0, from: { pos: head.clone().add(new THREE.Vector3(-0.5, -0.06, 0.62)), look: head, mm: 50, dof: 0.4 }, to: { pos: head.clone().add(new THREE.Vector3(-0.44, -0.08, 0.56)), look: head, mm: 52, dof: 0.4 }, ease: 'smooth' },
+        // Down over his arm: she curls up in his lap and his gauntlet comes over her, out of the rain.
+        { at: at(19.8), dur: 6.0, from: { pos: lap.clone().add(new THREE.Vector3(0.42, 0.62, 0.5)), look: lap.clone().add(new THREE.Vector3(0, 0.05, 0)), mm: 44, dof: 0.4 }, to: { pos: lap.clone().add(new THREE.Vector3(0.34, 0.54, 0.42)), look: lap.clone().add(new THREE.Vector3(0, 0.05, 0)), mm: 48, dof: 0.4 }, ease: 'smooth' },
+        // Up and away: the hawthorn, the two of them under it, the field and the smoke in the rain.
+        { at: at(25.8), dur: 5.7, from: { pos: [SEAT.x - 1.6, SEAT.y + 0.9, SEAT.z + 3.0], look: [SEAT.x, SEAT.y + 0.6, SEAT.z], mm: 34 }, to: { pos: [SEAT.x - 6.5, SEAT.y + 5.5, SEAT.z + 9.5], look: [SEAT.x, SEAT.y + 1.4, SEAT.z - 1], mm: 30 }, ease: 'in' },
       ],
       marks: [
-        { at: 0, who: 'kitten', path: [P(kpos), P(spot)], speed: 0.9, face: Math.PI },
-        { at: 4.3, who: 'kitten', path: [P(spot), P(lap)], speed: 1.25, face: Math.PI, probe: 0.01, arc: 0.3 },
-        // Turned across his lap to sleep.
-        { at: 21.4, who: 'kitten', path: [P(lap)], speed: 1, face: -Math.PI / 2, probe: 0.01 },
+        { at: 0, who: 'kitten', path, speed: WALK, face: Math.atan2(lap.x - spot.x, lap.z - spot.z) },
+        { at: T.leap, who: 'kitten', path: [P(spot), P(lap)], speed: LEAP, face: Math.atan2(lap.x - spot.x, lap.z - spot.z), probe: 0.01, arc: 0.22 },
+        // Turned to face him, then (at the last) across his lap to sleep.
+        { at: at(0.7), who: 'kitten', path: [P(lap)], speed: 1, face: Math.PI, probe: 0.01 },
+        { at: at(19.9), who: 'kitten', path: [P(lap)], speed: 1, face: -Math.PI / 2 - 0.3, probe: 0.01 },
       ],
       cues: [
-        { at: 0.6, run: () => this.meow('mew', 0.9) },
-        { at: 2.2, run: () => c.audio.play('breath', SEAT, 1.2) },
-        { at: 4.0, run: () => this.meow('mrrp', 0.7) },
-        { at: 5.3, run: () => c.audio.play('thud', lap, 0.12) },
-        { at: 5.7, run: () => this.meow('meow', 1) },
-        { at: 6.4, run: () => { c.knight.headUp = 0.5; } },
-        { at: 7.6, run: () => this.say(LINES[0]) },
-        { at: 11.2, run: () => this.meow('mew', 1) },
-        { at: 13.8, run: () => this.say(LINES[1]) },
-        { at: 16.4, run: () => c.audio.play('breath', head, 1.0) },
-        { at: 18.2, run: () => this.say(LINES[2]) },
-        { at: 21.0, run: () => this.meow('mrrp', 0.8) },
-        { at: 21.6, run: () => { c.kitten.overrideBlend = 2.5; c.kitten.override = c.kitten.poseCurled; } },
-        { at: 22.6, run: () => { c.knight.shelter = 1; c.knight.headUp = 0.35; } },
-        { at: 23.4, run: () => c.audio.play('purr', lap, 1.1) },
-        { at: 23.8, run: () => this.say(LINES[3]) },
-        { at: 27.4, run: () => c.audio.play('purr', lap, 0.8) },
+        { at: 0, run: () => { this.music = c.audio.theme(0.9); this.warm(1.3, 6); } },
+        { at: 0.8, run: () => this.meow('mew', 0.8) },
+        { at: Math.min(4, arrive) + 0.6, run: () => c.audio.play('breath', SEAT, 1.2) },
+        { at: Math.min(4, arrive) + 1.2, run: () => { c.knight.headUp = 0.15; } },
+        { at: T.crouch, run: () => { c.kitten.crouch = 1; } },
+        { at: T.leap - 0.05, run: () => { c.kitten.crouch = 0; } },
+        { at: land, run: () => { c.audio.play('thud', lap, 0.1); c.knight.restHand = 1; } },
+        { at: at(0.5), run: () => this.meow('mrrp', 0.9) },
+        { at: at(1.4), run: () => { c.kitten.sit = 1; } },
+        { at: at(3.0), run: () => this.meow('meow', 1) },
+        { at: at(4.2), run: () => { c.knight.headUp = 1; c.audio.play('breath', head, 0.9); } },
+        { at: at(5.6), run: () => this.say(LINES[0]) },
+        { at: at(9.0), run: () => this.meow('mew', 1) },
+        { at: at(11.8), run: () => this.say(LINES[1]) },
+        { at: at(14.6), run: () => c.audio.play('breath', head, 0.8) },
+        { at: at(16.3), run: () => this.say(LINES[2]) },
+        { at: at(19.6), run: () => this.meow('mrrp', 0.7) },
+        { at: at(20.0), run: () => { c.kitten.sit = 0; c.kitten.overrideBlend = 2.2; c.kitten.override = c.kitten.poseCurled; } },
+        { at: at(21.0), run: () => { c.knight.restHand = 0; c.knight.shelter = 1; } },
+        { at: at(21.6), run: () => c.audio.play('purr', lap, 1.1) },
+        { at: at(22.4), run: () => this.say(LINES[3]) },
+        { at: at(26.4), run: () => c.audio.play('purr', lap, 0.7) },
       ],
       onEnd: () => this.title(),
     };
     c.timeline.play(cs);
   }
+  private music: { stop: (fade?: number) => void } | null = null;
+
+  // The warm light on the two of them (the fire's glow), eased to an intensity.
+  private warm(to: number, secs: number) {
+    const l = this.warmLight;
+    if (!l) return;
+    const from = l.intensity, t0 = performance.now();
+    const step = () => {
+      const a = Math.min(1, (performance.now() - t0) / (secs * 1000));
+      l.intensity = from + (to - from) * a * a * (3 - 2 * a);
+      if (a < 1) requestAnimationFrame(step);
+    };
+    step();
+  }
+  private warmLight: THREE.PointLight | null = null;
 
   // Black; the title; the line that leads on; then the panel.
   private title() {
     this.stage = 'end';
+    this.music?.stop(9);
     this.black.style.transition = 'none';
     this.black.style.opacity = '1';
     this.subs.hide();
@@ -850,9 +931,9 @@ export function debugStage(c: StoryContext, stage: string) {
   if (!director) return;
   c.timeline.skip();
   const d = director as any;
-  if (stage === 'walk') { d.seat(); d.startWalk(); }
+  if (stage === 'walk') { d.seat(true); d.startWalk(); }
   if (stage === 'found') {
-    d.seat(); d.startWalk();
+    d.seat(true); d.startWalk();
     c.game.kitten.motor.place(new THREE.Vector3(SEAT.x - 0.3, height(SEAT.x - 0.3, SEAT.z + 2.1), SEAT.z + 2.1), Math.PI);
     d.found();
   }

@@ -598,7 +598,10 @@ export class Kitten extends Character {
   // spine flexing. Each paw steps on the ground under it. A leap stretches her out and a fall reaches the forepaws
   // down for the landing; swimming, she paddles all four under the surface with her chin up. A climb is still done
   // upright, paws on the face. Changes of mode ease from the last pose.
-  private quad = { phase: 0, mv: 0, speed: 0, air: 0, swim: 0, pitch: 0, mode: '', blendT: 1, snap: new Map<THREE.Object3D, { p: THREE.Vector3; q: THREE.Quaternion }>() };
+  private quad = { phase: 0, mv: 0, speed: 0, air: 0, swim: 0, pitch: 0, mode: '', blendT: 1, snap: new Map<THREE.Object3D, { p: THREE.Vector3; q: THREE.Quaternion }>(), sit: 0, crouch: 0, t: 0 };
+  // Story beats on all fours: `sit` (0..1) sits her up on her haunches, forelegs straight, chest up, tail round her;
+  // `crouch` (0..1) gathers her low for a leap, her hindquarters shimmying.
+  sit = 0; crouch = 0;
   readonly poseQuadruped = (_c: Character, ctx: PoseContext) => {
     const b = this.body, q = this.quad, dt = Math.max(1e-4, ctx.dt);
     const mode = this.carriedBy ? 'carried' : b.climb ? 'climb' : 'fours';
@@ -660,13 +663,20 @@ export class Kitten extends Character {
     const airPitch = q.air * THREE.MathUtils.clamp(b.vy * 0.09, -0.35, 0.3);
     const pitch = q.pitch + flex * 0.14 + airPitch + q.swim * 0.22;
     const bob = q.mv * (0.0022 * Math.cos(ph * 2) * (1 - gallop) + 0.007 * Math.sin(ph) * gallop);
-    const hipH = 0.09 + bob - b.landing * 0.022 - q.swim * 0.012 + Math.sin(this.breath * 1.8) * 0.0005;
-    const roll = THREE.MathUtils.clamp(-b.turnRate * s * 0.025, -0.25, 0.25) * (1 - q.swim);
-    P.pelvis.position.set(0, hipH, -0.046 - flex * 0.006);
-    P.pelvis.rotation.set(Math.PI / 2 - 0.05 - pitch, roll, 0, 'XYZ'); // (y: a roll about the spine)
+    q.t += dt;
+    q.sit += (this.sit - q.sit) * Math.min(1, dt * 3.5);
+    q.crouch += (this.crouch - q.crouch) * Math.min(1, dt * 9);
+    const still = (1 - q.air) * (1 - q.swim) * (1 - q.mv);
+    const st = sm(q.sit) * still, cr = q.crouch * (1 - q.air) * (1 - q.swim);
+    const lerp = THREE.MathUtils.lerp;
+    const shimmy = cr * Math.sin(q.t * 17) * Math.min(1, cr * 2);
+    const hipH = lerp(0.09 + bob - b.landing * 0.022 - q.swim * 0.012 + Math.sin(this.breath * 1.8) * 0.0005 - cr * 0.03, 0.038, st);
+    const roll = THREE.MathUtils.clamp(-b.turnRate * s * 0.025, -0.25, 0.25) * (1 - q.swim) + shimmy * 0.16;
+    P.pelvis.position.set(shimmy * 0.01, hipH, lerp(-0.046 - flex * 0.006, -0.052, st));
+    P.pelvis.rotation.set(lerp(Math.PI / 2 - 0.05 - pitch, 0.68, st), roll, 0, 'XYZ'); // (y: a roll about the spine)
     P.pelvis.updateMatrix();
     P.chest.position.copy(new THREE.Vector3(0, 0.034 + flex * 0.012, 0.004).applyMatrix4(P.pelvis.matrix));
-    P.chest.rotation.set(Math.PI / 2 - 0.2 - pitch + flex * 0.1, roll * 0.6, 0, 'XYZ');
+    P.chest.rotation.set(lerp(Math.PI / 2 - 0.2 - pitch + flex * 0.1 + cr * 0.45, 0.32, st), roll * 0.6 - shimmy * 0.05, 0, 'XYZ');
     P.chest.updateMatrix();
     const S = new THREE.Vector3(0, this.dims.shoulderY, this.dims.shoulderZ ?? 0).applyMatrix4(P.chest.matrix);
     const Hp = new THREE.Vector3(0, 0, 0).applyMatrix4(P.pelvis.matrix);
@@ -693,6 +703,14 @@ export class Kitten extends Character {
           : new THREE.Vector3(base.x, S.y - (up ? 0.05 : 0.088), base.z + (up ? 0.07 : 0.04));
         t.lerp(a, q.air);
       }
+      // Sitting: hind feet folded forward beside her, forepaws straight down under her chest.
+      if (st > 0.001) {
+        const gy = b.grounded ? ground(base.x, base.z) : 0;
+        const w = hind ? new THREE.Vector3(side * 0.036, gy + g.ankleH, Hp.z + 0.06) : new THREE.Vector3(side * 0.024, gy + 0.021, S.z + 0.014);
+        t.lerp(w, st);
+      }
+      // Gathered for a leap: forepaws a little ahead, everything low.
+      if (cr > 0.001 && !hind) t.z += cr * 0.02;
       // Swimming: paddling round under her, diagonal pairs together.
       if (q.swim > 0.001) {
         const a = (q.phase + (i === 0 || i === 3 ? 0 : 0.5)) * Math.PI * 2;
@@ -706,7 +724,7 @@ export class Kitten extends Character {
     for (const side of [1, -1]) {
       const th = side > 0 ? P.thighL : P.thighR, sh = side > 0 ? P.shinL : P.shinR, ft = side > 0 ? P.footL : P.footR;
       const hip = new THREE.Vector3(side * g.hipW, 0, 0).applyMatrix4(P.pelvis.matrix);
-      const pole = new THREE.Vector3(side * 0.15, 0, 1);
+      const pole = new THREE.Vector3(side * lerp(0.15, 0.5, st), 0, 1);
       const knee = new THREE.Vector3();
       const end = solveTwoBone(hip, target(side > 0 ? 0 : 1), g.l1, g.l2, pole, knee);
       orientBone(th, hip, knee, pole);
@@ -737,7 +755,7 @@ export class Kitten extends Character {
     this.poseAccessories(dt);
     // The tail from the top of her rump: carried up and curving back as she trots, out behind her on the water.
     const sway = Math.sin(this.tailPhase) * (0.3 - 0.15 * q.mv);
-    this.tail.rotation.set(THREE.MathUtils.lerp(-2.25 + 0.35 * q.mv, -2.95, q.swim) - airPitch * 0.8, sway, 0);
+    this.tail.rotation.set(lerp(THREE.MathUtils.lerp(-2.25 + 0.35 * q.mv, -2.95, q.swim) - airPitch * 0.8 + cr * 0.5, -2.45, st), lerp(sway + shimmy * 0.4, 1.1 + sway * 0.2, st), 0);
   }
 
   // Before she had any armour (the prologue): plate, sword, cape and bow put away, fur in their place.
