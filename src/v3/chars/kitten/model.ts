@@ -8,7 +8,8 @@
 // group origin on the ground under her middle.
 import * as THREE from 'three';
 import { toy, metal, PAL, Fade } from '../../render/materials';
-import { SDF, ellipsoid, cone, union, smin, starMesh, sphereTopo, revolveZ, tubeRings, paint, skin, merge, bake, sstep } from './geo';
+import { SDF, ellipsoid, cone, union, smin, starMesh, revolveZ, tubeRings, paint, skin, merge, bake, sstep } from './geo';
+import { KittenFace, FUR } from './face';
 
 // Bind-pose offsets of each joint from its parent.
 export const REST = {
@@ -24,11 +25,10 @@ export const EYE_R = 0.0172;
 export const TAIL_N = 6;
 
 const C = (hex: string) => new THREE.Color(hex);
+// Her coat (the photo's): light golden-fawn tabby, soft darker stripes, cream underneath, pale paws.
 const COL = {
-  ginger: C(PAL.ginger), gingerD: C(PAL.gingerDark), cream: C(PAL.cream), white: C('#fbf6ec'), pink: C(PAL.pink), nose: C(PAL.noseP),
-  pad: C('#e99aa6'), lash: C('#3a2419'), mouth: C('#4a2220'), tongue: C('#d77583'), eye: C('#2c1a12'), pupil: C('#0d0806'),
-  bow: C('#f7c6cf'), bowD: C('#e298a8'), leather: C('#6e452a'), leatherD: C('#4a2d1b'),
-  gingerL: C('#f0bd85'),
+  ginger: FUR.fawn.clone(), gingerD: FUR.fawnD.clone(), cream: FUR.cream.clone(), white: FUR.white.clone(), pink: FUR.earIn.clone(),
+  pad: C('#e7a49a'), leather: C('#6e452a'), leatherD: C('#4a2d1b'), gingerL: C('#e2cbb1'),
 };
 const mix = (a: THREE.Color, b: THREE.Color, t: number, out: THREE.Color) => out.copy(a).lerp(b, Math.min(1, Math.max(0, t)));
 
@@ -52,10 +52,11 @@ export class KittenRig {
   pelvis = new THREE.Group(); spine = new THREE.Group(); chest = new THREE.Group(); neck = new THREE.Group(); head = new THREE.Group();
   legs: Leg[] = []; // left fore, right fore, left hind, right hind
   tail: THREE.Group[] = [];
-  ears: THREE.Group[] = []; eyes: THREE.Group[] = []; lids: THREE.Group[] = []; jaw = new THREE.Group();
+  // Her head's face, ears and bow (face.ts), on the head joint.
+  face!: KittenFace;
   // The fluff on her chest (folded away under the breastplate).
   ruff = new THREE.Group();
-  body!: THREE.SkinnedMesh; armour!: THREE.SkinnedMesh; bow!: THREE.Mesh; eyeMesh!: THREE.SkinnedMesh; glintMat!: THREE.Material;
+  body!: THREE.SkinnedMesh; armour!: THREE.SkinnedMesh; eyeMesh!: THREE.SkinnedMesh; glintMat!: THREE.Material;
   bones: THREE.Object3D[] = [];
   // The torso's surface (bind pose), used for the armour and the cape's collision.
   torsoSDF!: SDF;
@@ -78,15 +79,7 @@ export class KittenRig {
     }
     let parent: THREE.Object3D = this.pelvis;
     for (let i = 0; i < TAIL_N; i++) { const t = at(new THREE.Group(), parent, i === 0 ? REST.tail0 : new THREE.Vector3(0, 0, -REST.tailSeg), 'tail' + i); this.tail.push(t); parent = t; }
-    for (const side of [1, -1]) {
-      this.ears.push(at(new THREE.Group(), this.head, new THREE.Vector3(REST.ear.x * side, REST.ear.y, REST.ear.z), side > 0 ? 'earL' : 'earR'));
-      const eye = at(new THREE.Group(), this.head, new THREE.Vector3(REST.eye.x * side, REST.eye.y, REST.eye.z), side > 0 ? 'eyeL' : 'eyeR');
-      eye.rotation.set(-0.06, 0.3 * side, 0);
-      eye.scale.set(1, 1.1, 0.9);
-      this.eyes.push(eye);
-      this.lids.push(at(new THREE.Group(), eye, new THREE.Vector3(), side > 0 ? 'lidL' : 'lidR'));
-    }
-    at(this.jaw, this.head, REST.jaw, 'jaw');
+    this.face = new KittenFace(this.head, 1);
     at(this.ruff, this.chest, new THREE.Vector3(0, -0.012, 0.036), 'ruff');
     m.updateMatrixWorld(true);
   }
@@ -94,8 +87,8 @@ export class KittenRig {
   // Builds the meshes in the bind pose and binds them.
   build() {
     const fur = toy('#ffffff', { vertexColors: true, rough: 0.92, fade: this.fade });
-    const bones: THREE.Object3D[] = [this.pelvis, this.spine, this.chest, this.neck, this.head, ...this.ears, ...this.lids, this.jaw, this.ruff,
-      ...this.legs.flatMap((l) => [l.upper, l.lower, l.paw]), ...this.tail, ...this.eyes];
+    const bones: THREE.Object3D[] = [this.pelvis, this.spine, this.chest, this.neck, this.head, this.ruff,
+      ...this.legs.flatMap((l) => [l.upper, l.lower, l.paw]), ...this.tail, ...this.face.joints];
     this.bones = bones;
     const B = (o: THREE.Object3D) => bones.indexOf(o);
     const parts: THREE.BufferGeometry[] = [];
@@ -140,76 +133,13 @@ export class KittenRig {
       rigid(g, this.ruff);
     }
 
-    // ---- Head: a big soft round head, wide chubby cheeks, a little muzzle.
-    const headSDF = (() => {
-      const base = union(0.013, ellipsoid(0, 0.006, -0.006, 0.056, 0.049, 0.05), ellipsoid(0, -0.011, 0.008, 0.059, 0.04, 0.045));
-      const pads = union(0.004, ellipsoid(0.0105, -0.021, 0.041, 0.0145, 0.012, 0.012), ellipsoid(-0.0105, -0.021, 0.041, 0.0145, 0.012, 0.012), ellipsoid(0, -0.031, 0.034, 0.012, 0.009, 0.01));
-      // Cheek fluff: soft points out of the lower cheeks.
-      const fluff: SDF[] = [];
-      for (const s of [1, -1]) fluff.push(cone(0.045 * s, -0.016, 0.012, 0.068 * s, -0.022, 0.004, 0.0095, 0.0022), cone(0.043 * s, -0.027, 0.004, 0.062 * s, -0.039, -0.004, 0.0088, 0.0022), cone(0.036 * s, -0.035, -0.004, 0.047 * s, -0.051, -0.01, 0.008, 0.002));
-      const fl = union(0.003, ...fluff);
-      return (x: number, y: number, z: number) => smin(smin(base(x, y, z), pads(x, y, z), 0.009), fl(x, y, z), 0.008);
-    })();
-    const hg = starMesh(headSDF, new THREE.Vector3(0, -0.009, -0.004), 48, 32, { axis: 'z' });
-    paint(hg, (p, _n, out) => {
-      out.copy(COL.ginger);
-      // Cream muzzle, chin and lower cheeks; a cream blaze up between the eyes.
-      const muzzle = sstep(0.022, 0.034, p.z) * sstep(0.0, -0.012, p.y);
-      const lower = sstep(-0.012, -0.03, p.y);
-      const cheek = sstep(0.03, 0.05, Math.abs(p.x)) * sstep(0.0, -0.02, p.y);
-      const blaze = sstep(0.03, 0.045, p.z) * sstep(0.011, 0.004, Math.abs(p.x) + Math.max(0, p.y) * 0.3) * sstep(0.028, 0.0, p.y);
-      mix(out, COL.cream, Math.max(muzzle, lower, cheek * 0.85, blaze), out);
-      // Tabby stripes on the crown: three soft dark marks running back from the brow.
-      const crown = sstep(0.018, 0.034, p.y) * sstep(0.04, -0.01, p.z) * (1 - sstep(0.03, 0.045, p.z));
-      const sx = Math.abs(p.x);
-      const stripe = Math.max(sstep(0.006, 0.002, sx), sstep(0.0045, 0.0015, Math.abs(sx - 0.0165 - Math.max(0, -p.z) * 0.15)));
-      out.lerp(COL.gingerD, crown * stripe * 0.6);
-      // Cheek marks: a stripe sweeping back from each eye.
-      const cm = sstep(0.004, 0.0015, Math.abs(p.y - 0.006 + (sx - 0.04) * 0.25)) * sstep(0.04, 0.05, sx) * sstep(0.03, 0.0, p.z);
-      out.lerp(COL.gingerD, cm * 0.45);
-      return out;
-    });
-    parts.push(skin(bake(hg, this.head.matrixWorld), B(this.head)));
-    // Nose: a small pink rounded triangle.
-    const ng = starMesh((x, y, z) => { const w = 0.0074 * (0.72 + 0.4 * Math.min(1, Math.max(-1, (y + 0.0085) / 0.005))); const e = Math.hypot(x / w, (y + 0.0085) / 0.0048, (z - 0.0522) / 0.0046) - 1; return e * 0.0046; }, new THREE.Vector3(0, -0.0085, 0.0522), 14, 10, { axis: 'z' });
-    paint(ng, (p, _n, out) => mix(COL.nose, C('#f5b9c0'), sstep(-0.0075, -0.004, p.y) * sstep(0.053, 0.056, p.z) * 0.6, out));
-    rigid(ng, this.head);
-
-    // Ears: small rounded triangles, cupped, pink inside.
-    for (let k = 0; k < 2; k++) {
-      const eg = sphereTopo(14, 10, (u, v, out) => {
-        const th = u * Math.PI * 2, s = v;
-        const prof = Math.sin(Math.PI / 2 * Math.min(1, s / 0.14)) * Math.pow(1 - s, 0.78);
-        const w = 0.0235 * prof, d = 0.0095 * prof;
-        const sn = Math.sin(th);
-        return out.set(Math.cos(th) * w, -0.014 + 0.054 * s, sn >= 0 ? -0.3 * d * sn : d * sn);
-      });
-      paint(eg, (p, n, out) => {
-        const s = (p.y + 0.014) / 0.054;
-        const w = 0.0235 * Math.pow(Math.max(0, 1 - s), 0.78) + 1e-4;
-        const inner = sstep(0.1, 0.5, n.z) * sstep(0.82, 0.55, Math.abs(p.x) / w) * sstep(0.08, 0.22, s) * sstep(0.95, 0.8, s);
-        mix(COL.ginger, COL.gingerD, sstep(0.55, 1, s) * 0.5, out);
-        out.lerp(COL.pink, inner);
-        return out.lerp(COL.cream, inner * sstep(0.35, 0.12, s) * 0.8);
-      });
-      rigid(eg, this.ears[k]);
+    // ---- Head: her fluffy round head, face, ears and bow (face.ts), in the head joint's space.
+    this.face.build();
+    const eyeParts: THREE.BufferGeometry[] = [], glintParts: THREE.BufferGeometry[] = [];
+    for (const fp of this.face.parts) {
+      const g = skin(bake(fp.geo, this.head.matrixWorld), B(fp.joint));
+      if (fp.kind === 'fur') parts.push(g); else if (fp.kind === 'eye') eyeParts.push(g); else glintParts.push(g);
     }
-
-    // Lids: a shell just over each eye, fur on the outside and a dark lash line along its edge. Rotated about x it
-    // opens up and back over the eye or closes down over it.
-    for (let k = 0; k < 2; k++) {
-      const R = EYE_R * 1.085, PH = Math.PI / 2 + 0.12;
-      const lg = openCap(R, PH, 18, 7);
-      paint(lg, (p, _n, out) => {
-        const ph = Math.acos(Math.max(-1, Math.min(1, p.z / R)));
-        return mix(COL.gingerL, COL.lash, sstep(PH - 0.34, PH - 0.2, ph), out);
-      });
-      rigid(lg, this.lids[k]);
-    }
-    // Mouth: a small dark oval behind the muzzle that the jaw scales open.
-    const mg = starMesh(ellipsoid(0, 0, 0, 0.0078, 0.0075, 0.0075), new THREE.Vector3(), 12, 8, { axis: 'z' });
-    paint(mg, (p, _n, out) => mix(COL.mouth, COL.tongue, sstep(-0.002, -0.0055, p.y), out));
-    rigid(mg, this.jaw);
 
     // ---- Legs: short soft tubes, chubby haunches, round white paws with pink beans underneath.
     for (const L of this.legs) {
@@ -260,26 +190,7 @@ export class KittenRig {
     this.body.name = 'KittenBody';
     this.bindMesh(this.body);
 
-    // ---- Eyes: huge, glossy, black-brown, each with two catchlights; on their own joints, so a blink squashes them.
-    const eyeParts: THREE.BufferGeometry[] = [], glintParts: THREE.BufferGeometry[] = [];
-    for (const eye of this.eyes) {
-      eye.updateMatrix();
-      const e = new THREE.SphereGeometry(EYE_R, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.62).rotateX(Math.PI / 2);
-      e.deleteAttribute('uv');
-      paint(e, (p, _n, out) => mix(COL.eye, COL.pupil, sstep(0.55, 0.92, p.z / EYE_R), out));
-      eyeParts.push(skin(bake(e, eye.matrixWorld), B(eye)));
-      // Catchlights: the same light for both eyes, high on her right and a speck low on her left.
-      const lin = new THREE.Matrix3().setFromMatrix4(eye.matrix), inv = lin.clone().invert();
-      for (const [dx, dy, r] of [[-0.36, 0.42, 0.0043], [0.33, -0.36, 0.0019]]) {
-        const d = new THREE.Vector3(dx, dy, 1).applyMatrix3(inv).normalize();
-        const g = new THREE.CircleGeometry(r, 10);
-        g.deleteAttribute('uv');
-        g.lookAt(d);
-        g.translate(d.x * (EYE_R + 0.0004), d.y * (EYE_R + 0.0004), d.z * (EYE_R + 0.0004));
-        paint(g, (_p, _n, out) => out.setRGB(1, 1, 1));
-        glintParts.push(skin(bake(g, eye.matrixWorld), B(eye)));
-      }
-    }
+    // ---- Eyes: on their own joints, so a blink squashes them; catchlights a second material.
     const eg = merge([...eyeParts, ...glintParts]);
     const nEye = eyeParts.reduce((a, g) => a + g.index!.count, 0);
     eg.addGroup(0, nEye, 0); eg.addGroup(nEye, eg.index!.count - nEye, 1);
@@ -288,20 +199,13 @@ export class KittenRig {
     this.eyeMesh.name = 'KittenEyes';
     this.bindMesh(this.eyeMesh as THREE.SkinnedMesh);
 
-    // ---- Bow: a small pale pink ribbon bow by her left ear.
-    this.bow = new THREE.Mesh(bowGeo(), toy('#ffffff', { vertexColors: true, rough: 0.7, fade: this.fade }));
-    this.bow.name = 'KittenBow';
-    this.bow.position.set(0.041, 0.036, 0.017);
-    this.bow.rotation.set(-0.25, 0.75, -0.55, 'YXZ');
-    this.head.add(this.bow);
-
     // ---- Armour: a rounded steel breastplate on her chest and a leather strap round her middle with a steel buckle.
     // Skinned like the coat under it, so it bends with her.
     this.armour = new THREE.SkinnedMesh(this.armourGeo(torso, torsoW, B), [metal(PAL.steel, 0.3, this.fade), toy('#ffffff', { vertexColors: true, rough: 0.8, fade: this.fade })]);
     this.armour.name = 'KittenArmour';
     this.bindMesh(this.armour);
 
-    for (const m of [this.body, this.armour, this.bow, this.eyeMesh]) {
+    for (const m of [this.body, this.armour, this.eyeMesh]) {
       m.castShadow = true; m.receiveShadow = true;
       this.tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
     }
@@ -412,35 +316,10 @@ export class KittenRig {
   }
 }
 
-// A cone of fur from a (inside) to b (its tip), base radius r.
-function tuftGeo(a: THREE.Vector3, b: THREE.Vector3, r: number) {
-  const L = a.distanceTo(b);
-  const g = revolveZ([[-r * 0.7, 0, 0], [-r * 0.45, r * 0.75, r * 0.75], [0, r, r], [L * 0.3, r * 0.92, r * 0.92], [L * 0.58, r * 0.7, r * 0.7], [L * 0.8, r * 0.42, r * 0.42], [L * 0.94, r * 0.18, r * 0.18], [L, 0, 0]], 8);
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize());
-  g.applyQuaternion(q); g.translate(a.x, a.y, a.z);
-  return g;
-}
 
 // Along -y (legs hang from their joints).
 function down(g: THREE.BufferGeometry) { return g.rotateX(Math.PI / 2); }
 
-// An open spherical cap round +z: radius R, from the pole out to polar angle PH.
-function openCap(R: number, PH: number, nu: number, nv: number) {
-  const pos: number[] = [0, 0, R], idx: number[] = [];
-  for (let j = 1; j <= nv; j++) for (let i = 0; i < nu; i++) {
-    const ph = (j / nv) * PH, th = (i / nu) * Math.PI * 2;
-    pos.push(Math.sin(ph) * Math.cos(th) * R, Math.sin(ph) * Math.sin(th) * R, Math.cos(ph) * R);
-  }
-  const at = (j: number, i: number) => 1 + (j - 1) * nu + (i % nu);
-  for (let i = 0; i < nu; i++) idx.push(0, at(1, i), at(1, i + 1));
-  for (let j = 1; j < nv; j++) for (let i = 0; i < nu; i++) idx.push(at(j, i), at(j + 1, i), at(j + 1, i + 1), at(j, i), at(j + 1, i + 1), at(j, i + 1));
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  orientOut(g, new THREE.Vector3());
-  g.computeVertexNormals();
-  return g;
-}
 
 // Winds every triangle to face away from c.
 function orientOut(g: THREE.BufferGeometry, c: THREE.Vector3) {
@@ -489,29 +368,3 @@ function loopTube(pts: THREE.Vector3[], r: number, n: number) {
   return g;
 }
 
-// The bow: two soft loops, a knot and two short tails, pale pink with deeper folds toward the knot.
-function bowGeo() {
-  const parts: THREE.BufferGeometry[] = [];
-  for (const s of [1, -1]) {
-    const g = starMesh(ellipsoid(0, 0, 0, 0.0108, 0.0074, 0.0038), new THREE.Vector3(), 12, 8, { axis: 'x' });
-    // Pinched toward the knot.
-    const p = g.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { const x = p.getX(i), k = 0.45 + 0.55 * sstep(-0.0108, 0.004, x); p.setY(i, p.getY(i) * k); p.setZ(i, p.getZ(i) * k); }
-    g.computeVertexNormals();
-    g.translate(0.0098, 0, 0);
-    g.rotateZ(0.22);
-    if (s < 0) { g.scale(-1, 1, 1); (g.index!.array as any).reverse(); g.computeVertexNormals(); }
-    paint(g, (q, _n, out) => mix(COL.bowD, COL.bow, sstep(0.002, 0.01, Math.abs(q.x)), out));
-    parts.push(g);
-  }
-  const knot = starMesh(ellipsoid(0, 0, 0, 0.0042, 0.0048, 0.0042), new THREE.Vector3(), 10, 6);
-  paint(knot, (_q, _n, out) => out.copy(COL.bowD).lerp(COL.bow, 0.35));
-  parts.push(knot.translate(0, 0, 0.0012));
-  for (const s of [1, -1]) {
-    const g = tuftGeo(new THREE.Vector3(0.0015 * s, -0.002, 0), new THREE.Vector3(0.0072 * s, -0.0135, 0.001), 0.0026);
-    g.scale(1, 1, 0.55);
-    paint(g, (_q, _n, out) => out.copy(COL.bow));
-    parts.push(g);
-  }
-  return merge(parts);
-}

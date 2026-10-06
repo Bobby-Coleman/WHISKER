@@ -8,19 +8,19 @@ import { WIND } from '../../body';
 
 export type Ball = { c: THREE.Vector3; r: number; up: THREE.Vector3 };
 
-const COLS = 5, ROWS = 6, SUB = 3;
-// Size along the cloth: across the top (over her shoulders), across the hem, and down her back.
-const W0 = 0.13, W1 = 0.185, LEN = 0.15;
-// The cloth's rest shape is draped over a back about this round, so it curls round her rather than lying flat.
-const DRAPE_R = 0.066;
+const SUB = 3;
+// Its make: points across and down; size across the top (over her shoulders), across the hem, and down her back;
+// the round of the back its rest shape is draped over (so it curls round her rather than lying flat); a woven trim.
+export type CapeMake = { cols: number; rows: number; w0: number; w1: number; len: number; drape: number; trim: boolean; folds?: { n: number; amp: number } };
+export const SHORT_CAPE: CapeMake = { cols: 5, rows: 6, w0: 0.13, w1: 0.185, len: 0.15, drape: 0.066, trim: true };
 const H = 1 / 120;
 const HEM_N = 4, HEM_R = 0.0017;
 const G = 22;
 
 export class Cape {
-  readonly cols = COLS; readonly rows = ROWS;
-  pos = new Float32Array(COLS * ROWS * 3);
-  prev = new Float32Array(COLS * ROWS * 3);
+  readonly cols: number; readonly rows: number; private len: number;
+  pos: Float32Array;
+  prev: Float32Array;
   // Links: a, b, rest length, stiffness (stretch links stiff, shear softer, bend links soft so it drapes).
   private cons: [number, number, number, number][] = [];
   private cA!: Uint16Array; private cB!: Uint16Array; private cR!: Float32Array; private cK!: Float32Array;
@@ -41,7 +41,8 @@ export class Cape {
   private gPos: Float32Array;
   private loop: number[] = [];
   private acc = 0;
-  private nrm = new Float32Array(COLS * ROWS * 3);
+  private nrm: Float32Array;
+  private fd: Float32Array | null = null;
   // Set each frame by the kitten: the floor or water under her (world y), and her own world up.
   floor: number | null = null;
   // A plane the cloth stays behind (point and outward normal, world).
@@ -49,7 +50,12 @@ export class Cape {
   water: number | null = null;
   sheltered = false;
 
-  constructor(material: THREE.Material) {
+  private folds: { n: number; amp: number } | null;
+  constructor(material: THREE.Material, make: CapeMake = SHORT_CAPE) {
+    this.folds = make.folds ?? null;
+    const COLS = make.cols, ROWS = make.rows, W0 = make.w0, W1 = make.w1, LEN = make.len, DRAPE_R = make.drape;
+    this.cols = COLS; this.rows = ROWS; this.len = LEN;
+    this.pos = new Float32Array(COLS * ROWS * 3); this.prev = new Float32Array(COLS * ROWS * 3); this.nrm = new Float32Array(COLS * ROWS * 3);
     for (let i = 0; i < COLS; i++) { this.pins.push(new THREE.Vector3()); this.pinsFrom.push(new THREE.Vector3()); }
     const dx = (j: number) => (W0 + (W1 - W0) * (j / (ROWS - 1))) / (COLS - 1), dy = LEN / (ROWS - 1);
     for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
@@ -84,7 +90,7 @@ export class Cape {
     for (let j = 0; j < rr; j++) for (let i = 0; i < rc; i++) {
       const u = i / (rc - 1), v = j / (rr - 1);
       const e = Math.min(u, 1 - u, (1 - v) * 0.75);
-      const band = sm(0.03, 0.06, e) * sm(0.14, 0.11, e);
+      const band = make.trim ? sm(0.03, 0.06, e) * sm(0.14, 0.11, e) : 0;
       c.copy(base).lerp(top, sm(0.15, 0.0, v) * 0.5).lerp(trim, band);
       col.push(c.r, c.g, c.b);
     }
@@ -118,7 +124,7 @@ export class Cape {
 
   // Lays it straight back from the pins along `back` (world), then lets it settle.
   reset(back: THREE.Vector3) {
-    const dy = LEN / (ROWS - 1);
+    const COLS = this.cols, ROWS = this.rows, dy = this.len / (ROWS - 1);
     for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
       const k = (j * COLS + i) * 3, p = this.pins[i];
       this.pos[k] = p.x + back.x * dy * j; this.pos[k + 1] = p.y + back.y * dy * j + 0.004 * j; this.pos[k + 2] = p.z + back.z * dy * j;
@@ -147,7 +153,7 @@ export class Cape {
   settlePins() { for (const [i, p] of this.pins.entries()) this.pinsFrom[i].copy(p); }
 
   private sub(h: number, f: number, t: number, wind = true) {
-    const P = this.pos, Q = this.prev, N = COLS * ROWS;
+    const COLS = this.cols, P = this.pos, Q = this.prev, N = COLS * this.rows;
     // Wind: the level's breeze and gusts, swirling a little; nearly nothing in shelter.
     const U = wind ? (this.sheltered ? 0.15 : 1) * (0.3 + 2.6 * WIND.base + 7 * WIND.gust) : 0;
     this.normals();
@@ -199,7 +205,7 @@ export class Cape {
 
   // Out of every ball; a point deep inside one goes up off her back instead of through her.
   private collide(f: number) {
-    const P = this.pos, Q = this.prev, sh = this.shift.copy(this.bodyDelta).multiplyScalar(1 - f);
+    const COLS = this.cols, ROWS = this.rows, P = this.pos, Q = this.prev, sh = this.shift.copy(this.bodyDelta).multiplyScalar(1 - f);
     for (let k = COLS; k < COLS * ROWS; k++) {
       const o = k * 3, x0 = P[o], y0 = P[o + 1], z0 = P[o + 2];
       for (const b of this.balls) {
@@ -240,7 +246,7 @@ export class Cape {
   }
 
   private normals() {
-    const P = this.pos, Nn = this.nrm;
+    const COLS = this.cols, ROWS = this.rows, P = this.pos, Nn = this.nrm;
     for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
       const a = (j * COLS + Math.max(0, i - 1)) * 3, b = (j * COLS + Math.min(COLS - 1, i + 1)) * 3;
       const c = (Math.max(0, j - 1) * COLS + i) * 3, d = (Math.min(ROWS - 1, j + 1) * COLS + i) * 3;
@@ -256,7 +262,7 @@ export class Cape {
 
   // The drawn surface (and its hem), in the space `toLocal` maps world into (her group).
   sync(toLocal: THREE.Matrix4) {
-    const P = this.pos, I = this.rIdx, Wt = this.rW, R = this.rPos, out = this.gPos, e = toLocal.elements;
+    const COLS = this.cols, ROWS = this.rows, P = this.pos, I = this.rIdx, Wt = this.rW, R = this.rPos, out = this.gPos, e = toLocal.elements;
     const nV = R.length / 3;
     for (let v = 0; v < nV; v++) {
       let x = 0, y = 0, z = 0;
@@ -266,8 +272,24 @@ export class Cape {
       out[v * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
       out[v * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
     }
-    // Hem rings round each edge point: in the plane across the edge (the sheet's normal and its outward direction).
     const rc = (COLS - 1) * SUB + 1, rr = (ROWS - 1) * SUB + 1, L = this.loop.length;
+    // Soft folds of heavy wool, deepening toward the hem: each drawn point out along the sheet's normal.
+    if (this.folds) {
+      const F = this.folds, D = this.fd ??= new Float32Array(rc * rr * 3);
+      const nx = (i: number, j: number, k: number) => out[(Math.min(rr - 1, Math.max(0, j)) * rc + Math.min(rc - 1, Math.max(0, i))) * 3 + k];
+      for (let j = 0; j < rr; j++) for (let i = 0; i < rc; i++) {
+        const ux = nx(i + 1, j, 0) - nx(i - 1, j, 0), uy = nx(i + 1, j, 1) - nx(i - 1, j, 1), uz = nx(i + 1, j, 2) - nx(i - 1, j, 2);
+        const vx = nx(i, j + 1, 0) - nx(i, j - 1, 0), vy = nx(i, j + 1, 1) - nx(i, j - 1, 1), vz = nx(i, j + 1, 2) - nx(i, j - 1, 2);
+        let cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+        const l = Math.hypot(cx, cy, cz) || 1; cx /= l; cy /= l; cz /= l;
+        const u = i / (rc - 1), v = j / (rr - 1);
+        const a = F.amp * Math.sin(Math.PI * 2 * F.n * u + 0.6 * Math.sin(v * 3.1)) * (0.15 + 0.85 * v * v) * Math.sin(Math.PI * Math.min(1, u * 4, (1 - u) * 4));
+        const o = (j * rc + i) * 3;
+        D[o] = cx * a; D[o + 1] = cy * a; D[o + 2] = cz * a;
+      }
+      for (let k = 0; k < rc * rr * 3; k++) out[k] += D[k];
+    }
+    // Hem rings round each edge point: in the plane across the edge (the sheet's normal and its outward direction).
     const at = (i: number, j: number, o: THREE.Vector3) => { const v = (Math.min(rr - 1, Math.max(0, j)) * rc + Math.min(rc - 1, Math.max(0, i))) * 3; return o.set(out[v], out[v + 1], out[v + 2]); };
     const p = _p, t = _t, n = _n, du = _du, dv = _dv, a = _a1, b = _b1;
     for (let k = 0; k < L; k++) {
