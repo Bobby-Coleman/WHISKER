@@ -62,8 +62,8 @@ export class Terrain {
     const fp = fg.attributes.position, fc = new Float32Array(fp.count * 3);
     for (let i = 0; i < fp.count; i++) {
       const x = fp.getX(i) + cx, z = fp.getZ(i) + cz;
-      const inside = Math.abs(x - cx) < half - fs && Math.abs(z - cz) < half - fs;
-      const h = spec.height(x, z) - (inside ? 60 : 0.05);
+      const inside = Math.abs(x - cx) < half && Math.abs(z - cz) < half;
+      const h = spec.height(x, z) - (inside ? 200 : 0.05);
       fp.setXYZ(i, x, h, z);
       const c = spec.color(x, z, h, 0);
       fc[i * 3] = c.r; fc[i * 3 + 1] = c.g; fc[i * 3 + 2] = c.b;

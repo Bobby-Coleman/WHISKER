@@ -44,6 +44,7 @@ const CSS = `
 #hud3 .menu .row{display:flex;gap:8px} #hud3 .menu .row button{flex:1;text-align:center}
 #hud3 .menu .help{font-size:13px;line-height:1.5;opacity:.85}
 #hud3 .menu input[type=range]{width:100%}
+#hud3 .skip{position:absolute;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(4vh + env(safe-area-inset-bottom,0px));font:600 14px 'Fredoka',system-ui;color:#fff8ec;opacity:0;transition:opacity .3s;z-index:3;text-shadow:0 1px 3px rgba(0,0,0,.6)}
 #hud3 .wind{position:absolute;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(30,26,40,.42);border:2px solid rgba(255,248,236,.25);font:600 13px 'Fredoka',system-ui;opacity:0;transition:opacity .4s,background .3s,border-color .3s}
 #hud3 .wind svg{width:26px;height:18px}
 #hud3 .wind.warn{opacity:1;animation:windPulse .5s ease-in-out infinite alternate;border-color:#ffd27a}
@@ -72,6 +73,7 @@ export class Hud {
       <div class="bar t"></div><div class="bar b"></div><div class="sub"></div>
       <div class="card"><div class="t0"></div><div class="t1"></div><div class="t2"></div></div>
       <div class="wind"><svg viewBox="0 0 26 18" fill="none" stroke="#fff8ec" stroke-width="2.2" stroke-linecap="round"><path d="M2 6h14a3 3 0 1 0-3-3"/><path d="M2 11h19a3 3 0 1 1-3 3"/><path d="M2 16h8"/></svg><span class="wt"></span></div>
+      <div class="skip"></div>
       <div class="fade"></div>
       <button class="menuBtn" aria-label="Menu">☰</button>
       <div class="menu"><div class="box"></div></div>
@@ -140,6 +142,15 @@ export class Hud {
     if (!text) { s.style.opacity = '0'; return; }
     s.textContent = text; s.style.opacity = '1';
     this.subT = setTimeout(() => { s.style.opacity = '0'; }, seconds * 1000) as unknown as number;
+  }
+  // "Press again to skip", bottom right, while a skip is armed.
+  private skipOn = false;
+  skipHint(on: boolean, touch = false) {
+    if (on === this.skipOn) return;
+    this.skipOn = on;
+    const k = this.q<HTMLElement>('.skip');
+    k.textContent = touch ? 'Tap again to skip ▸' : 'Press again to skip ▸';
+    k.style.opacity = on ? '1' : '0';
   }
   // The gust indicator: hidden, calm, a gust coming, or blowing.
   private windState = '';

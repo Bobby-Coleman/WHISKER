@@ -227,7 +227,14 @@ export async function run(params: URLSearchParams) {
     kitten.update(dt, { dt, time: clockT, ground: ground(g.kitten), lookAt: null, active: true });
     knight.update(dt, { dt, time: clockT, ground: ground(g.knight), lookAt: null, active: true });
     // Camera: a cutscene's shots, the test camera, or the follow camera.
-    if (tl.playing) { if (inp.skipPressed && tl.t > 0.6 && started) tl.skip(); else tl.update(dt, camera); }
+    // Skipping takes a second press (a stray tap shouldn't throw away a cutscene).
+    skipArm = Math.max(0, skipArm - dt);
+    if (tl.playing && inp.skipPressed && tl.t > 0.6 && started && tl.scene?.skippable !== false) {
+      if (skipArm > 0) { skipArm = 0; tl.skip(); hud.skipHint(false); }
+      else { skipArm = 2.5; hud.skipHint(true, input.touchMode); }
+    }
+    if (!tl.playing || skipArm === 0) hud.skipHint(false);
+    if (tl.playing) tl.update(dt, camera);
     else g.camera.update(dt, g.subject(), started ? inp.look : new THREE.Vector2(), inp.zoom, physics!);
     // Cutscene camera checks (tests): the lens inside a character or inside the world.
     if (tl.playing && camIssues) {
@@ -286,6 +293,7 @@ export async function run(params: URLSearchParams) {
   const physLines = params.has('phys') ? new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false })) : null;
   if (physLines) { physLines.frustumCulled = false; physLines.renderOrder = 10; }
   let knightFade = 1;
+  let skipArm = 0;
   const camIssues: string[] | null = params.has('camcheck') ? [] : null;
   W.__camIssues = camIssues;
   // In a cutscene the shadows follow what the camera looks at.
@@ -331,6 +339,7 @@ export async function run(params: URLSearchParams) {
     camYaw: (y: number, p = 0.3) => { game!.camera.yaw = y; game!.camera.pitch = p; },
     teleport: (k: 'kitten' | 'knight', x: number, y: number | null, z: number, yaw = 0) => {
       const a = k === 'kitten' ? game!.kitten : game!.knight;
+      if (a === game!.kitten) game!.kitten.climber.drop();
       const yy = y ?? (physics!.groundY(x, 200, z, 400) ?? 0);
       a.motor.place(new THREE.Vector3(x, yy, z), yaw); a.char.resetPose(a.ground);
       if (a === game!.active) game!.camera.snap(game!.subject(), game!.camera.yaw);

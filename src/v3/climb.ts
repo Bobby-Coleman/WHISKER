@@ -135,6 +135,8 @@ export class Climber {
     if (this.physics.overlaps(new THREE.Vector3(to.x, to.y + B.radius + 0.02, to.z), r) || this.physics.overlaps(new THREE.Vector3(to.x, to.y + B.height - B.radius, to.z), r)) return false;
     const top = new THREE.Vector3(b.pos.x - n.x * 0.02, to.y + 0.04, b.pos.z - n.z * 0.02);
     this.exit = { t: 0, dur: 0.5, from: b.pos.clone(), top, to, yaw: Math.atan2(-n.x, -n.z) };
+    // The pose reads the pull-up from the body.
+    if (b.climb) b.climb.exit = this.exit;
     return true;
   }
 

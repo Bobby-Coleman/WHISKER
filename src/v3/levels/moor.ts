@@ -117,7 +117,7 @@ export function height(x: number, z: number) {
   // The moat.
   if (z <= Z.moatN && z >= Z.moatS && x > -8 && x < 40) h = -0.5;
   const out = x < x0 ? x0 - x : x > x1 ? x - x1 : 0;
-  return h + hill(out, x, z) + (z < -342 ? (-342 - z) * 1.5 : 0);
+  return h + hill(out, x, z) + (z < -344 ? Math.min((-344 - z) * 1.7, 4 + (-344 - z) * 0.25) : 0);
 }
 
 // The road: a dirt track through every crossing.
@@ -248,7 +248,7 @@ class Director {
       const tassel = pinMesh(); tassel.children[0].visible = false; tassel.children[1].visible = false;
       tassel.position.set(1.0, 1.42, z - 0.5); this.loop.add(tassel); tassel.position.set(0, -0.08, 0);
       c.root.add(dynamic(this.loop));
-      for (const s of [-1, 1]) rock(s * 19.5, z, 4, 3.2, 3.5, s * 0.4);
+      for (const s of [-1, 1]) rock(s * 15.0, z + 0.3, 2.6, 2.2, 2.4, s * 0.4, Math.min(height(s * 15, z), height(s * 14, z)));
       this.use({ pos: new THREE.Vector3(0.95, H(0.95, z - 0.9), z - 0.9), radius: 0.75, who: 'kitten', text: 'Lift the rope loop', ready: () => !this.state.gate, use: () => this.openGate() });
       this.use({ pos: new THREE.Vector3(0, H(0, z + 0.9), z + 0.9), radius: 1.3, who: 'knight', text: 'Push the gate', ready: () => !this.state.gate, use: () => {
         this.shake(this.gate); c.audio.play('creak', new THREE.Vector3(0, 1, z), 0.6);
@@ -597,6 +597,24 @@ class Director {
     this.use({ pos: new THREE.Vector3(gx + 1.0, y0, portZ - 0.7), radius: 0.75, who: 'kitten', text: 'Throw the catch', ready: () => !this.state.latched, use: () => this.throwCatch() });
     this.use({ pos: new THREE.Vector3(gx, y0, portZ + 0.75), radius: 1.0, who: 'knight', text: 'Heave the portcullis up', ready: () => !this.holding && !this.state.latched && this.state.draw, use: () => this.heave() });
     this.use({ pos: new THREE.Vector3(gx, y0, portZ + 0.75), radius: 1.4, who: 'knight', text: 'Let go', ready: () => this.holding, use: () => this.letGo() });
+    // Arrow slits along the curtain and up the towers; long banners hanging either side of the gate.
+    const slit = toy('#2a2622', { rough: 1 });
+    const slitGeo = new THREE.BoxGeometry(0.16, 0.9, 0.08);
+    for (const [x0, x1] of [[-6, 10], [22, 39]] as const) for (let x = x0; x < x1; x += 3.4) {
+      const m = new THREE.Mesh(slitGeo, slit); m.position.set(x, y0 + 4.6, Z.moatS + 0.02); c.root.add(m);
+    }
+    for (const [x, r] of [[12.4, 2.1]] as const) for (const yy of [y0 + 4, y0 + 8]) {
+      const m = new THREE.Mesh(slitGeo, slit); m.position.set(x, yy, Z.moatS - 2.2 + r + 0.01); c.root.add(m);
+    }
+    for (const x of [13.0, 19.25]) {
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 4.2, 1, 6), toy(HIS_BLUE, { side: THREE.DoubleSide, rough: 0.85 }));
+      const pp = cloth.geometry.attributes.position;
+      for (let i = 0; i < pp.count; i++) { const yy = pp.getY(i); if (yy < -1.9) pp.setY(i, yy - (Math.abs(pp.getX(i)) < 0.1 ? -0.35 : 0)); }
+      cloth.position.set(x, y0 + 8.2, x < 16 ? Z.moatS - 2.2 + 2.12 : Z.moatS + 0.03); cloth.castShadow = true; c.root.add(cloth);
+      const emblem = new THREE.Mesh(new THREE.CircleGeometry(0.34, 16), toy(PAL.cream, { side: THREE.DoubleSide }));
+      emblem.position.set(x, y0 + 8.9, cloth.position.z + 0.012); c.root.add(emblem);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 6).rotateZ(Math.PI / 2), toy(PAL.gold)); rod.position.set(x, y0 + 10.35, cloth.position.z + 0.02); c.root.add(rod);
+    }
     // The bailey: the keep with its towers and banners, a well.
     kit.box([16, y0 - 0.3, -324], [16, 20, 12], 0, S);
     crenels(8, 24, -318, y0 + 19.7);
@@ -965,7 +983,7 @@ class Director {
     WIND.base = 0.35 + (zone ? 0.25 : 0);
     WIND.push = active || g.follower.mode === 'follow' && g.active === g.knight ? force * (0.8 + 4.6 * this.gusts.strength) : 0;
     this.streaks.update(dt, c.camera.position.clone().lerp(g.active.char.renderPos, 0.6));
-    if (zone && this.k.motor.grounded && !kb.climb && kb.pos.y > HIGH - 0.15 && kb.pos.x < 2.3 && WIND.sheltered(kb.pos)) this.lastShelter.copy(kb.pos);
+    if (zone && this.k.motor.grounded && !kb.climb && kb.pos.y > HIGH - 0.02 && kb.pos.x < 1.9 && WIND.sheltered(kb.pos)) this.lastShelter.copy(kb.pos);
     if (zone === 'tor' && (this.lastShelter.lengthSq() === 0 || this.lastShelter.z > Z.ridge1 - 1)) this.lastShelter.set(-0.6, HIGH, -244.5);
     if (zone && this.lastShelter.lengthSq() > 0) this.k.motor.safe.copy(this.lastShelter);
     // Down in the bowl or the gap, nowhere there is a place to come back to: the crest is.
@@ -1047,7 +1065,7 @@ export const moor: Level = {
     (globalThis as any).__moor = dir;
     // The land: the glen, its sides, the ridge, the plateau; painted meadow, track, mud and rock.
     const t = new Terrain({
-      cx: 12, cz: -150, half: 200, step: 2, height, farHalf: 2600, farStep: 60,
+      cx: 12, cz: -160, half: 212, step: 2, height, farHalf: 2600, farStep: 60,
       color: (x, z, h, slope) => {
         const g = col('#79b04e').lerp(col('#4f8a3c'), clamp(0.5 + n2.noise(x / 20, z / 20) * 0.7, 0, 1));
         g.lerp(col('#b9b45e'), clamp(n1.noise(x / 31 + 7, z / 31) * 0.9, 0, 0.4));
@@ -1082,7 +1100,7 @@ export const moor: Level = {
       // The bowl under the ridge and the tor's gap: a fall there puts her back at her last shelter.
       killZones: [
         // Off the crest's lee edge: the slope is too steep to cling to; back to the last shelter.
-        new THREE.Box3(new THREE.Vector3(2.05, -10, Z.ridge1), new THREE.Vector3(40, HIGH - 0.12, Z.ridge0 - 2)),
+        new THREE.Box3(new THREE.Vector3(2.0, -10, Z.ridge1), new THREE.Vector3(40, HIGH - 0.03, Z.ridge0 - 2)),
         // Into the tor's gap.
         new THREE.Box3(new THREE.Vector3(2.6, -10, Z.torS), new THREE.Vector3(40, 3.2, Z.ridge1)),
       ],

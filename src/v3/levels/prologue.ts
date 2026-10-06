@@ -213,7 +213,6 @@ class Director {
     const land = leap + Math.hypot(lap.x - boot.x, lap.z - boot.z, lap.y - boot.y) / LEAP;
     const at = (t: number) => land + t;
     const facing = Math.atan2(lap.x - boot.x, lap.z - boot.z);
-    const lapLook = lap.clone().add(new THREE.Vector3(0, 0.12, 0));
     const cs: Cutscene = {
       name: 'found', length: at(32), skippable: false,
       fades: [{ at: at(29), dur: 2.6, to: 1 }],
@@ -221,19 +220,19 @@ class Director {
         // Wide, from beside the tree: him slumped under it, her small in the grass coming up to him.
         { at: 0, dur: arrive + 0.3, from: { pos: P(this.L(2.6, 1.0, 3.2)), look: P(this.L(0.2, 0.4, 1.0)), mm: 30 }, to: { pos: P(this.L(2.3, 0.9, 2.8)), look: P(this.L(0.2, 0.35, 1.0)), mm: 32 }, ease: 'smooth' },
         // From her eye line: his helm, his chin on his chest.
-        { at: arrive + 0.3, dur: 1.4, from: { pos: P(this.L(0.55, 0.3, 1.5)), look: P(this.L(-0.08, 0.7, 0.24)), mm: 34 }, to: { pos: P(this.L(0.5, 0.3, 1.4)), look: P(this.L(-0.08, 0.7, 0.24)), mm: 36 }, ease: 'smooth' },
-        // Side on at her height: she gathers herself and leaps up into his lap.
-        { at: leap - 0.4, dur: land - leap + 1.6, from: { pos: P(this.L(2.1, 0.45, 0.85)), look: P(this.L(0.35, 0.3, 0.7)), mm: 32 }, to: { pos: P(this.L(1.95, 0.5, 0.8)), look: P(this.L(0.3, 0.35, 0.6)), mm: 34 }, ease: 'smooth' },
-        // Close, side on: her in his lap as she sits up to him.
-        { at: at(1.2), dur: 2.8, from: { pos: P(this.L(0.8, 0.42, 0.62)), look: P(this.L(0.1, 0.36, 0.4)), mm: 38 }, to: { pos: P(this.L(0.72, 0.43, 0.58)), look: P(this.L(0.1, 0.37, 0.4)), mm: 40 }, ease: 'smooth' },
-        // Behind her, up at his helm as he lifts his head to her.
-        { at: at(4), dur: 4.5, from: { pos: P(this.L(0.28, 0.4, 1.2)), look: P(this.L(-0.02, 0.72, 0.22)), mm: 32 }, to: { pos: P(this.L(0.26, 0.38, 1.1)), look: P(this.L(-0.02, 0.76, 0.2)), mm: 34 }, ease: 'smooth' },
+        { at: arrive + 0.3, dur: 1.4, from: { pos: P(this.L(0.5, 0.26, 1.65)), look: P(this.L(-0.08, 0.64, 0.2)), mm: 34 }, to: { pos: P(this.L(0.46, 0.26, 1.55)), look: P(this.L(-0.08, 0.64, 0.2)), mm: 36 }, ease: 'smooth' },
+        // Side on, from his left: she gathers herself and leaps up into his lap.
+        { at: leap - 0.4, dur: land - leap + 1.6, from: { pos: P(this.L(2.0, 0.45, 0.8)), look: P(this.L(0.3, 0.3, 0.6)), mm: 32 }, to: { pos: P(this.L(1.85, 0.48, 0.75)), look: P(this.L(0.2, 0.34, 0.5)), mm: 34 }, ease: 'smooth' },
+        // Close, front-left three-quarter: her in his lap as she sits up to him.
+        { at: at(1.2), dur: 2.8, from: { pos: P(this.L(0.8, 0.5, 1.2)), look: P(this.L(0, 0.46, 0.3)), mm: 35 }, to: { pos: P(this.L(0.72, 0.5, 1.1)), look: P(this.L(0, 0.47, 0.3)), mm: 36 }, ease: 'smooth' },
+        // Over her shoulder, up at his helm as he lifts his head to her.
+        { at: at(4), dur: 4.5, from: { pos: P(this.L(0.14, 0.44, 1.0)), look: P(this.L(-0.02, 0.72, 0.18)), mm: 32 }, to: { pos: P(this.L(0.12, 0.43, 0.92)), look: P(this.L(-0.02, 0.76, 0.18)), mm: 34 }, ease: 'smooth' },
         // The two of them, three-quarter, the sunset behind.
-        { at: at(8.5), dur: 6.5, from: { pos: P(this.L(1.6, 0.85, 1.75)), look: P(this.L(0.0, 0.5, 0.3)), mm: 32 }, to: { pos: P(this.L(1.4, 0.8, 1.5)), look: P(this.L(0.0, 0.5, 0.3)), mm: 34 }, ease: 'smooth' },
-        // His helm, close, from his other side.
-        { at: at(15), dur: 4.5, from: { pos: P(this.L(-0.5, 0.9, 1.3)), look: P(this.L(-0.02, 0.78, 0.2)), mm: 40 }, to: { pos: P(this.L(-0.45, 0.88, 1.2)), look: P(this.L(-0.02, 0.78, 0.2)), mm: 42 }, ease: 'smooth' },
-        // She curls up; his hand comes over her.
-        { at: at(19.5), dur: 5.5, from: { pos: P(this.L(0.6, 0.85, 1.0)), look: P(this.L(0.1, 0.3, 0.4)), mm: 38 }, to: { pos: P(this.L(0.52, 0.78, 0.9)), look: P(this.L(0.1, 0.3, 0.4)), mm: 40 }, ease: 'smooth' },
+        { at: at(8.5), dur: 6.5, from: { pos: P(this.L(1.5, 0.8, 1.65)), look: P(this.L(0, 0.48, 0.3)), mm: 32 }, to: { pos: P(this.L(1.3, 0.75, 1.4)), look: P(this.L(0, 0.48, 0.3)), mm: 34 }, ease: 'smooth' },
+        // His helm, close, from his right.
+        { at: at(15), dur: 4.5, from: { pos: P(this.L(-0.6, 0.86, 1.2)), look: P(this.L(-0.02, 0.78, 0.14)), mm: 40 }, to: { pos: P(this.L(-0.55, 0.85, 1.1)), look: P(this.L(-0.02, 0.78, 0.14)), mm: 42 }, ease: 'smooth' },
+        // She curls up on his lap; his hand comes over her like a roof.
+        { at: at(19.5), dur: 5.5, from: { pos: P(this.L(0.8, 0.62, 0.8)), look: P(this.L(0, 0.4, 0.3)), mm: 38 }, to: { pos: P(this.L(0.7, 0.58, 0.72)), look: P(this.L(0, 0.4, 0.3)), mm: 40 }, ease: 'smooth' },
         // Up and away: the tree on its rise, the two of them under it, the field at dusk.
         { at: at(25), dur: 7, from: { pos: P(this.L(2.2, 1.2, 4)), look: P(this.L(0, 1, 0)), mm: 32 }, to: { pos: P(this.L(8, 7, 16)), look: P(this.L(0, 2.5, 0)), mm: 30 }, ease: 'in' },
       ],
@@ -268,6 +267,8 @@ class Director {
       ],
       onEnd: () => this.title(),
     };
+    // His lap as her ground, so her paws stand on his thighs (not through them to the grass).
+    c.physics.addBox(lap.clone().add(new THREE.Vector3(0, -0.03, 0)), new THREE.Vector3(0.14, 0.03, 0.13), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), FACE), { kind: 'cloth' }, L.detail);
     this.music = c.audio.theme(0.9);
     c.timeline.play(cs);
   }
