@@ -189,7 +189,7 @@ class Director {
   shortThrows = 0;
   ivyT = 0; deepT = 0;
   constructor(private c: Ctx) {
-    this.crows = new Crows(new THREE.Vector3(GATE_X, HIGH + 22, -322), 6, 14);
+    this.crows = new Crows(new THREE.Vector3(GATE_X, HIGH + 22, -322), 5, 14);
   }
   // Things to do a moment later, on the game's clock (paused with it, stepped with it).
   private timers: { t: number; fn: () => void }[] = [];
@@ -500,7 +500,7 @@ class Director {
     for (const [x, z] of [[8, -322], [25, -318]] as const) { const s = new Smoke(new THREE.Vector3(x, HIGH + 12, z), 18, 18, '#d8d4cc', 0.45, 0.8); this.smokes.push(s); c.root.add(s.mesh); }
     this.crows.group.userData.keep = true;
     c.root.add(dynamic(this.crows.group), this.streaks.mesh);
-    const m = mergeStatic(c.root, 48);
+    const m = mergeStatic(c.root, 64);
     console.debug('moor static merge', m);
   }
 
@@ -809,7 +809,7 @@ class Director {
     c.kitten.setOutfit({ armour: true, cape: true, bow: true });
     c.knight.setOutfit({ wounded: false });
     c.game.canSwitch = true;
-    c.padLabel('KeyQ', 'Call'); c.padLabel('Tab', 'Switch'); c.padLabel('KeyE', 'Act');
+    c.padLabel('KeyQ', 'Call'); c.padLabel('Tab', 'Switch'); c.padLabel('KeyE', 'Act'); c.padLabel('KeyG', null);
     this.cp = (ORDER as readonly string[]).includes(checkpoint ?? '') ? checkpoint as CP : 'start';
     const i = ORDER.indexOf(this.cp);
     const s = this.state;
@@ -953,7 +953,7 @@ class Director {
     // His hands on the portcullis while he holds it.
     if (this.holding) {
       const y = HIGH + 2.1 + 2.15 * this.port.ease(this.port.p) - 2.1 + 0.35 - 0.12;
-      c.knight.hands = { left: new THREE.Vector3(GATE_X - 0.3, Math.min(y, HIGH + 2.15), Z.moatS - 1.88), right: new THREE.Vector3(GATE_X + 0.3, Math.min(y, HIGH + 2.15), Z.moatS - 1.88) };
+      c.knight.hands = { left: new THREE.Vector3(GATE_X - 0.3, Math.min(y, HIGH + 2.05), Z.moatS - 1.88), right: new THREE.Vector3(GATE_X + 0.3, Math.min(y, HIGH + 2.05), Z.moatS - 1.88) };
     }
 
     // ---- The wind: gusts all over the moor (seen and heard), but they only push her on the ridge and the tor.
@@ -972,7 +972,8 @@ class Director {
     const below = (p: THREE.Vector3) => p.z < Z.ridge0 - 1 && p.z > Z.torS - 1 && p.x > 2.0 && p.x < 40 && p.y < HIGH - 0.12;
     if (below(kb.pos)) this.k.motor.safe.copy(this.lastShelter.lengthSq() > 0 ? this.lastShelter : new THREE.Vector3(-0.6, HIGH, clamp(kb.pos.z, -250, -179)));
     if (below(nb.pos)) this.n.motor.safe.set(-0.4, HIGH, clamp(nb.pos.z, -250, -179));
-    if (zone && phase === 'warn' && active) this.hint('gust', 'A gust is coming: see the grass. Get behind a rock!', 3.5);
+    if (zone && phase === 'warn' && active) this.hint('gust', 'A gust is coming. Get behind a rock!', 3.5);
+    c.hud.wind(this.windZone(g.active.char.body.pos) && !c.timeline.playing ? (phase === 'lull' ? 'calm' : phase) : 'off');
 
     if (this.stage !== 'play' || c.timeline.playing) return;
 
@@ -996,6 +997,7 @@ class Director {
     if (lead.z < -190.5 && lead.z > -203 && g.active === g.kitten && kp.y > 4) this.hint('lee', this.key('Too far to run between gusts. Bram is a wall the wind can’t move: <b>Tab</b>, and stand him in the gap.', 'Too far to run between gusts. Bram is a wall the wind can’t move: switch, and stand him in the gap.'), 6);
     if (lead.z < Z.ridge1 + 1 && lead.z > Z.torS && !this.hints.has('torSeen')) { this.hints.add('torSeen'); c.hud.say('Too wide to throw her across. But see how the pennants stream over the gap…', 5); }
     if (lead.z < -270 && !this.hints.has('moat')) { this.hints.add('moat'); this.line(LINES.moat, 4); }
+    if (kb.swimming && kp.z < Z.moatN) this.hint('chain', 'The counterweight chain hangs down into the moat by the right-hand tower. She can climb it.', 5);
     if (this.state.draw && !this.hints.has('portc') && g.active === g.knight && np.z < Z.moatS + 0.5) { this.hints.add('portc'); c.hud.say('The portcullis. Heavy, but he can heave it up and hold it.', 4); }
 
     // ---- She won't come out into the wind to follow him; he won't follow her into deep water.
@@ -1097,7 +1099,7 @@ export const moor: Level = {
   begin() { dir?.begin(); },
   update(dt, c) { dir?.update(dt, (c as any).time ?? performance.now() / 1000); },
   call() { dir?.heard(); },
-  dispose() { dir = null; WIND.sheltered = () => false; },
+  dispose() { (dir as any)?.c.hud.wind('off'); dir = null; WIND.sheltered = () => false; },
   warmViews() {
     return [
       { pos: [-14, 9, 44], look: [GATE_X, 22, -300] },

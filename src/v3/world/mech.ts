@@ -97,6 +97,7 @@ export function pinMesh() {
   const tassel = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 10), toy(PIN_PINK, { emissive: PIN_PINK, emissiveIntensity: 0.25 }));
   tassel.position.set(0, -0.15, 0.17); tassel.rotation.x = Math.PI;
   g.add(peg, knob, cord, tassel);
+  g.scale.setScalar(0.8);
   g.name = 'Pin';
   return g;
 }

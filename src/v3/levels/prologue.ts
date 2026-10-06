@@ -112,6 +112,11 @@ class Director {
     const H = height;
     const P = (x: number, z: number, dy = 0) => [x, H(x, z) + dy, z] as [number, number, number];
     const kp = () => this.n.char.body.pos;
+    // A point in his frame as he walks: `ahead` along his facing, `left` to his left, `up` above his feet.
+    const rel = (ahead: number, left: number, up: number) => {
+      const b = this.n.char.body, f = new THREE.Vector3(Math.sin(b.yaw), 0, Math.cos(b.yaw));
+      return b.pos.clone().addScaledVector(f, ahead).add(new THREE.Vector3(f.z * left, up, -f.x * left));
+    };
     const kpos = c.kitten.renderPos.clone();
     // Out of the field toward the tree; a halt to catch himself; on, and round to its trunk.
     const leg1: [number, number, number][] = [P(7.5, -9.5), P(4.8, -5.4), P(3.6, -3.4)];
@@ -126,10 +131,10 @@ class Director {
         { at: 0, dur: 8.5, from: { pos: [CAMP.x - 22, campH() + 16, CAMP.z + 32], look: [0, H(0, 0) + 4, 0], mm: 24 }, to: { pos: [CAMP.x - 14, campH() + 11, CAMP.z + 18], look: [0, H(0, 0) + 3, 0], mm: 28 }, ease: 'smooth' },
         // Out of the haze: the knight, stumbling toward the tree (we track ahead of him, three-quarter front).
         { at: 8.5, dur: 9, from: { pos: () => kp().clone().add(new THREE.Vector3(-2.6, 1.5, 3.4)), look: () => kp().clone().add(new THREE.Vector3(0, 1.15, 0)), mm: 40 }, to: { pos: () => kp().clone().add(new THREE.Vector3(-2.2, 1.4, 2.9)), look: () => kp().clone().add(new THREE.Vector3(0, 1.1, 0)), mm: 42 }, ease: 'linear', handheld: 1.6 },
-        // Close: the spear in his shoulder, his hand pressed to it.
-        { at: 17.5, dur: 4, from: { pos: () => kp().clone().add(new THREE.Vector3(-1.0, 1.55, 1.25)), look: () => kp().clone().add(new THREE.Vector3(0.1, 1.35, 0)), mm: 55 }, to: { pos: () => kp().clone().add(new THREE.Vector3(-0.9, 1.5, 1.1)), look: () => kp().clone().add(new THREE.Vector3(0.1, 1.3, 0)), mm: 58 }, ease: 'linear', handheld: 1.2 },
+        // Close, from in front of him as he comes on: the spear in his shoulder, his hand pressed to it.
+        { at: 17.5, dur: 4, from: { pos: () => rel(3.0, 1.1, 1.3), look: () => rel(0.3, 0, 1.15), mm: 38 }, to: { pos: () => rel(2.7, 0.95, 1.25), look: () => rel(0.3, 0, 1.12), mm: 40 }, ease: 'linear', handheld: 1.2 },
         // He reaches the tree, turns, and slides down its trunk.
-        { at: 21.5, dur: 9.5, from: { pos: this.L(2.8, 1.6, 5.2).toArray() as any, look: this.L(0, 1.1, 0).toArray() as any, mm: 32 }, to: { pos: this.L(2.4, 1.2, 4.4).toArray() as any, look: this.L(0, 0.7, 0.2).toArray() as any, mm: 34 }, ease: 'smooth' },
+        { at: 21.5, dur: 9.5, from: { pos: this.L(2.6, 1.5, 4.6).toArray() as any, look: this.L(0, 1.0, 0).toArray() as any, mm: 32 }, to: { pos: this.L(1.9, 1.0, 3.3).toArray() as any, look: this.L(0, 0.6, 0.2).toArray() as any, mm: 34 }, ease: 'smooth' },
         // Far across the field: the kitten, nudging the still shape under the blanket.
         { at: 31, dur: 7.5, from: { pos: [kpos.x + 0.9, campH() + 0.32, kpos.z + 0.75], look: [MOTHER.x - 0.3, campH() + 0.12, MOTHER.z - 0.2], mm: 45 }, to: { pos: [kpos.x + 0.8, campH() + 0.28, kpos.z + 0.62], look: [MOTHER.x - 0.3, campH() + 0.12, MOTHER.z - 0.2], mm: 50 }, ease: 'smooth' },
         // The horn: she looks up. Over her shoulder, far away on the skyline: the tree, the crows.
@@ -215,20 +220,20 @@ class Director {
       shots: [
         // Wide, from beside the tree: him slumped under it, her small in the grass coming up to him.
         { at: 0, dur: arrive + 0.3, from: { pos: P(this.L(2.6, 1.0, 3.2)), look: P(this.L(0.2, 0.4, 1.0)), mm: 30 }, to: { pos: P(this.L(2.3, 0.9, 2.8)), look: P(this.L(0.2, 0.35, 1.0)), mm: 32 }, ease: 'smooth' },
-        // His helm, his chin on his chest.
-        { at: arrive + 0.3, dur: 1.3, from: { pos: head.clone().add(this.dir(0.55, -0.15, 0.9)), look: head, mm: 50 }, to: { pos: head.clone().add(this.dir(0.5, -0.16, 0.82)), look: head, mm: 52 }, ease: 'smooth' },
+        // From her eye line: his helm, his chin on his chest.
+        { at: arrive + 0.3, dur: 1.4, from: { pos: P(this.L(0.55, 0.3, 1.5)), look: P(this.L(-0.08, 0.7, 0.24)), mm: 34 }, to: { pos: P(this.L(0.5, 0.3, 1.4)), look: P(this.L(-0.08, 0.7, 0.24)), mm: 36 }, ease: 'smooth' },
         // Side on at her height: she gathers herself and leaps up into his lap.
-        { at: leap - 0.4, dur: land - leap + 1.6, from: { pos: P(this.L(2.1, 0.45, 0.75)), look: P(this.L(0.3, 0.35, 0.7)), mm: 34 }, to: { pos: P(this.L(1.95, 0.55, 0.7)), look: P(this.L(0.25, 0.42, 0.6)), mm: 36 }, ease: 'smooth' },
-        // Close on her in his lap as she sits up to him.
-        { at: at(1.2), dur: 2.8, from: { pos: lapLook.clone().add(this.dir(0.55, 0.06, 0.32)), look: lapLook, mm: 48 }, to: { pos: lapLook.clone().add(this.dir(0.48, 0.07, 0.28)), look: lapLook, mm: 52 }, ease: 'smooth' },
-        // Over her, up at his helm as he lifts his head to her.
-        { at: at(4), dur: 4.5, from: { pos: lap.clone().add(this.dir(0.32, 0.3, 0.5)), look: head, mm: 40 }, to: { pos: lap.clone().add(this.dir(0.3, 0.32, 0.46)), look: head, mm: 44 }, ease: 'smooth' },
+        { at: leap - 0.4, dur: land - leap + 1.6, from: { pos: P(this.L(2.1, 0.45, 0.85)), look: P(this.L(0.35, 0.3, 0.7)), mm: 32 }, to: { pos: P(this.L(1.95, 0.5, 0.8)), look: P(this.L(0.3, 0.35, 0.6)), mm: 34 }, ease: 'smooth' },
+        // Close, side on: her in his lap as she sits up to him.
+        { at: at(1.2), dur: 2.8, from: { pos: P(this.L(0.8, 0.42, 0.62)), look: P(this.L(0.1, 0.36, 0.4)), mm: 38 }, to: { pos: P(this.L(0.72, 0.43, 0.58)), look: P(this.L(0.1, 0.37, 0.4)), mm: 40 }, ease: 'smooth' },
+        // Behind her, up at his helm as he lifts his head to her.
+        { at: at(4), dur: 4.5, from: { pos: P(this.L(0.28, 0.4, 1.2)), look: P(this.L(-0.02, 0.72, 0.22)), mm: 32 }, to: { pos: P(this.L(0.26, 0.38, 1.1)), look: P(this.L(-0.02, 0.76, 0.2)), mm: 34 }, ease: 'smooth' },
         // The two of them, three-quarter, the sunset behind.
-        { at: at(8.5), dur: 6.5, from: { pos: P(this.L(1.7, 0.9, 1.9)), look: P(this.L(0.1, 0.6, 0.25)), mm: 36 }, to: { pos: P(this.L(1.45, 0.85, 1.6)), look: P(this.L(0.1, 0.6, 0.25)), mm: 40 }, ease: 'smooth' },
-        // His helm, close.
-        { at: at(15), dur: 4.5, from: { pos: head.clone().add(this.dir(-0.55, -0.05, 0.75)), look: head, mm: 50 }, to: { pos: head.clone().add(this.dir(-0.5, -0.07, 0.68)), look: head, mm: 52 }, ease: 'smooth' },
+        { at: at(8.5), dur: 6.5, from: { pos: P(this.L(1.6, 0.85, 1.75)), look: P(this.L(0.0, 0.5, 0.3)), mm: 32 }, to: { pos: P(this.L(1.4, 0.8, 1.5)), look: P(this.L(0.0, 0.5, 0.3)), mm: 34 }, ease: 'smooth' },
+        // His helm, close, from his other side.
+        { at: at(15), dur: 4.5, from: { pos: P(this.L(-0.5, 0.9, 1.3)), look: P(this.L(-0.02, 0.78, 0.2)), mm: 40 }, to: { pos: P(this.L(-0.45, 0.88, 1.2)), look: P(this.L(-0.02, 0.78, 0.2)), mm: 42 }, ease: 'smooth' },
         // She curls up; his hand comes over her.
-        { at: at(19.5), dur: 5.5, from: { pos: lap.clone().add(this.dir(0.5, 0.55, 0.45)), look: lap, mm: 44 }, to: { pos: lap.clone().add(this.dir(0.42, 0.48, 0.38)), look: lap, mm: 48 }, ease: 'smooth' },
+        { at: at(19.5), dur: 5.5, from: { pos: P(this.L(0.6, 0.85, 1.0)), look: P(this.L(0.1, 0.3, 0.4)), mm: 38 }, to: { pos: P(this.L(0.52, 0.78, 0.9)), look: P(this.L(0.1, 0.3, 0.4)), mm: 40 }, ease: 'smooth' },
         // Up and away: the tree on its rise, the two of them under it, the field at dusk.
         { at: at(25), dur: 7, from: { pos: P(this.L(2.2, 1.2, 4)), look: P(this.L(0, 1, 0)), mm: 32 }, to: { pos: P(this.L(8, 7, 16)), look: P(this.L(0, 2.5, 0)), mm: 30 }, ease: 'in' },
       ],
@@ -411,6 +416,7 @@ export const prologue: Level = {
     // The camp: the wagon on its side, barrels, crates, sacks, the mother under a blanket.
     wagonOnSide(b, CAMP.clone().add(new THREE.Vector3(-2.8, -0.05, -0.8)), 0.45);
     barrel(b, M(CAMP.clone().add(new THREE.Vector3(2.2, 0.28, 1.6)), 0.4, 0, Math.PI / 2));
+    b.collide(CAMP.clone().add(new THREE.Vector3(2.2, 0.28, 1.6)), new THREE.Vector3(0.3, 0.28, 0.42), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.4));
     crate(b, M(CAMP.clone().add(new THREE.Vector3(-1.2, 0.35, 2.4)), 0.4));
     b.collide(CAMP.clone().add(new THREE.Vector3(-1.2, 0.35, 2.4)), new THREE.Vector3(0.36, 0.36, 0.36), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.4));
     sack(b, M(CAMP.clone().add(new THREE.Vector3(0.6, 0.15, 2.2)), 1.2));

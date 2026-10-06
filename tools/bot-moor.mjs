@@ -277,6 +277,8 @@ check('the end plays', await E(`__moor.stage === 'end'`));
 await E('__bot.tl()');
 await shot('b7-end');
 
+console.log('camera issues:', await E('JSON.stringify((window.__camIssues || []).slice(0, 20))'));
+console.log('perf:', await E('JSON.stringify(__v3.perf())'));
 const errs = logs.filter((l) => !/GPU stall|Fallback|DevTools|already non-indexed/.test(l));
 if (errs.length) console.log(errs.slice(0, 20).join('\n'));
 await browser.close();

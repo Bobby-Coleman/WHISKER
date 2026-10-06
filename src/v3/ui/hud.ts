@@ -14,14 +14,15 @@ const CSS = `
 #hud3 .msg{position:absolute;left:50%;top:22%;transform:translateX(-50%);font-size:clamp(16px,2.2vw,22px);text-align:center;max-width:min(86vw,640px);padding:8px 16px;border-radius:12px;background:rgba(30,26,40,.45);opacity:0;transition:opacity .5s;text-shadow:0 1px 2px rgba(0,0,0,.4)}
 #hud3 .prompt{position:absolute;left:50%;bottom:calc(15% + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font-size:16px;font-weight:600;padding:7px 14px 7px 8px;border-radius:999px;background:rgba(30,26,40,.55);border:2px solid rgba(255,248,236,.3);opacity:0;transition:opacity .25s;display:flex;gap:8px;align-items:center}
 #hud3 .prompt .k{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 6px;border-radius:999px;background:#ffd27a;color:#3a2410;font-size:13px;font-weight:700}
-#hud3 .sub{position:absolute;left:0;right:0;bottom:calc(12vh + 14px);text-align:center;font:italic clamp(18px,2.5vw,27px) 'Cormorant Garamond',Georgia,serif;color:#fff8ec;text-shadow:0 1px 3px #000,0 0 14px rgba(0,0,0,.75);padding:0 16px;opacity:0;transition:opacity .35s}
+#hud3 .sub{position:absolute;left:0;right:0;bottom:calc(15% + 50px + env(safe-area-inset-bottom,0px));text-align:center;font:italic clamp(18px,2.5vw,27px) 'Cormorant Garamond',Georgia,serif;color:#fff8ec;text-shadow:0 1px 3px #000,0 0 14px rgba(0,0,0,.75);padding:0 16px;opacity:0;transition:opacity .35s}
 #hud3 .bar{position:absolute;left:0;right:0;height:11vh;background:#0b0a0c;transition:transform .9s ease}
 #hud3 .bar.t{top:0;transform:translateY(-100%)} #hud3 .bar.b{bottom:0;transform:translateY(100%)}
 #hud3.lb .bar{transform:translateY(0)}
+#hud3.lb .sub{bottom:calc(11vh + 10px)}
 #hud3 .fade{position:absolute;inset:0;background:#0b0a0c;opacity:0}
-#hud3 .card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;opacity:0;transition:opacity 1.6s;padding:0 18px}
-#hud3 .card .t1{font:600 clamp(40px,8.5vw,96px) 'Cormorant Garamond',Georgia,serif;letter-spacing:.2em;padding-left:.2em}
-#hud3 .card .t2{font:italic clamp(18px,2.6vw,30px) 'Cormorant Garamond',Georgia,serif;opacity:.9}
+#hud3 .card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;opacity:0;transition:opacity 1.6s;padding:0 18px;background:radial-gradient(ellipse at center,rgba(12,10,14,.45),rgba(12,10,14,0) 70%);pointer-events:none}
+#hud3 .card .t1{font:600 clamp(30px,min(7.5vw,12vh),96px) 'Cormorant Garamond',Georgia,serif;letter-spacing:.14em;padding-left:.14em;line-height:1.05;text-shadow:0 2px 18px rgba(0,0,0,.55)}
+#hud3 .card .t2{font:italic clamp(16px,min(2.6vw,5vh),30px) 'Cormorant Garamond',Georgia,serif;opacity:.92;text-shadow:0 1px 8px rgba(0,0,0,.6)}
 #hud3 .card .t0{font:600 13px 'Fredoka',system-ui;letter-spacing:.3em;text-transform:uppercase;color:#ffd27a}
 #hud3 .title{pointer-events:auto;position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(ellipse at center,rgba(20,16,24,.15),rgba(12,10,14,.7));transition:opacity 1.2s;cursor:pointer;text-align:center}
 #hud3 .title h1{margin:0;font:600 clamp(48px,11vw,128px) 'Cormorant Garamond',Georgia,serif;letter-spacing:.22em;padding-left:.22em;text-shadow:0 4px 30px rgba(0,0,0,.5)}
@@ -43,6 +44,13 @@ const CSS = `
 #hud3 .menu .row{display:flex;gap:8px} #hud3 .menu .row button{flex:1;text-align:center}
 #hud3 .menu .help{font-size:13px;line-height:1.5;opacity:.85}
 #hud3 .menu input[type=range]{width:100%}
+#hud3 .wind{position:absolute;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(30,26,40,.42);border:2px solid rgba(255,248,236,.25);font:600 13px 'Fredoka',system-ui;opacity:0;transition:opacity .4s,background .3s,border-color .3s}
+#hud3 .wind svg{width:26px;height:18px}
+#hud3 .wind.warn{opacity:1;animation:windPulse .5s ease-in-out infinite alternate;border-color:#ffd27a}
+#hud3 .wind.gust{opacity:1;background:rgba(200,90,60,.7);border-color:#fff3d6}
+#hud3 .wind.calm{opacity:.75}
+@keyframes windPulse{from{transform:translateX(-50%) scale(1)}to{transform:translateX(-50%) scale(1.08)}}
+@media (max-height:520px){#hud3 .msg{font-size:15px;top:16%;padding:6px 12px}#hud3 .sub{font-size:18px}#hud3 .obj{font-size:13px;top:calc(46px + env(safe-area-inset-top,0px))}#hud3 .who .chip{font-size:13px;padding:3px 9px 3px 4px}#hud3 .prompt{font-size:14px;bottom:calc(10% + env(safe-area-inset-bottom,0px))}#hud3 .title h1{font-size:clamp(40px,14vh,96px)}}
 `;
 
 export type MenuChapter = { id: string; title: string; unlocked: boolean };
@@ -63,6 +71,7 @@ export class Hud {
       <div class="obj"></div><div class="msg"></div><div class="prompt"><span class="k">E</span><span class="pt"></span></div>
       <div class="bar t"></div><div class="bar b"></div><div class="sub"></div>
       <div class="card"><div class="t0"></div><div class="t1"></div><div class="t2"></div></div>
+      <div class="wind"><svg viewBox="0 0 26 18" fill="none" stroke="#fff8ec" stroke-width="2.2" stroke-linecap="round"><path d="M2 6h14a3 3 0 1 0-3-3"/><path d="M2 11h19a3 3 0 1 1-3 3"/><path d="M2 16h8"/></svg><span class="wt"></span></div>
       <div class="fade"></div>
       <button class="menuBtn" aria-label="Menu">☰</button>
       <div class="menu"><div class="box"></div></div>
@@ -131,6 +140,15 @@ export class Hud {
     if (!text) { s.style.opacity = '0'; return; }
     s.textContent = text; s.style.opacity = '1';
     this.subT = setTimeout(() => { s.style.opacity = '0'; }, seconds * 1000) as unknown as number;
+  }
+  // The gust indicator: hidden, calm, a gust coming, or blowing.
+  private windState = '';
+  wind(state: 'off' | 'calm' | 'warn' | 'gust') {
+    if (state === this.windState) return;
+    this.windState = state;
+    const w = this.q<HTMLElement>('.wind');
+    w.className = 'wind' + (state === 'off' ? '' : ' ' + state);
+    this.q<HTMLElement>('.wt').textContent = state === 'warn' ? 'Gust coming!' : state === 'gust' ? 'Gust!' : 'Calm';
   }
   letterbox(on: boolean) { this.el.classList.toggle('lb', on); }
   fadeLevel(o: number) { this.q<HTMLElement>('.fade').style.opacity = String(o); }

@@ -88,8 +88,12 @@ export class Game {
     this.camera.snap(this.subject());
   }
 
+  // The camera follows where she walks, not where the wind shoves her.
+  private subjVel = new THREE.Vector3();
   subject(a = this.active): Subject {
-    return { pos: a.char.renderPos.lengthSq() > 0 ? a.char.renderPos : a.char.body.pos, vel: a.char.body.vel, grounded: a.motor.grounded, climbing: !!a.char.body.climb, kind: a.motor.build.kind, yaw: a.char.body.yaw };
+    const w = a.motor.windVel;
+    const vel = this.subjVel.copy(a.char.body.vel); vel.x -= w.x; vel.z -= w.y;
+    return { pos: a.char.renderPos.lengthSq() > 0 ? a.char.renderPos : a.char.body.pos, vel, grounded: a.motor.grounded, climbing: !!a.char.body.climb, kind: a.motor.build.kind, yaw: a.char.body.yaw };
   }
 
   // The one left behind stays exactly where it is (on a lift, on a plate, holding a gate) until it is called.

@@ -266,13 +266,25 @@ export async function run(params: URLSearchParams) {
     audio.listenerYaw = Math.atan2(-fwd.x, -fwd.z) + Math.PI;
     audio.update(dt);
     // HUD.
+    input.showPad?.(started && !tl.playing);
     const a = g.active;
     const state = a === g.knight && g.carry.holding ? 'carrying' : '';
     hud.who(started && !tl.playing ? (a === g.kitten ? 'kitten' : 'knight') : null, g.canSwitch, state);
     const pr = started && !tl.playing ? g.prompt() : null;
     hud.prompt(pr ? pr.text : null, pr ? (pr.key === 'jump' ? (input.touchMode ? 'Jump' : '␣') : (input.touchMode ? 'Act' : 'E')) : undefined);
+    if (physLines) {
+      const { vertices, colors } = physics!.world.debugRender();
+      const g = physLines.geometry;
+      g.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+      g.computeBoundingSphere();
+      if (!physLines.parent) scene.add(physLines);
+    }
     if (render) renderer.render(scene, camera);
   };
+  // ?phys: the colliders drawn as lines over the scene.
+  const physLines = params.has('phys') ? new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false })) : null;
+  if (physLines) { physLines.frustumCulled = false; physLines.renderOrder = 10; }
   let knightFade = 1;
   const camIssues: string[] | null = params.has('camcheck') ? [] : null;
   W.__camIssues = camIssues;

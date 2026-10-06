@@ -97,12 +97,13 @@ export class KeyboardMouseGamepad {
     this.touchMode = true;
     const st = document.createElement('style');
     st.textContent = `
-.kk-stick{position:fixed;width:${KeyboardMouseGamepad.STICK_R * 2}px;height:${KeyboardMouseGamepad.STICK_R * 2}px;margin:-${KeyboardMouseGamepad.STICK_R}px 0 0 -${KeyboardMouseGamepad.STICK_R}px;border-radius:50%;border:1px solid rgba(236,232,222,.45);background:rgba(20,22,22,.18);pointer-events:none;display:none;z-index:5}
-.kk-knob{position:fixed;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(236,232,222,.42);pointer-events:none;display:none;z-index:5}
-.kk-pad{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:auto auto;gap:10px;align-items:end;z-index:6}
-.kk-pad button{font:15px 'Cormorant Garamond',Georgia,serif;letter-spacing:.06em;color:#ece8de;background:rgba(20,22,22,.42);border:1px solid rgba(236,232,222,.4);border-radius:50%;width:62px;height:62px;padding:0;touch-action:none;-webkit-user-select:none;user-select:none}
-.kk-pad button:active{background:rgba(236,232,222,.25)}
-.kk-pad .act{width:76px;height:76px;font-size:17px}`;
+.kk-stick{position:fixed;width:${KeyboardMouseGamepad.STICK_R * 2}px;height:${KeyboardMouseGamepad.STICK_R * 2}px;margin:-${KeyboardMouseGamepad.STICK_R}px 0 0 -${KeyboardMouseGamepad.STICK_R}px;border-radius:50%;border:3px solid rgba(255,248,236,.5);background:rgba(40,34,52,.22);pointer-events:none;display:none;z-index:5}
+.kk-knob{position:fixed;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,248,236,.75);box-shadow:0 3px 0 rgba(0,0,0,.2);pointer-events:none;display:none;z-index:5}
+.kk-pad{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:auto auto;gap:10px;align-items:end;justify-items:center;z-index:6}
+.kk-pad button{font:600 13px 'Fredoka',system-ui,sans-serif;letter-spacing:.02em;color:#fff8ec;background:rgba(40,34,52,.55);border:2px solid rgba(255,248,236,.5);border-radius:50%;width:56px;height:56px;padding:0;box-shadow:0 3px 0 rgba(0,0,0,.28);touch-action:none;-webkit-user-select:none;user-select:none;text-shadow:0 1px 1px rgba(0,0,0,.3)}
+.kk-pad button:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.28);background:rgba(70,62,86,.7)}
+.kk-pad .act{width:70px;height:70px;font-size:15px;background:rgba(255,210,122,.88);color:#3a2410;border-color:#fff3d6;text-shadow:none}
+.kk-pad .act:active{background:#ffc75a}`;
     document.head.appendChild(st);
     this.stickEl = document.createElement('div'); this.stickEl.className = 'kk-stick';
     this.knobEl = document.createElement('div'); this.knobEl.className = 'kk-knob';
@@ -119,6 +120,15 @@ export class KeyboardMouseGamepad {
     document.body.append(this.stickEl, this.knobEl, pad);
     for (const [code, text] of this.labels) this.label(code, text);
     this.onTouchMode?.();
+  }
+
+  // The on-screen buttons hide during cutscenes.
+  private padOn = true;
+  showPad(on: boolean) {
+    if (on === this.padOn || !this.touchMode) return;
+    this.padOn = on;
+    const pad = document.querySelector<HTMLElement>('.kk-pad');
+    if (pad) { pad.style.transition = 'opacity .4s'; pad.style.opacity = on ? '1' : '0'; pad.style.pointerEvents = on ? '' : 'none'; }
   }
 
   // Renames an on-screen button (by its key code), or hides it with null.
