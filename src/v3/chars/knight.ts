@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { CharacterBody, PoseContext, WIND } from '../body';
 import type { ToyCharacter } from './api';
 import { Avatar, Proportions } from './avatar';
-import { buildKnight, KnightModel, Part, HAND, HELM_CENTRE, EYE, Panel, cuirassPoint } from './knight/model';
+import { buildKnight, KnightModel, Part, HAND, HELM_CENTRE, EYE, Panel, tabardPoint } from './knight/model';
 
 const K = 0.84 / 0.917, SP = 0.91;
 // Hips 0.84 m, thigh 0.37, shin 0.39; shoulders 0.23 out at 1.32; a short neck under a big helm (top at 1.8).
@@ -619,10 +619,10 @@ export class ToyKnight implements ToyCharacter {
     av.turn('Head', fwd, (0.06 + 0.05 * Math.sin(t * 1.3 + 1)) * w);
   }
 
-  // A point on (or off) the cuirass (round from the front toward his left by phi, at a height at rest), where the
-  // chest bone has it now.
+  // A point on (or off) the tabard over his chest (round from the front toward his left by phi, at a height at rest),
+  // where the chest bone has it now.
   private chestPoint(bone: string, phi: number, y: number, outward: number) {
-    const v = cuirassPoint(phi, y, outward).sub(this.av.restP.get(bone)!);
+    const v = tabardPoint(phi, y, outward).sub(this.av.restP.get(bone)!);
     const bn = this.av.bones[bone];
     bn.updateWorldMatrix(true, false);
     return v.applyQuaternion(this.av.canonFrame(bone)).applyMatrix4(bn.matrixWorld);
@@ -736,9 +736,10 @@ export class ToyKnight implements ToyCharacter {
     const lapL = this.lapRest;
     {
       const rw = sm(this.restNow);
-      const pt = this.chestPoint('spine_02', PRESS.phi, PRESS.y, 0.006);
-      const n = this.chestPoint('spine_02', PRESS.phi, PRESS.y, 0.1).sub(pt).normalize();
-      const fingers = this.chestDir('spine_02', PRESS.fx, PRESS.fy, 0.15).normalize();
+      // Sat, higher and further out toward the spear: clear of what sits in his lap.
+      const pt = this.chestPoint('spine_02', PRESS_SEAT.phi, PRESS_SEAT.y, 0.006);
+      const n = this.chestPoint('spine_02', PRESS_SEAT.phi, PRESS_SEAT.y, 0.1).sub(pt).normalize();
+      const fingers = this.chestDir('spine_02', PRESS_SEAT.fx, PRESS_SEAT.fy, 0.15).normalize();
       // The elbow tucked back and down at his side, clear of what is in his lap.
       this.placeHand('r', pt, fingers, n.clone().negate(), this.D(-0.8, -0.5, -0.45), W * (1 - rw));
       if (rw > 0.001) {
@@ -1016,14 +1017,21 @@ export class ToyKnight implements ToyCharacter {
       const sway = clamp(-accL.dot(p.n) * 0.012, -0.15, 0.25) + wind * (0.5 + 0.5 * Math.sin(this.time * 7 + p.phi * 3));
       const hang = plumb(p);
       // Upper part: over the top of the thigh.
-      const n1 = Math.max(0, need(p, p.pivot, p.len1, p.b1));
+      let n1 = Math.max(0, need(p, p.pivot, p.len1, p.b1));
+      // A tabard flap lies over the gambeson panels under it: never swung in through them.
+      let over2 = -Infinity;
+      for (const i of p.over) {
+        const q = this.m.panels[i], c = Math.max(0, q.n.dot(p.n));
+        n1 = Math.max(n1, q.a1 * c);
+        over2 = Math.max(over2, q.a2 * c);
+      }
       const t1 = Math.max(n1, hang * 0.6 + sway * 0.5);
       p.v1 += ((t1 - p.a1) * 120 - p.v1 * 14) * dt;
       p.a1 += p.v1 * dt;
       if (p.a1 < n1) { p.a1 = n1; p.v1 = Math.max(0, p.v1); }
       // Lower part: from the hinge, hanging unless the knee or shin push it out.
       const H = p.hinge.clone().applyAxisAngle(p.axis, p.a1).add(p.pivot);
-      const n2 = need(p, H, p.len2, p.b2);
+      const n2 = Math.max(need(p, H, p.len2, p.b2), over2);
       const t2 = Math.max(n2, hang + sway, p.a1 - 0.9);
       p.v2 += ((t2 - p.a2) * 80 - p.v2 * 10) * dt;
       p.a2 += p.v2 * dt;
@@ -1234,7 +1242,8 @@ const LAP = { x: 0, z: 0.3 };
 const SHELTER = new THREE.Vector3(-0.05, 0.25, -0.01);
 // Where his right palm presses, below the spear (on the cuirass: round from the front, height at rest), fingers
 // up toward the wound.
-const PRESS = { phi: 0.66, y: 1.235, fx: 0.62, fy: 0.78 };
+const PRESS = { phi: 0.36, y: 1.14, fx: 0.7, fy: 0.7 };
+const PRESS_SEAT = { phi: 0.74, y: 1.19, fx: 0.75, fy: 0.62 };
 // The slide down the trunk over SLIDE_DUR seconds: settling back, sliding (with a catch halfway), the leg out.
 const SLIDE_DUR = 3.6;
 function slideCurve(t: number) {

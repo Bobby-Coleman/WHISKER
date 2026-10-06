@@ -1,9 +1,11 @@
 // The toy knight's parts (v3): rigid rounded pieces hung on the scaled mannequin's bones like a wooden doll's,
-// overlapping at the joints. A flat-topped great helm (eye slit, breathing holes, a brass cross), a polished
-// cuirass with a small dark cross, round pauldrons, a quilted charcoal gambeson (sleeves and a knee-length skirt in
-// six panels that swing clear of the legs), dark trousers, tall boots with turned cuffs, vambraces and big mitten
-// gauntlets (one morph curls them from open to a fist), and a longsword in its scabbard at his left hip with a pale
-// pink ribbon round the grip. The wounded outfit adds a broken spear in his left shoulder and blood.
+// overlapping at the joints. A flat-topped great helm in plain steel (eye slit, breathing holes, a steel cross of
+// reinforcing bands); a white tabard with a bold black cross front and back, belted at the waist and falling in a
+// front and a back flap to mid-thigh, split at the sides; under it a near-black quilted gambeson (padded shoulders,
+// sleeves and a knee-length skirt in six panels that swing clear of the legs), dark trousers, tall dark boots with
+// turned cuffs, steel vambraces and big mitten gauntlets (one morph curls them from open to a fist), and a
+// longsword in its scabbard at his left hip with a pale pink ribbon round the grip. The wounded outfit adds a broken
+// spear in his left shoulder and blood soaked into the tabard.
 //
 // Torso and leg pieces are made in character space at rest (the knight standing at the origin facing +Z, his left
 // +X), arm pieces in the arm's own frame (hanging down -Y, thumb +Z, his left +X), all for the left side; the right
@@ -18,9 +20,10 @@ const C = (h: string) => new THREE.Color(h);
 
 // Colours (sRGB).
 export const KC = {
-  steel: PAL.steel, steelDark: '#9aa4ae', brass: PAL.gold, slit: '#101216', cross: '#2b2f38',
-  gambeson: '#4a4a52', gambesonDark: '#393940', seam: '#2c2c32', trousers: '#34333a',
-  boot: '#3d2a1f', bootCuff: '#6e4a31', sole: '#241913', belt: '#4b3121', grip: '#3a2618', scabbard: '#40291c',
+  steel: PAL.steel, steelDark: '#9aa4ae', trim: '#aeb6bf', brass: PAL.gold, slit: '#101216', cross: '#18181c',
+  gambeson: '#36363d', gambesonDark: '#2a2a30', seam: '#1f1f24', trousers: '#2c2c32',
+  tabard: '#eeeae0', tabardEdge: '#d6d0c2',
+  boot: '#2c221d', bootCuff: '#4a3a2f', sole: '#17110e', belt: '#4b3121', grip: '#3a2618', scabbard: '#40291c',
   ribbon: '#f7cdd6', ribbonDark: '#eab3c0', wood: '#9b6b40', woodLight: '#d0a46e', blood: '#6e0f14', bloodDark: '#4a0a0e',
 };
 
@@ -34,8 +37,8 @@ export const HAND = {
 export const HELM_CENTRE = new THREE.Vector3(0, 0.19, 0.012);
 // The eye slit's middle on the helm's front (character space at rest).
 export const EYE = new THREE.Vector3(0, 1.634, 0.179 * 1.05 + 0.012 + 0.016);
-// The wound: on the cuirass round from the front toward his left (phi), at a height at rest.
-export const WOUND_AT = { phi: 1.02, y: 1.215 };
+// The wound: on the tabard round from the front toward his left (phi), at a height at rest.
+export const WOUND_AT = { phi: 0.74, y: 1.245 };
 
 export type Panel = {
   upper: THREE.Bone; lower: THREE.Bone; // belt to mid-thigh, and below (hinged)
@@ -50,6 +53,7 @@ export type Panel = {
   a1: number; v1: number; a2: number; v2: number; // swing outward (the lower's measured from straight down)
   half: number; // half its width
   samples: number[]; // skirt vertices (ends and middle, both faces, from the hinge down) kept off the ground
+  over: number[]; // the panels it lies over (a tabard flap over the gambeson): it swings at least as far out
 };
 
 // A part as it was made, now a range of one of the three skinned meshes: its vertices, the bone it rides, and its
@@ -117,6 +121,93 @@ export function cuirassPoint(phi: number, y: number, extra = 0, out = new THREE.
   return out;
 }
 
+// The tabard over the torso: the body's surface pushed out along its normal.
+const TAB_OFF = 0.012;
+function bodyNormal(phi: number, y: number) {
+  const e = 0.003, yy = Math.min(y, 1.352);
+  const a = cuirassPoint(phi + e, yy), b = cuirassPoint(phi - e, yy), c = cuirassPoint(phi, yy + e), d = cuirassPoint(phi, yy - e);
+  return a.sub(b).cross(c.sub(d)).normalize();
+}
+export function tabardPoint(phi: number, y: number, extra = 0, out = new THREE.Vector3()) {
+  const yy = Math.min(y, 1.352);
+  return cuirassPoint(phi, yy, 0, out).addScaledVector(bodyNormal(phi, yy), TAB_OFF + extra);
+}
+
+// A sheet over the torso: rows of heights (bottom to top), each spanning phi range `span(y)`, `cols` columns.
+function sheet(rows: number[], span: (y: number) => [number, number], cols: number, color: (phi: number, y: number) => THREE.Color, extra = 0) {
+  const pos: number[] = [], col: number[] = [], idx: number[] = [];
+  const v = new THREE.Vector3();
+  for (const y of rows) {
+    const [a, b] = span(y);
+    for (let j = 0; j <= cols; j++) {
+      const phi = a + ((b - a) * j) / cols;
+      tabardPoint(phi, y, extra, v);
+      pos.push(v.x, v.y, v.z);
+      const c = color(phi, y);
+      col.push(c.r, c.g, c.b);
+    }
+  }
+  const w = cols + 1;
+  for (let i = 0; i < rows.length - 1; i++) for (let j = 0; j < cols; j++) {
+    const a = i * w + j, b = a + 1, c = a + w, d = c + 1;
+    idx.push(a, b, c, b, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+// A cross pattée on the tabard: a square middle and four arms flaring to their ends, each a subdivided patch laid
+// on the surface (u across, v up, metres) round phiC at height yc.
+function crossPatee(phiC: number, yc: number, size: number, color: string) {
+  const h0 = size * 0.13, L = size * 0.5, wE = size * 0.27;
+  const quads: [number, number][][] = [
+    [[-h0, -h0], [h0, -h0], [h0, h0], [-h0, h0]],
+    [[h0, -h0], [L, -wE], [L, wE], [h0, h0]],
+    [[-L, -wE], [-h0, -h0], [-h0, h0], [-L, wE]],
+    [[-h0, h0], [h0, h0], [wE, L], [-wE, L]],
+    [[-wE, -L], [wE, -L], [h0, -h0], [-h0, -h0]],
+  ];
+  const parts: G[] = [];
+  const n = 5;
+  for (const [p0, p1, p2, p3] of quads) {
+    const pos: number[] = [], idx: number[] = [];
+    const v = new THREE.Vector3();
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const s = j / n, t = i / n;
+      const bot = [p0[0] + (p1[0] - p0[0]) * s, p0[1] + (p1[1] - p0[1]) * s], top = [p3[0] + (p2[0] - p3[0]) * s, p3[1] + (p2[1] - p3[1]) * s];
+      const u = bot[0] + (top[0] - bot[0]) * t, w = bot[1] + (top[1] - bot[1]) * t;
+      const y = yc + w;
+      const facing = Math.cos(phiC) >= 0 ? 1 : -1;
+      tabardPoint(phiC + (facing * u) / cuirassR(y), y, 0.0028, v);
+      pos.push(v.x, v.y, v.z);
+    }
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const a = i * (n + 1) + j, b = a + 1, c = a + n + 1, d = c + 1;
+      idx.push(a, b, c, b, d, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    // Facing out from the body.
+    const P0 = new THREE.Vector3().fromBufferAttribute(g.attributes.position, 0), P1 = new THREE.Vector3().fromBufferAttribute(g.attributes.position, 1), P2 = new THREE.Vector3().fromBufferAttribute(g.attributes.position, n + 1);
+    const nrm = P1.sub(P0).cross(P2.sub(P0));
+    if (nrm.dot(bodyNormal(phiC, yc)) < 0) { const ia = g.index!.array as any; for (let k = 0; k < ia.length; k += 3) { const t = ia[k + 1]; ia[k + 1] = ia[k + 2]; ia[k + 2] = t; } }
+    g.computeVertexNormals();
+    parts.push(paintG(g, color));
+  }
+  return merge(parts);
+}
+function paintG(g: G, color: string) {
+  const c = C(color), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  return g;
+}
+
 // The helm's profile (character space at rest).
 const HELM_PROF: [number, number][] = [[1.372, 0.0], [1.373, 0.12], [1.376, 0.155], [1.383, 0.166], [1.395, 0.169], ...smooth([[1.41, 0.17], [1.5, 0.178], [1.6, 0.179], [1.7, 0.174], [1.752, 0.165]], 2), [1.775, 0.155], [1.79, 0.14], [1.798, 0.117], [1.8, 0.07], [1.8, 0.0]];
 const HELM_SZ = 1.05, HELM_Z = 0.012;
@@ -166,6 +257,7 @@ function stud(p: THREE.Vector3, n: THREE.Vector3, r: number, h: number, color: C
 // A quilted shell panel: a slice (phi0..phi1) of a surface of revolution with thickness, its outer face channelled
 // by vertical stitching; all edges closed.
 function quiltPanel(prof: [number, number][], o: { phi0: number; phi1: number; sx: number; sz: number; thick: number; segs: number; channels: number; color: (u: number, t: number, outer: boolean) => THREE.Color }) {
+  const plain = o.channels === 0;
   const n = prof.length, segs = o.segs;
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
   const L: number[] = [0];
@@ -175,7 +267,7 @@ function quiltPanel(prof: [number, number][], o: { phi0: number; phi1: number; s
   const loop = 2 * n;
   for (let j = 0; j <= segs; j++) {
     const u = j / segs, phi = o.phi0 + (o.phi1 - o.phi0) * u;
-    const quilt = Math.abs(Math.sin(u * Math.PI * o.channels));
+    const quilt = plain ? 0 : Math.abs(Math.sin(u * Math.PI * o.channels));
     const edge = Math.min(1, u * 8, (1 - u) * 8);
     for (let k = 0; k < loop; k++) {
       const outer = k < n;
@@ -185,7 +277,7 @@ function quiltPanel(prof: [number, number][], o: { phi0: number; phi1: number; s
       const r = outer ? r0 + 0.006 * Math.sqrt(quilt) * edge : r0 - o.thick;
       pos.push(Math.sin(phi) * r * o.sx, y, Math.cos(phi) * r * o.sz);
       const c = o.color(u, t, outer);
-      if (outer) c.multiplyScalar(0.8 + 0.2 * Math.sqrt(quilt));
+      if (outer && !plain) c.multiplyScalar(0.8 + 0.2 * Math.sqrt(quilt));
       col.push(c.r, c.g, c.b);
     }
   }
@@ -274,7 +366,7 @@ export function buildKnight(av: Avatar): KnightModel {
     return mesh;
   };
   // Blood soaked into cloth: the part's colours, and the same darkened by a mask (swapped by the outfit).
-  const soak = (mesh: THREE.Mesh, mask: (p: THREE.Vector3) => number, abs0: THREE.Vector3 | null = null) => {
+  const soak = (mesh: THREE.Mesh, mask: (p: THREE.Vector3) => number, abs0: THREE.Vector3 | null = null, k = 0.8) => {
     const g = mesh.geometry, pos = g.attributes.position, colA = g.attributes.color as THREE.BufferAttribute;
     const clean = (colA.array as Float32Array).slice(), bloody = clean.slice();
     const p = new THREE.Vector3(), bc = C(KC.blood), bd = C(KC.bloodDark);
@@ -284,7 +376,7 @@ export function buildKnight(av: Avatar): KnightModel {
       const m = THREE.MathUtils.clamp(mask(p), 0, 1);
       if (m <= 0) continue;
       const target = bc.clone().lerp(bd, 0.6 + 0.4 * vnoise(p.x * 60, p.y * 60));
-      const c = new THREE.Color(clean[i * 3], clean[i * 3 + 1], clean[i * 3 + 2]).lerp(target, m * 0.8);
+      const c = new THREE.Color(clean[i * 3], clean[i * 3 + 1], clean[i * 3 + 2]).lerp(target, m * k);
       bloody[i * 3] = c.r; bloody[i * 3 + 1] = c.g; bloody[i * 3 + 2] = c.b;
     }
     stains.push({ attr: colA, clean, bloody });
@@ -298,22 +390,22 @@ export function buildKnight(av: Avatar): KnightModel {
   }));
   // Rolled rim round the bottom edge.
   helmParts.push(tube((t) => { const phi = t * Math.PI * 2; return helmPoint(phi, 1.384, 0.002); }, () => 0.007, { steps: 36, segs: 5, caps: 'none', color: KC.steel }));
-  // Eye slit (both sides of the bar), the brow band above it and the bar down the face: the brass cross.
+  // Eye slit (both sides of the bar), the brow band above it and the bar down the face: a cross of steel bands.
   for (const s of [1, -1]) {
     const g = band(helmR, helmDeform, HELM_SZ, 1.622, 1.646, s > 0 ? 0.05 : -1.08, s > 0 ? 1.08 : -0.05, 0.0005, KC.slit, 10, 1);
     helmParts.push(g);
   }
-  helmParts.push(band(helmR, helmDeform, HELM_SZ, 1.652, 1.682, -1.2, 1.2, 0.0055, KC.brass, 22, 2));
+  helmParts.push(band(helmR, helmDeform, HELM_SZ, 1.652, 1.682, -1.2, 1.2, 0.0055, KC.trim, 22, 2));
   {
     // The vertical bar: down the keel from the top to the rim.
     const prof: [number, number][] = [];
     for (let y = 1.39; y <= 1.785; y += 0.04) prof.push([y, helmR(y)]);
     helmParts.push(lathe(prof, {
-      segs: 6, phi0: -0.115, phiLen: 0.23, sz: HELM_SZ, color: KC.brass,
+      segs: 6, phi0: -0.115, phiLen: 0.23, sz: HELM_SZ, color: KC.trim,
       deform: (v, phi) => { const e = 1 - smoothstep(Math.abs(phi), 0.085, 0.115); helmDeform(v, phi, -0.002 + 0.008 * e); },
     }));
     // Over the top edge.
-    helmParts.push(tube((t) => { const y = 1.775 + t * 0.026; const p = helmPoint(0, Math.min(1.8, y), 0.004); if (t > 0.6) { p.z -= (t - 0.6) * 0.05; p.y = 1.8 + 0.004; } return p; }, () => 0.012, { steps: 6, segs: 8, sx: 1.6, color: KC.brass }));
+    helmParts.push(tube((t) => { const y = 1.775 + t * 0.026; const p = helmPoint(0, Math.min(1.8, y), 0.004); if (t > 0.6) { p.z -= (t - 0.6) * 0.05; p.y = 1.8 + 0.004; } return p; }, () => 0.012, { steps: 6, segs: 8, sx: 1.6, color: KC.trim }));
   }
   // Breathing holes: a little cross of them each side of the bar, low on the face.
   for (const s of [1, -1]) for (const [dp, dy] of [[0, 0], [0.07, 0], [-0.07, 0], [0, 0.034], [0, -0.034]]) {
@@ -324,36 +416,52 @@ export function buildKnight(av: Avatar): KnightModel {
   // Rivets along the brow band.
   for (const phi of [-1.0, -0.6, 0.6, 1.0]) {
     const p = helmPoint(phi, 1.667, 0.0055), n = helmPoint(phi, 1.667, 0.02).sub(p).normalize();
-    helmParts.push(stud(p, n, 0.007, 0.005, KC.brass, 8));
+    helmParts.push(stud(p, n, 0.007, 0.005, KC.steel, 8));
   }
   on('Head', merge(helmParts), steelM);
 
-  // ================= Cuirass, gorget (spine_02).
-  const cuiParts: G[] = [];
-  cuiParts.push(lathe(CUIRASS_PROF, { segs: 34, sz: CUI_SZ, color: KC.steel, deform: (v, phi) => cuirassDeform(v, phi) }));
-  // Rolled edges at the waist and the neck.
-  cuiParts.push(tube((t) => cuirassPoint(t * Math.PI * 2, 0.93, 0.001), () => 0.008, { steps: 34, segs: 5, caps: 'none', color: KC.steel }));
-  // Gorget: two lames round the neck.
-  cuiParts.push(lathe(smooth([[1.335, 0.112], [1.36, 0.106], [1.385, 0.094], [1.395, 0.07]], 2).concat([[1.396, 0]]), { segs: 22, sz: 0.92, color: KC.steelDark, deform: (v) => { v.z += 0.0; } }));
-  // The small dark cross on the breast.
-  cuiParts.push(band(cuirassR, cuirassDeform, CUI_SZ, 1.115, 1.215, -0.06, 0.06, 0.003, KC.cross, 6, 6));
-  cuiParts.push(band(cuirassR, cuirassDeform, CUI_SZ, 1.163, 1.183, -0.19, 0.19, 0.003, KC.cross, 10, 2));
-  // Brass rivets at the waist.
-  for (const phi of [-1.3, -0.75, 0.75, 1.3]) {
-    const p = cuirassPoint(phi, 0.955, 0.002), n = cuirassPoint(phi, 0.955, 0.02).sub(p).normalize();
-    cuiParts.push(stud(p, n, 0.008, 0.005, KC.brass, 8));
+  // ================= Torso (spine_02): the gambeson body and padded collar, the tabard over them.
+  const bodyParts: G[] = [];
+  bodyParts.push(lathe(CUIRASS_PROF, {
+    segs: 30, sz: CUI_SZ, deform: (v, phi) => cuirassDeform(v, phi),
+    color: (p) => C(KC.gambeson).multiplyScalar(0.85 + 0.15 * Math.abs(Math.sin(p.y * 70))),
+  }));
+  bodyParts.push(lathe(smooth([[1.31, 0.0], [1.315, 0.104], [1.345, 0.112], [1.38, 0.104], [1.4, 0.088], [1.402, 0.0]], 2), {
+    segs: 20, sz: 0.92, color: (p) => C(KC.gambeson).multiplyScalar(0.8 + 0.2 * Math.abs(Math.sin(Math.atan2(p.x, p.z) * 6))),
+  }));
+  // The tabard: front and back from the belt up, meeting over the shoulders; rolled edges; a cross on each.
+  const TW = 1.0; // its half-width round the body below the shoulders (radians)
+  const span = (back: boolean) => (y: number): [number, number] => {
+    const w = TW + (Math.PI / 2 - TW) * smoothstep(y, 1.25, 1.335);
+    return back ? [Math.PI - w, Math.PI + w] : [-w, w];
+  };
+  const TROWS: number[] = [];
+  for (let y = 0.895; y < 1.352; y += 0.017) TROWS.push(y);
+  TROWS.push(1.352);
+  const white = () => C(KC.tabard);
+  const tabParts: G[] = [sheet(TROWS, span(false), 30, white), sheet(TROWS, span(true), 26, white)];
+  for (const back of [false, true]) {
+    const sp = span(back);
+    for (const k of [0, 1]) {
+      // Down each side edge (to where the halves meet over the shoulder).
+      tabParts.push(tube((t) => { const y = 0.9 + t * (1.3 - 0.9); return tabardPoint(sp(y)[k], y, 0.001); }, () => 0.0065, { steps: 18, segs: 5, caps: 'none', color: KC.tabardEdge }));
+    }
+    // Round the neck.
+    tabParts.push(tube((t) => { const [a, b] = sp(1.352); return tabardPoint(a + (b - a) * t, 1.352, 0.001); }, () => 0.0065, { steps: 18, segs: 5, caps: 'none', color: KC.tabardEdge }));
   }
-  const cuirassGeo = merge(cuiParts);
-  on('spine_02', cuirassGeo, steelM);
+  tabParts.push(crossPatee(0, 1.135, 0.2, KC.cross), crossPatee(Math.PI, 1.12, 0.2, KC.cross));
+  on('spine_02', merge(bodyParts), clothM).name = 'body';
+  const tabard = on('spine_02', merge(tabParts), clothM);
+  tabard.name = 'tabard';
 
   // ================= Gambeson under it: the waist (spine_01) and hips with the belt (pelvis).
   on('spine_01', lathe(smooth([[0.9, 0.16], [0.97, 0.168], [1.05, 0.165], [1.1, 0.15]], 3), { segs: 24, sz: 0.8, color: KC.gambesonDark, deform: (v) => { v.z += 0.01; } }), clothM);
   const hipParts: G[] = [];
   hipParts.push(lathe(smooth([[0.72, 0.0], [0.725, 0.07], [0.75, 0.13], [0.8, 0.16], [0.86, 0.172], [0.92, 0.172], [0.96, 0.165]], 2).concat([[0.965, 0.0]]), { segs: 22, sx: 1.12, sz: 0.82, color: KC.gambesonDark, deform: (v) => { v.z += 0.005; } }));
-  // Sword belt over the skirt's top (following its oval, proud of its quilting), slung lower on the left where the
-  // scabbard hangs; brass buckle in front.
-  const beltY = (phi: number) => 0.91 - 0.016 * Math.max(0, Math.sin(phi));
-  const BR = 0.205;
+  // The belt over the tabard's waist (following the skirt's oval, proud of the tabard's flaps), slung a little lower
+  // on the left where the scabbard hangs; brass buckle in front.
+  const beltY = (phi: number) => 0.912 - 0.012 * Math.max(0, Math.sin(phi));
+  const BR = 0.229;
   hipParts.push(lathe([[-0.019, BR - 0.008], [-0.021, BR], [0.021, BR], [0.019, BR - 0.008]], {
     segs: 32, sx: 1.14, sz: 0.9, color: KC.belt, deform: (v, phi) => { v.y += beltY(phi); },
   }));
@@ -362,16 +470,22 @@ export function buildKnight(av: Avatar): KnightModel {
   const hips = on('pelvis', merge(hipParts), clothM);
   hips.name = 'hips';
 
-  // ================= Skirt: six quilted panels in one skinned mesh, each on two bones (belt to mid-thigh, and
-  // below), so that a panel drapes over a lifted knee instead of standing out like a board.
+  // ================= Skirt: six quilted gambeson panels to the knee and the tabard's front and back flaps over them
+  // to mid-thigh, in one skinned mesh. Each panel hangs on two bones (from the belt, and hinged lower down), so it
+  // drapes over a lifted knee instead of standing out like a board.
   const panels: Panel[] = [];
   const skirtProf: [number, number][] = [[0.945, 0.168], [0.925, 0.181], [0.9, 0.19], [0.8, 0.204], [0.735, 0.211], [0.66, 0.218], [0.565, 0.226], [0.545, 0.226]];
-  const SX = 1.14, SZ = 0.9, HINGE = 0.735;
-  const panelDefs: [number, number, number, number][] = [
-    // [phi0, phi1, side, layer]
-    [0.04, 1.05, 1, 0], [-1.05, -0.04, -1, 0], // front
-    [0.9, 2.0, 1, 1], [-2.0, -0.9, -1, 1], // sides
-    [1.8, 3.2, 1, 2], [-3.2, -1.8, -1, 2], // back
+  const flapProf = (out: number): [number, number][] => [[0.945, 0.172 + out], [0.925, 0.183 + out], [0.9, 0.19 + out], [0.84, 0.198 + out], [0.775, 0.205 + out], [0.7, 0.212 + out], [0.63, 0.217 + out], [0.612, 0.217 + out]];
+  const SX = 1.14, SZ = 0.9;
+  type Def = { phi0: number; phi1: number; side: number; prof: [number, number][]; hinge: number; segs: number; tabard: boolean; over: number[] };
+  const g = (phi0: number, phi1: number, side: number, inset: number): Def => ({ phi0, phi1, side, prof: skirtProf.map(([y, r]) => [y, r - inset] as [number, number]), hinge: 0.735, segs: 8, tabard: false, over: [] });
+  const panelDefs: Def[] = [
+    g(0.04, 1.05, 1, 0), g(-1.05, -0.04, -1, 0), // front
+    g(0.9, 2.0, 1, -0.007), g(-2.0, -0.9, -1, -0.007), // sides
+    g(1.8, 3.2, 1, -0.014), g(-3.2, -1.8, -1, -0.014), // back
+    // The tabard: a front flap and a back flap, split at the sides.
+    { phi0: -0.66, phi1: 0.66, side: 0, prof: flapProf(0.017), hinge: 0.775, segs: 10, tabard: true, over: [0, 1] },
+    { phi0: Math.PI - 0.74, phi1: Math.PI + 0.74, side: 0, prof: flapProf(0.03), hinge: 0.775, segs: 10, tabard: true, over: [4, 5] },
   ];
   const pp = P('pelvis');
   const skirtHolder = new THREE.Group();
@@ -380,16 +494,17 @@ export function buildKnight(av: Avatar): KnightModel {
   av.bones.pelvis.add(skirtHolder);
   const skirtGeos: G[] = [], skirtBones: THREE.Bone[] = [];
   const at = (phi: number, r: number, y: number) => new THREE.Vector3(Math.sin(phi) * r * SX, y, Math.cos(phi) * r * SZ);
-  for (const [phi0, phi1, side, layer] of panelDefs) {
-    const inset = [0.0, -0.007, -0.014][layer];
-    const prof = skirtProf.map(([y, r]) => [y, r - inset] as [number, number]);
+  for (const d of panelDefs) {
+    const { phi0, phi1, side, prof, hinge: HY } = d;
     const phi = (phi0 + phi1) / 2;
     const geo = quiltPanel(prof, {
-      phi0, phi1, sx: SX, sz: SZ, thick: 0.014, segs: 8, channels: 3,
-      color: (_u, t, outer) => outer ? lerpC(KC.gambeson, KC.seam, t > 0.93 ? 0.7 : 0) : C(KC.gambesonDark),
+      phi0, phi1, sx: SX, sz: SZ, thick: d.tabard ? 0.009 : 0.014, segs: d.segs, channels: d.tabard ? 0 : 3,
+      color: d.tabard
+        ? (_u, t, outer) => (outer ? C(t > 0.94 ? KC.tabardEdge : KC.tabard) : C(KC.tabardEdge))
+        : (_u, t, outer) => (outer ? lerpC(KC.gambeson, KC.seam, t > 0.93 ? 0.7 : 0) : C(KC.gambesonDark)),
     });
     const rAt = (y: number) => { for (let i = 1; i < prof.length; i++) if (y >= prof[i][0]) { const t = (y - prof[i][0]) / (prof[i - 1][0] - prof[i][0]); return prof[i][1] + (prof[i - 1][1] - prof[i][1]) * t; } return prof[prof.length - 1][1]; };
-    const pivot = at(phi, prof[0][1], prof[0][0] - 0.012), hinge = at(phi, rAt(HINGE), HINGE), hem = at(phi, prof[prof.length - 1][1], prof[prof.length - 1][0]);
+    const pivot = at(phi, prof[0][1], prof[0][0] - 0.012), hinge = at(phi, rAt(HY), HY), hem = at(phi, prof[prof.length - 1][1], prof[prof.length - 1][0]);
     const upper = new THREE.Bone(), lower = new THREE.Bone();
     upper.position.copy(pivot).sub(pp); lower.position.copy(hinge).sub(pivot);
     skirtHolder.add(upper); upper.add(lower);
@@ -398,7 +513,7 @@ export function buildKnight(av: Avatar): KnightModel {
     const pos = geo.attributes.position, n = pos.count;
     const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
     for (let i = 0; i < n; i++) {
-      const wl = 1 - smoothstep(pos.getY(i), HINGE - 0.04, HINGE + 0.04);
+      const wl = 1 - smoothstep(pos.getY(i), HY - 0.04, HY + 0.04);
       si[i * 4] = bi; si[i * 4 + 1] = bi + 1; sw[i * 4] = 1 - wl; sw[i * 4 + 1] = wl;
     }
     geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
@@ -410,13 +525,13 @@ export function buildKnight(av: Avatar): KnightModel {
     const h1 = hinge.clone().sub(pivot), h2 = hem.clone().sub(hinge);
     const samples: number[] = [];
     {
-      const nRows = prof.length, loop = 2 * nRows, base = skirtGeos.reduce((a, g) => a + g.attributes.position.count, 0) - geo.attributes.position.count;
-      for (const j of [0, 4, 8]) for (let i = 0; i < nRows; i++) if (prof[i][0] < HINGE + 0.05 && (i % 2 === 0 || i === nRows - 1)) samples.push(base + j * loop + i);
+      const nRows = prof.length, loop = 2 * nRows, base = skirtGeos.reduce((a, gg) => a + gg.attributes.position.count, 0) - geo.attributes.position.count;
+      for (const j of [0, d.segs >> 1, d.segs]) for (let i = 0; i < nRows; i++) if (prof[i][0] < HY + 0.05 && (i % 2 === 0 || i === nRows - 1)) samples.push(base + j * loop + i);
     }
     panels.push({
       upper, lower, side, phi, axis, n: out, pivot: upper.position.clone(), hinge: h1, hem: h2, len1: h1.length(), len2: h2.length(),
       b1: Math.atan2(h1.dot(out), -h1.y), b2: Math.atan2(h2.dot(out), -h2.y), a1: 0, v1: 0, a2: 0, v2: 0, half: ((phi1 - phi0) / 2) * prof[0][1] * 1.05,
-      samples,
+      samples, over: d.over,
     });
   }
   const skirt = new THREE.SkinnedMesh(merge(skirtGeos), clothM);
@@ -425,13 +540,21 @@ export function buildKnight(av: Avatar): KnightModel {
   av.root.updateMatrixWorld(true);
   skirt.bind(new THREE.Skeleton(skirtBones));
   meshes.push(skirt);
-  // Blood down his left side.
+  // Blood down his left side, and running down the tabard's front flap below the wound.
   soak(skirt, (q) => {
     const ang = Math.atan2(q.x, q.z);
     const left = smoothstep(ang, 0.45, 0.85) * (1 - smoothstep(ang, 1.9, 2.3));
     const fall = 1 - smoothstep(q.y, 0.66 + 0.18 * vnoise(q.x * 18, q.z * 18), 0.93);
-    return left * (fall * 1.25 - 0.2) * (0.6 + 0.6 * vnoise(q.x * 30 + 3, q.y * 25));
-  }, pp);
+    let m = left * (fall * 1.25 - 0.2) * (0.6 + 0.6 * vnoise(q.x * 30 + 3, q.y * 25));
+    if (q.z > 0.1) {
+      // On the front flap: soaked under the belt on his left, with streaks running down from it.
+      const top = smoothstep(q.y, 0.8 + 0.06 * vnoise(q.x * 30, 1), 0.9) * smoothstep(q.x, 0.04, 0.09) * (1 - smoothstep(q.x, 0.2, 0.24));
+      let st = 0;
+      for (const [x, y1] of [[0.095, 0.7], [0.13, 0.76], [0.165, 0.66]]) st = Math.max(st, (1 - Math.abs(q.x - x - 0.004 * Math.sin(q.y * 60)) / 0.011) * (q.y > y1 ? 1.3 : 0));
+      m = Math.max(m, top * 1.2, st);
+    }
+    return m;
+  }, pp, 0.95);
   soak(hips, (p) => smoothstep(Math.atan2(p.x, p.z), 0.6, 1.0) * (1 - smoothstep(Math.atan2(p.x, p.z), 1.9, 2.3)) * (0.5 + 0.6 * vnoise(p.x * 30, p.y * 30)) - 0.15, P('pelvis'));
 
   // ================= Legs: trousers (thigh), boots with turned cuffs (calf), boot feet (foot) and toes (ball).
@@ -484,7 +607,7 @@ export function buildKnight(av: Avatar): KnightModel {
     const sd = s > 0 ? 'l' : 'r';
     const mir = (g: G) => (s > 0 ? g.clone() : mirrorX(g));
     const sl = on(`upperarm_${sd}`, mir(sleeve), clothM, false);
-    if (s > 0) soak(sl, (p) => (p.z > 0.0 ? 1 : 0.4) * (1 - smoothstep(-p.y, 0.05, 0.16 + 0.05 * vnoise(p.x * 40, p.z * 40))) * 1.2);
+    if (s > 0) soak(sl, (p) => (p.z > 0.0 ? 0.9 : 0.3) * (1 - smoothstep(-p.y, 0.03, 0.11 + 0.04 * vnoise(p.x * 40, p.z * 40))), null, 0.6);
     on(`lowerarm_${sd}`, mir(vambrace), steelM, false);
     let gg = gauntlet;
     if (s < 0) {
@@ -497,15 +620,15 @@ export function buildKnight(av: Avatar): KnightModel {
     gauntlets.push(gm);
   }
 
-  // ================= Pauldrons: on the clavicles, following the upper arm halfway.
+  // ================= Padded shoulders: quilted gambeson rolls on the clavicles, following the upper arm halfway.
   const pauldronGeo = merge([
-    lathe(smooth([[-0.035, 0.0], [-0.034, 0.1], [-0.026, 0.121], [0.0, 0.12], [0.035, 0.108], [0.065, 0.08], [0.085, 0.045], [0.093, 0.0]], 2), { segs: 20, color: KC.steel }),
-    lathe(smooth([[-0.075, 0.0], [-0.074, 0.112], [-0.066, 0.127], [-0.045, 0.127], [-0.036, 0.118], [-0.034, 0.0]], 1), { segs: 20, color: KC.steel }),
-    lathe(smooth([[-0.105, 0.0], [-0.104, 0.104], [-0.097, 0.118], [-0.08, 0.118], [-0.072, 0.11], [-0.07, 0.0]], 1), { segs: 20, color: KC.steel }),
-    // The inside, so a raised arm shows a dark steel lining rather than a hole.
-    lathe(smooth([[0.08, 0.0], [0.072, 0.045], [0.052, 0.074], [0.022, 0.1], [-0.01, 0.11], [-0.03, 0.112], [-0.1, 0.098]], 1), { segs: 16, color: KC.steelDark }),
-    stud(new THREE.Vector3(0, 0.093, 0), new THREE.Vector3(0, 1, 0), 0.016, 0.01, KC.brass, 10),
-    tube((t) => { const a = t * Math.PI * 2; return new THREE.Vector3(Math.sin(a) * 0.1215, -0.03, Math.cos(a) * 0.1215); }, () => 0.006, { steps: 20, segs: 5, caps: 'none', color: KC.brass }),
+    lathe(smooth([[-0.065, 0.0], [-0.063, 0.072], [-0.046, 0.088], [-0.018, 0.092], [0.014, 0.086], [0.038, 0.068], [0.052, 0.042], [0.058, 0.0]], 2), {
+      segs: 22,
+      color: (p) => C(KC.gambeson).multiplyScalar(0.78 + 0.22 * Math.sqrt(Math.abs(Math.sin(Math.atan2(p.x, p.z) * 4)))),
+      deform: (v, phi) => { if (v.y > -0.05) { const k = 1 + 0.06 * Math.sqrt(Math.abs(Math.sin(phi * 4))); v.x *= k; v.z *= k; } },
+    }),
+    // A seam round its lower edge.
+    tube((t) => { const a = t * Math.PI * 2; return new THREE.Vector3(Math.sin(a) * 0.092, -0.042, Math.cos(a) * 0.092); }, () => 0.0075, { steps: 20, segs: 5, caps: 'none', color: KC.seam }),
   ]);
   const pauldrons: KnightModel['pauldrons'] = [];
   for (const s of [1, -1]) {
@@ -515,7 +638,7 @@ export function buildKnight(av: Avatar): KnightModel {
     const bone = new THREE.Bone();
     bone.name = `pauldron_${sd}`;
     av.bones[`clavicle_${sd}`].add(bone);
-    const mesh = new THREE.Mesh(geo, steelM);
+    const mesh = new THREE.Mesh(geo, clothM);
     mesh.name = `pauldron_${sd}`;
     bone.add(mesh);
     meshes.push(mesh);
@@ -530,7 +653,7 @@ export function buildKnight(av: Avatar): KnightModel {
     const holder = new THREE.Group();
     holder.quaternion.copy(av.canonFrame('pelvis'));
     av.bones.pelvis.add(holder);
-    const throat = new THREE.Vector3(0.222, 0.895, -0.02);
+    const throat = new THREE.Vector3(0.255, 0.895, -0.03);
     scabbard.position.copy(throat).sub(P('pelvis'));
     holder.add(scabbard);
     // In the group's frame: down the scabbard is -Y, the hilt +Y.
@@ -568,8 +691,8 @@ export function buildKnight(av: Avatar): KnightModel {
   const spear = new THREE.Bone();
   {
     const phiW = WOUND_AT.phi, yW = WOUND_AT.y;
-    cuirassPoint(phiW, yW, 0, WOUND);
-    const dir = new THREE.Vector3(0.55, 0.24, 0.8).normalize();
+    tabardPoint(phiW, yW, 0, WOUND);
+    const dir = new THREE.Vector3(0.78, 0.34, 0.52).normalize();
     spear.name = 'spear';
     const wood: G[] = [], steel: G[] = [];
     const len = 0.58, r = 0.022;
@@ -606,30 +729,35 @@ export function buildKnight(av: Avatar): KnightModel {
       mesh.name = 'spear';
       spear.add(mesh); meshes.push(mesh);
     }
-    // Blood on the cuirass: a pool round the wound, runs down over the breast and the edge, smears.
-    const drips = [[WOUND.x - 0.03, 1.06], [WOUND.x - 0.005, 0.93], [WOUND.x + 0.02, 1.0], [WOUND.x + 0.035, 0.94], [WOUND.x - 0.055, 1.12]];
+    // Blood soaked into the tabard: a big stain round the wound, runs down to the belt, a smear from his hand.
+    const drips = [[WOUND.x - 0.035, 1.02], [WOUND.x - 0.01, 0.9], [WOUND.x + 0.018, 0.96], [WOUND.x + 0.04, 0.9], [WOUND.x - 0.06, 1.08]];
     const bloodMask = (p: THREE.Vector3) => {
-      if (p.z < -0.02) return 0;
-      const d = Math.hypot(p.x - WOUND.x, (p.y - WOUND.y) * 1.2, p.z - WOUND.z);
-      let m = 1.25 - d / (0.034 + 0.02 * vnoise(p.x * 40, p.y * 40));
+      if (p.z < -0.03) return 0;
+      const d = Math.hypot(p.x - WOUND.x, (p.y - WOUND.y) * 1.05, (p.z - WOUND.z) * 0.8);
+      let m = 1.35 - d / (0.06 + 0.035 * vnoise(p.x * 18, p.y * 18));
+      // Soaked downward from it, narrowing.
+      if (p.y < WOUND.y) {
+        const k = (WOUND.y - p.y) / 0.3;
+        const hw = 0.06 * (1 - k) + 0.012;
+        const cx = WOUND.x - 0.015 + 0.012 * Math.sin(p.y * 25);
+        m = Math.max(m, (1 - Math.abs(p.x - cx) / hw) * (1.3 - k) * (0.8 + 0.4 * vnoise(p.x * 22, p.y * 22)));
+      }
       for (const [x, y1] of drips) {
         if (p.y > WOUND.y || p.y < y1 - 0.02) continue;
-        const wobble = 0.006 * Math.sin(p.y * 70 + x * 50);
-        const w = 0.009 + 0.005 * smoothstep(p.y, y1 + 0.03, y1);
-        const tip = p.y < y1 ? 0 : 1;
-        const dd = Math.abs(p.x - x - wobble);
-        const drop = Math.hypot(p.x - x, (p.y - y1) * 0.8);
-        m = Math.max(m, (1 - dd / w) * 1.4 * (tip > 0 ? 1 : 0), 1.2 - drop / 0.017);
+        const w = 0.01 + 0.005 * smoothstep(p.y, y1 + 0.03, y1);
+        const dd = Math.abs(p.x - x - 0.006 * Math.sin(p.y * 70 + x * 50));
+        m = Math.max(m, (1 - dd / w) * 1.4, 1.2 - Math.hypot(p.x - x, (p.y - y1) * 0.8) / 0.018);
       }
-      // Smears from his hand below the wound.
-      const sm = 1.05 - Math.hypot((p.x - WOUND.x + 0.045) / 0.05, (p.y - 1.15) / 0.03) - 0.5 * vnoise(p.x * 50, p.y * 50);
+      // A smear from his hand below and inside the wound.
+      const sm = 1.1 - Math.hypot((p.x - WOUND.x + 0.07) / 0.06, (p.y - 1.13) / 0.035) - 0.5 * vnoise(p.x * 30, p.y * 30);
       return Math.max(m, sm);
     };
-    const bc = coat(cuirassGeo, (p) => bloodMask(p.clone().add(sp)), 0.0022);
-    const bm = new THREE.Mesh(bc, bloodM);
-    bm.name = 'blood_chest';
-    bm.quaternion.copy(av.canonFrame('spine_02'));
-    av.bones.spine_02.add(bm); meshes.push(bm);
+    // Wet and dark where it is thick (a crisp coat in the blood material), soaked pink into the cloth round it.
+    const sp2 = P('spine_02');
+    soak(tabard, (p) => (bloodMask(p) + 0.45) * 0.55, sp2, 0.6);
+    const tc = coat(tabard.geometry, (p) => bloodMask(p.clone().add(sp2)), 0.0034);
+    const tm = on('spine_02', tc, bloodM, false);
+    tm.name = 'blood_tabard';
     // The right gauntlet: palm, fingers and thumb dark with it (it has been pressed to the wound).
     const gr = gauntlets[1];
     const gc = coat(gr.geometry, (p) => (p.x > 0.01 ? 1 : 0) * (0.75 - Math.abs(p.z - 0.01) / 0.08) + 0.45 * vnoise(p.y * 50, p.z * 50) - 0.12 + (p.y < -0.13 && p.x > -0.01 ? 0.2 : 0), 0.0025);
