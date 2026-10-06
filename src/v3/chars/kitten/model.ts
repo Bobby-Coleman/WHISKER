@@ -295,8 +295,8 @@ export class KittenRig {
     this.bow.rotation.set(-0.25, 0.75, -0.55, 'YXZ');
     this.head.add(this.bow);
 
-    // ---- Armour: a rounded steel breastplate on her chest, a leather strap round her middle with a steel buckle,
-    // and a tiny steel cap. Skinned like the coat under it, so it bends with her.
+    // ---- Armour: a rounded steel breastplate on her chest and a leather strap round her middle with a steel buckle.
+    // Skinned like the coat under it, so it bends with her.
     this.armour = new THREE.SkinnedMesh(this.armourGeo(torso, torsoW, B), [metal(PAL.steel, 0.3, this.fade), toy('#ffffff', { vertexColors: true, rough: 0.8, fade: this.fade })]);
     this.armour.name = 'KittenArmour';
     this.bindMesh(this.armour);
@@ -400,20 +400,8 @@ export class KittenRig {
       bk.lookAt(bn); bk.translate(bp.x, bp.y, bp.z);
       metalParts.push(bk);
     }
-    // Cap: a little round steel cap between her ears, with a rolled rim and a knob on top.
+    // (No cap: nothing on her head but the bow.)
     const capParts: THREE.BufferGeometry[] = [];
-    {
-      const R = 0.034, c = new THREE.Vector3(0, 0.031, -0.004), PH = 1.0;
-      const g = openCap(R, PH, 24, 7).rotateX(-Math.PI / 2); // pole up
-      g.scale(1, 0.92, 1.06); g.translate(c.x, c.y, c.z);
-      capParts.push(g);
-      const rimPts: THREE.Vector3[] = [];
-      for (let t = 0; t < 24; t++) { const th = (t / 24) * Math.PI * 2; rimPts.push(new THREE.Vector3(Math.sin(th) * Math.sin(PH) * R, Math.cos(PH) * R * 0.92, Math.cos(th) * Math.sin(PH) * R * 1.06).add(c)); }
-      capParts.push(loopTube(rimPts, 0.0021, 5));
-      const knob = new THREE.SphereGeometry(0.0042, 8, 5); knob.deleteAttribute('uv'); knob.translate(c.x, c.y + R * 0.92 + 0.002, c.z);
-      capParts.push(knob);
-      for (const g2 of capParts) { g2.rotateX(-0.12).rotateZ(0.12); bake(g2, this.head.matrixWorld); }
-    }
     const strip = (g: THREE.BufferGeometry) => { for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'color') g.deleteAttribute(k); if (!g.attributes.color) paint(g, (_p, _n, o) => o.setRGB(1, 1, 1)); return g; };
     const mp = merge([...metalParts.map((g) => skin(strip(g), torsoW)), ...capParts.map((g) => skin(strip(g), B(this.head)))]);
     const lp = merge(leatherParts.map((g) => skin(strip(g), torsoW)));
