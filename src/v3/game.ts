@@ -4,7 +4,7 @@
 // behind the player's back.
 import * as THREE from 'three';
 import { Physics, L, SOLID } from './physics';
-import { Motor, MotorInput, BUILDS } from './motor';
+import { Motor, MotorInput, BUILDS, WATER } from './motor';
 import { Climber } from './climb';
 import { Carry } from './carry';
 import { Follower } from './follow';
@@ -60,6 +60,14 @@ export class Game {
     this.kitten = { ...k, climber: new Climber(k.motor, physics) };
     this.knight = mk(knightChar, 'knight');
     this.carry = new Carry(physics, this.knight, this.kitten);
+    // He never follows her into water deeper than his chest.
+    this.follower.unsafe = (me, p) => {
+      if (me !== this.knight || !WATER.surface) return false;
+      const s = WATER.surface(p.x, p.z);
+      if (s === null) return false;
+      const floor = physics.groundY(p.x, s + 0.3, p.z, 4, SOLID) ?? s - 4;
+      return s - floor > 1.0;
+    };
     for (const a of [this.kitten, this.knight] as Actor[]) a.motor.onJump = () => { if (a === this.active) this.leaderJumped = true; };
     this.active = this.kitten;
     this.camera = new FollowCamera(aspect);
@@ -105,7 +113,7 @@ export class Game {
       else a.motor.queueJump();
     }
     if (inp.interactPressed) {
-      const u = this.carry.holding ? null : this.interactions.nearest(a);
+      const u = this.carry.holding || this.liftFirst() ? null : this.interactions.nearest(a);
       if (u) u.use(a);
       else if (a === this.knight) {
         if (this.carry.holding) { this.knight.char.play?.('OverhandThrow'); this.carry.throw(); this.switchTo(this.kitten); }
@@ -127,10 +135,19 @@ export class Game {
     }
   }
 
+  // Lifting her wins over a handle or door when she is right there at his feet in front of him (a follower trailing
+  // a step behind doesn't get scooped up when he means to shove a cart).
+  private liftFirst() {
+    if (this.active !== this.knight || !this.carry.canLift()) return false;
+    const p = this.knight.char.body.pos, k = this.kitten.char.body.pos, yaw = this.knight.char.body.yaw;
+    const dx = k.x - p.x, dz = k.z - p.z, d = Math.hypot(dx, dz);
+    return d < 0.45 || d < 0.9 && (Math.sin(yaw) * dx + Math.cos(yaw) * dz) / d > 0.3;
+  }
+
   // What the played character can do here, for the on-screen prompt.
   prompt(): { text: string; key: 'act' | 'jump' } | null {
     if (this.locked) return null;
-    const u = this.carry.holding ? null : this.interactions.nearest(this.active);
+    const u = this.carry.holding || this.liftFirst() ? null : this.interactions.nearest(this.active);
     if (u) return { text: u.text, key: 'act' };
     if (this.active === this.knight) {
       if (this.carry.holding) return { text: 'Throw her up (Q sets her down)', key: 'act' };

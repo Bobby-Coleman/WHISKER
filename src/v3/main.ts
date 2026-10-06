@@ -1,7 +1,7 @@
 // Whisker v3: a lean WebGL engine. Quality tiers and adaptive resolution keep it smooth on phones; levels load
 // in place (no page reloads); the two characters persist between levels.
 import * as THREE from 'three';
-import { Physics } from './physics';
+import { Physics, L } from './physics';
 import { Game, LevelInfo } from './game';
 import { Timeline } from './timeline';
 import { KeyboardMouseGamepad, InputFrame } from './input';
@@ -229,6 +229,13 @@ export async function run(params: URLSearchParams) {
     // Camera: a cutscene's shots, the test camera, or the follow camera.
     if (tl.playing) { if (inp.skipPressed && tl.t > 0.6 && started) tl.skip(); else tl.update(dt, camera); }
     else g.camera.update(dt, g.subject(), started ? inp.look : new THREE.Vector2(), inp.zoom, physics!);
+    // Cutscene camera checks (tests): the lens inside a character or inside the world.
+    if (tl.playing && camIssues) {
+      const cp = camera.position;
+      for (const ch of [kitten, knight]) for (const sp of ch.spheres()) if (sp.distanceToPoint(cp) < 0.04) camIssues.push(`${tl.scene?.name} t=${tl.t.toFixed(2)} inside ${ch.kind}`);
+      if (physics!.overlaps(cp, 0.03, L.world | L.detail)) camIssues.push(`${tl.scene?.name} t=${tl.t.toFixed(2)} inside world`);
+      if (terrain && cp.y < terrain.heightAt(cp.x, cp.z) + 0.05) camIssues.push(`${tl.scene?.name} t=${tl.t.toFixed(2)} under ground`);
+    }
     if (freeCam) { camera.position.copy(freeCam.pos); camera.lookAt(freeCam.look); if (freeCam.mm) camera.fov = fovFromMM(freeCam.mm); camera.updateProjectionMatrix(); }
     // The knight dissolves while he stands between the lens and the kitten.
     {
@@ -267,6 +274,8 @@ export async function run(params: URLSearchParams) {
     if (render) renderer.render(scene, camera);
   };
   let knightFade = 1;
+  const camIssues: string[] | null = params.has('camcheck') ? [] : null;
+  W.__camIssues = camIssues;
   // In a cutscene the shadows follow what the camera looks at.
   const cutFocus = (cam: THREE.PerspectiveCamera, fallback: THREE.Vector3) => {
     const d = cam.getWorldDirection(new THREE.Vector3());
@@ -289,11 +298,12 @@ export async function run(params: URLSearchParams) {
   if (stats) document.body.appendChild(stats);
 
   // ---- Test and debug hooks.
+  W.__THREE = THREE;
   W.__v3 = {
     get game() { return game; }, get timeline() { return timeline; }, get level() { return level; }, get ctx() { return ctx; },
     get physics() { return physics; }, get terrain() { return terrain; },
     renderer, scene, camera, kitten, knight, hud, audio, look, WIND,
-    begin: () => { started = true; audio.start(); level?.begin?.(ctx!); },
+    begin: () => { if (hud.go && !hud.started) hud.go(); else { started = true; audio.start(); level?.begin?.(ctx!); } },
     play: () => { started = true; },
     load: (id: string) => load(id, null),
     go: (id: string) => transition(id),

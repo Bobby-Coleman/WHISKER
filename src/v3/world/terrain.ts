@@ -56,14 +56,14 @@ export class Terrain {
     this.mesh = new THREE.Mesh(g, toy('#ffffff', { vertexColors: true, rough: 0.95 }));
     this.mesh.receiveShadow = true;
     this.mesh.name = 'Terrain';
-    // The far skirt: coarse, a little sunk under the near square so they never fight.
+    // The far skirt: coarse, and deep under the near square (its big triangles would otherwise bridge a narrow glen).
     const fh = spec.farHalf ?? 2400, fs = spec.farStep ?? 60, fn = Math.round((fh * 2) / fs) + 1;
     const fg = new THREE.PlaneGeometry(fh * 2, fh * 2, fn - 1, fn - 1).rotateX(-Math.PI / 2);
     const fp = fg.attributes.position, fc = new Float32Array(fp.count * 3);
     for (let i = 0; i < fp.count; i++) {
       const x = fp.getX(i) + cx, z = fp.getZ(i) + cz;
       const inside = Math.abs(x - cx) < half - fs && Math.abs(z - cz) < half - fs;
-      const h = spec.height(x, z) - (inside ? 2.5 : 0.05);
+      const h = spec.height(x, z) - (inside ? 60 : 0.05);
       fp.setXYZ(i, x, h, z);
       const c = spec.color(x, z, h, 0);
       fc[i * 3] = c.r; fc[i * 3 + 1] = c.g; fc[i * 3 + 2] = c.b;

@@ -68,11 +68,11 @@ export function toy(color: string | number = '#ffffff', o: { rough?: number; ver
 }
 
 // Polished metal: the knight's plate, swords, buckles.
-export function metal(color: string = PAL.steel, rough = 0.32, fade?: Fade) {
-  const key = `metal|${color}|${rough}`;
+export function metal(color: string = PAL.steel, rough = 0.32, fade?: Fade, vertexColors = false) {
+  const key = `metal|${color}|${rough}|${vertexColors ? 1 : 0}`;
   let m = fade ? undefined : cache.get(key);
   if (m) return m;
-  m = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: rough, metalness: 0.85, envMapIntensity: 1.1 });
+  m = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: rough, metalness: 0.85, envMapIntensity: 1.1, vertexColors });
   patch(m, 'metal', fade);
   if (!fade) cache.set(key, m);
   return m;

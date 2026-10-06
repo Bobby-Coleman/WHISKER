@@ -74,6 +74,7 @@ export class Hud {
 
   // ---- Title and loading.
   started = false;
+  go?: () => void;
   progress(f: number, text = 'Loading…') { this.q<HTMLElement>('.load i').style.width = `${Math.round(f * 100)}%`; this.q<HTMLElement>('.lt').textContent = text; }
   ready(label: string, onGo: () => void) {
     const b = this.q<HTMLButtonElement>('.go');
@@ -89,6 +90,7 @@ export class Hud {
       this.q<HTMLElement>('.menuBtn').style.display = 'block';
       onGo();
     };
+    this.go = go;
     b.onclick = (e) => { e.stopPropagation(); go(); };
     this.q<HTMLElement>('.title').onclick = go;
     addEventListener('keydown', (e) => { if (!this.started && (e.code === 'Enter' || e.code === 'Space')) go(); });

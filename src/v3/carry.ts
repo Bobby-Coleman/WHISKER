@@ -11,6 +11,8 @@ export const THROW = { forward: 2.6, up: 7.5, reach: 1.15 };
 
 export class Carry {
   holding = false;
+  // Where lifting is allowed at all (a level can forbid it, as on the windy ridge).
+  allow: () => boolean = () => true;
   private hold = new THREE.Vector3();
 
   constructor(public physics: Physics, public knight: { char: Avatar; motor: Motor }, public kitten: { char: Avatar; motor: Motor }) {
@@ -20,7 +22,7 @@ export class Carry {
   // Close enough, in front of him, and both on their feet (not while she climbs or is already airborne).
   canLift() {
     const n = this.knight, k = this.kitten;
-    if (this.holding || n.motor.mode !== 'move' || k.motor.mode !== 'move' || !n.motor.grounded || !k.motor.grounded) return false;
+    if (this.holding || !this.allow() || n.motor.mode !== 'move' || k.motor.mode !== 'move' || !n.motor.grounded || !k.motor.grounded) return false;
     const dx = k.char.body.pos.x - n.char.body.pos.x, dz = k.char.body.pos.z - n.char.body.pos.z, d = Math.hypot(dx, dz);
     if (d > THROW.reach || Math.abs(k.char.body.pos.y - n.char.body.pos.y) > 0.5) return false;
     const fwd = (Math.sin(n.char.body.yaw) * dx + Math.cos(n.char.body.yaw) * dz) / (d || 1);
@@ -67,6 +69,10 @@ export class Carry {
     const mid = start.clone(); mid.y += B.height / 2;
     if (this.physics.overlaps(mid, B.radius, SOLID)) { start.copy(n.char.body.pos); start.y += n.motor.build.height + 0.05; }
     const yaw = n.char.body.yaw;
+    // Close up to a wall he heaves her from over his head, so she clears it instead of hitting its face.
+    const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const near = this.physics.raycast(mid, fwd, 0.95, SOLID);
+    if (near) { start.copy(n.char.body.pos).addScaledVector(fwd, 0.1); start.y += n.motor.build.height + 0.05; }
     k.motor.place(start, yaw);
     kb.prevPos.copy(kb.pos);
     k.motor.launch(new THREE.Vector3(Math.sin(yaw) * THROW.forward, THROW.up, Math.cos(yaw) * THROW.forward));

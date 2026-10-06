@@ -13,6 +13,8 @@ const flat = (a: THREE.Vector3, b: THREE.Vector3) => Math.hypot(a.x - b.x, a.z -
 
 export class Follower {
   mode: 'follow' | 'wait' = 'wait';
+  // Ground this one must not follow onto (the knight: water over his head). It stops at the edge instead.
+  unsafe?: (me: Actor, p: THREE.Vector3) => boolean;
   private trail: Crumb[] = [];
   private last = new THREE.Vector3(Infinity, 0, 0);
   private input: MotorInput = { wish: new THREE.Vector2(), walk: false, jumpHeld: false };
@@ -54,7 +56,7 @@ export class Follower {
     if (dLeader < gap && Math.abs(lp.y - mp.y) < 0.8) { this.stuckT = 0; this.best = Infinity; return null; }
     // Far behind, or no way forward, and nobody watching: catch up to a point on the trail a little behind the leader.
     const target = this.trail[0];
-    const blocked = !target || (target.climb && knight);
+    const blocked = !target || (target.climb && knight) || !!this.unsafe?.(me, target.p);
     if (dLeader < this.best - 0.1) { this.best = dLeader; this.stuckT = 0; } else this.stuckT += dt;
     if ((dLeader > 14 || this.stuckT > 3) && leader.motor.grounded && unseen(mp)) {
       for (let i = this.trail.length - 1; i >= 0; i--) {

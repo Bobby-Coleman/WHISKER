@@ -7,3 +7,7 @@ __pycache__/
 *.blend1
 assets-src/
 public/packs-review/
+
+# agent preview builds
+dist-kitten/
+dist-knight/
