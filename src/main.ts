@@ -782,7 +782,8 @@ async function main() {
 }
 
 // ?v2 runs the engine rebuild (src/v2) instead of the v1 field.
-const boot = params.has('v2') ? import('./v2/main').then((m) => m.run(params)) : main();
+// ?v1 runs the first field prototype, ?v2 the engine rebuild; the game (v3) is the default.
+const boot = params.has('v1') ? main() : params.has('v2') ? import('./v2/main').then((m) => m.run(params)) : import('./v3/main').then((m) => m.run(params));
 boot.catch((e) => {
   console.error(e);
   W.__error = String(e?.stack || e);
