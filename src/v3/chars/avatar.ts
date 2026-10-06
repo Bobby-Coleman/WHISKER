@@ -13,11 +13,13 @@ import type { CharacterBody, PoseContext } from '../body';
 const loader = new GLTFLoader();
 let library: Promise<Map<string, THREE.AnimationClip>> | null = null;
 let mannequin: Promise<THREE.Object3D> | null = null;
+// Hosts that won't serve .glb get the same files as embedded JSON glTF (VITE_CHARS_EXT=.gltf.json at build time).
+const CHARS_EXT: string = import.meta.env.VITE_CHARS_EXT || '.glb';
 
 // The clip library, loaded once: every bone's rotation; translation only for the pelvis (the root's motion is
 // dropped: the game moves the character).
 export function loadClips() {
-  library ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/ual_anims.glb`).then((g) => {
+  library ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/ual_anims${CHARS_EXT}`).then((g) => {
     const m = new Map<string, THREE.AnimationClip>();
     for (const c of g.animations) {
       c.tracks = c.tracks.filter((t) => {
@@ -33,7 +35,7 @@ export function loadClips() {
   return library;
 }
 function loadMannequin() {
-  mannequin ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/mannequin.glb`).then((g) => g.scene);
+  mannequin ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/mannequin${CHARS_EXT}`).then((g) => g.scene);
   return mannequin;
 }
 

@@ -37,7 +37,9 @@ function writeSave(s: Save) { try { localStorage.setItem('whisker3', JSON.string
 
 export async function run(params: URLSearchParams) {
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
-  let qName: QualityName = (params.get('q') as QualityName) || (localStorage.getItem('whisker3.q') as QualityName) || (phone ? 'low' : 'medium');
+  let stored: string | null = null;
+  try { stored = localStorage.getItem('whisker3.q'); } catch { /* storage blocked */ }
+  let qName: QualityName = (params.get('q') as QualityName) || (stored as QualityName) || (phone ? 'low' : 'medium');
   if (!QUALITY[qName]) qName = 'medium';
   const Q = QUALITY[qName];
   const hud = new Hud();
