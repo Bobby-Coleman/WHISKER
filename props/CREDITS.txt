@@ -1,8 +1,0 @@
-Props in this folder are from Quaternius's megakits (https://quaternius.com), released under CC0 1.0
-(public domain), as published on OpenGameArt:
-
-  nature/  Stylized Nature MegaKit
-  props/   Medieval Village / Fantasy Props MegaKit
-
-Textures were resized to 1024 and re-encoded by tools/pack_props.mjs; the models are unchanged.
-Character animations (public/chars/ual_anims.glb) are from Quaternius's Universal Animation Library 1 and 2 (CC0).
