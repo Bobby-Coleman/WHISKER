@@ -72,7 +72,7 @@ export class Hud {
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     this.el = document.createElement('div'); this.el.id = 'hud3';
     this.el.innerHTML = `
-      <div class="who"><div class="chip" data-k="kitten"><span class="dot">🐾</span><span>Kitten</span></div><div class="chip" data-k="knight"><span class="dot">⚔</span><span>Knight</span><span class="state"></span></div></div>
+      <div class="who"><div class="chip" data-k="kitten"><span class="dot">🐾</span><span>Kitten</span><span class="state"></span></div><div class="chip" data-k="knight"><span class="dot">⚔</span><span>Knight</span><span class="state"></span></div></div>
       <div class="obj"></div><div class="msg"></div><div class="prompt"><span class="k">E</span><span class="pt"></span></div>
       <div class="bar t"></div><div class="bar b"></div><div class="sub"></div>
       <div class="card"><div class="t0"></div><div class="t1"></div><div class="t2"></div></div>
@@ -121,16 +121,18 @@ export class Hud {
     this.q<HTMLElement>('.card').style.opacity = '0';
     this.letterbox(false); this.objective(null); this.prompt(null); this.skipHint(false); this.wind('off');
   }
-  who(active: 'kitten' | 'knight' | null, both: boolean, state = '') {
-    const key = `${active}:${both}:${state}`; if (key === this.whoKey) return; this.whoKey = key;
+  who(active: 'kitten' | 'knight' | null, both: boolean, state = '', companionState = '') {
+    const key = `${active}:${both}:${state}:${companionState}`; if (key === this.whoKey) return; this.whoKey = key;
     const w = this.q<HTMLElement>('.who');
     w.style.opacity = active ? '1' : '0';
     this.el.querySelectorAll<HTMLElement>('.who .chip').forEach((c) => {
       const k = c.dataset.k;
       c.classList.toggle('on', k === active);
       c.style.display = both || k === active ? '' : 'none';
+      const s = c.querySelector<HTMLElement>('.state')!;
+      const text = k === active ? state : companionState;
+      if (s.textContent !== text) s.textContent = text;
     });
-    const s = this.q<HTMLElement>('.who .state'); if (s.textContent !== state) s.textContent = state;
   }
   objective(text: string | null) {
     const o = this.q<HTMLElement>('.obj');
@@ -211,8 +213,8 @@ export class Hud {
       <h3>Graphics</h3><div class="row">${qb}</div>
       <h3>Volume</h3><input type="range" min="0" max="1" step="0.05" value="${this.volume}">
       <h3>Controls</h3><div class="help">${this.touch
-        ? 'Left thumb: move. Right thumb: look. <b>Jump</b>, <b>Act</b> (use, lift, throw), <b>Switch</b> (play the other one; the one you leave stays put), <b>Call</b> (the other one comes to you, or waits).'
-        : '<b>WASD</b> move, <b>mouse</b> look, <b>Space</b> jump, <b>E</b> use / lift / throw, <b>Tab</b> switch (the one you leave stays put), <b>Q</b> call the other one to you (again: wait), <b>G</b> hint, <b>Shift</b> walk, <b>Esc</b> menu.'}</div><a class="credits" href="${import.meta.env.BASE_URL}CREDITS.html" target="_blank" rel="noopener">Credits and licenses ↗</a>`;
+        ? 'Left thumb: move. Right thumb: look. <b>Jump</b>, <b>Act</b> (use, lift, throw), <b>Switch</b> (play the other one; your companion follows), <b>Wait / Call</b> (park or call your companion). Companions stay on puzzle plates and hold gates until you release them.'
+        : '<b>WASD</b> move, <b>mouse</b> look, <b>Space</b> jump, <b>E</b> use / lift / throw, <b>Tab</b> switch (your companion follows), <b>Q</b> wait / call, <b>G</b> hint, <b>Shift</b> walk, <b>Esc</b> menu. Companions stay on puzzle plates and hold gates until you release them.'}</div><a class="credits" href="${import.meta.env.BASE_URL}CREDITS.html" target="_blank" rel="noopener">Credits and licenses ↗</a>`;
     box.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.onclick = () => {
       const a = b.dataset.a!, v = b.dataset.v;
       if (a === 'resume') { this.closeMenu(); return; }

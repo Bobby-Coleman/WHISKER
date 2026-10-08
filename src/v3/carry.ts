@@ -7,7 +7,7 @@ import { Motor, MOVE } from './motor';
 import { WIND } from './body';
 import type { Avatar } from './game';
 
-// From his hands (about 1.1 m up) she rises some 2 m: ledges up to about 3 m high, a metre or two ahead.
+// From his hands she rises some 2 m. A designated gust-assisted crossing can extend the short throw.
 export const THROW = { forward: 2.6, up: 7.5, reach: 1.15 };
 
 export class Carry {
@@ -82,7 +82,7 @@ export class Carry {
       prev.copy(p);
       vx *= 1 - MOVE.airDrag * dt; vz *= 1 - MOVE.airDrag * dt;
       vy -= (vy > 0 ? MOVE.gUp : MOVE.gDown) * dt;
-      const open = !WIND.sheltered(p), f = dt * (open ? 3.5 : 6);
+      const open = windSpeed > 0.05 && !WIND.sheltered(p), f = dt * (open ? 3.5 : 6);
       wx += ((open ? WIND.dir.x * windSpeed : 0) - wx) * f;
       wz += ((open ? WIND.dir.y * windSpeed : 0) - wz) * f;
       p.x += (vx + wx) * dt; p.y += vy * dt; p.z += (vz + wz) * dt;
@@ -109,6 +109,7 @@ export class Carry {
     k.motor.place(start, yaw);
     kb.prevPos.copy(kb.pos);
     k.motor.launch(new THREE.Vector3(Math.sin(yaw) * THROW.forward, THROW.up, Math.cos(yaw) * THROW.forward));
+    k.motor.thrown = true;
     // Clear of his capsule before she can collide with it.
     k.motor.passThrough(n.motor.collider, 0.45);
   }

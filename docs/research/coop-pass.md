@@ -2,7 +2,8 @@
 
 The story is a small creature and a heavily armoured companion crossing a hostile landscape. The puzzles make
 that dependency playable: reach and agility expose a problem, strength changes the environment, and each
-completed mechanism creates a route both can use. Wind changes from a threat into a tool at the tor.
+completed mechanism creates a route both can use. Atmospheric wind becomes a deliberate tool for the airborne
+throw at the tor; it does not move either companion during ordinary walking.
 
 ## Research and applied principles
 
@@ -29,8 +30,8 @@ games have been copied. This pass adds procedural meshes only, so it introduces 
 | Root hollow | Oak jams at an old repair wedge; hollow is too low for steel armour | Enter the physical low passage and pull the recessed wedge | Swing the freed oak into its notches | A shared ditch crossing |
 | Sheepfold | No climbable wall; bar inside, swollen gate outside | Accept a throw, pull bar pin; open creep hole for a return route | Throw her, then shoulder the unbarred gate | Gate stays open |
 | Mill scales | Weight plate tensions the winch pawl; handle is too far away for one knight to occupy both | Swim and climb to the gallery; pin refuses while the rope is loaded | Substitute a stone ballast for his weight, then turn the winch | Rope unloaded, kitten releases bridge, shared crossing |
-| Windy ridge | Rocks block wind; one long gap needs a companion, the next a movable substitute | Move in lulls and rest in shelter | Stand in the windward gap; push the cart into another | Safe route is built with positioning |
-| Tor gap | Gust that was dangerous can carry a throw farther | Ride the gust, release far-side bridge pin | Aim using the live arc and throw toward the hay | A shared tor crossing |
+| Rocky ridge | A heavy hay cart blocks a narrow rock cutting; a stone lay-by has room for it | Wait while the cutting is blocked, then follow him through | Shove the wedged cart into the lay-by | A shared clear route |
+| Tor gap | A crossing gust can carry an airborne throw farther | Ride the throw and release the far-side bridge pin | Aim using the live arc and throw during the marked gust | A shared tor crossing |
 | Castle gate | Chain reaches winding room; portcullis only catches when raised | Swim, climb, release drawbridge; set raised gate's ratchet | Cross the bridge and hold the portcullis | Both enter together |
 
 ## Reliability and feel
@@ -40,11 +41,13 @@ games have been copied. This pass adds procedural meshes only, so it introduces 
 - Wrong order yields a local mechanical response (rattle, taut rope, slipping winch) and a short explanation.
 - The mill has no time limit. The ballast has a fixed groove and stop, so it cannot fall into the river or be
   accidentally pushed out of reach.
-- A waiting actor retains its position through switches. Invisible follower catch-up refuses closed walls,
-  climb elevation, deep water and routes with no supporting ground, preserving puzzle dependencies.
+- Companions follow automatically after ordinary switches. An actor on a weight plate or in a held action stays
+  in place; Q explicitly parks or recalls a companion. Following refuses unsafe water/unsupported next steps,
+  and invisible catch-up refuses closed walls, climb elevation and unsupported routes.
 - Pressure plates keep their authored surface height and count grounded actors or their authored ballast.
 - Throws show an inexpensive prediction using the actual release point and motor parameters. Wind assistance
-  remains directional and steerable rather than scripted teleporting.
+  is reserved for carried, airborne throws inside the tor crossing. Ordinary walking and jumps ignore wind,
+  and landing clears it immediately; the crossing remains directional and steerable.
 - Respawn clears accumulated wind and swimming state; the moor explicitly clears prologue story poses.
 - Idle drawbridge chains and the plate-to-winch rope are rebuilt only when their state changes.
 
@@ -58,6 +61,6 @@ by default; set `COOP_CONTINUE=1` for a diagnostic run that prints all outcomes.
 
 The completed production run on local Windows Chrome passed every assertion, including a full reload from
 the persisted castle checkpoint, with no JavaScript page errors or camera issues. The visible west-ridge fall
-was rescued and the legitimate shelter/cart/gust route still reached the castle. The whole-game production
+was rescued and the legitimate cart/crossing-gust route still reached the castle. The whole-game production
 build passes; `tsc --noEmit` still reports pre-existing v1 `src/world` and `src/render` typing issues, with no
 errors in the changed v3 files. The local run is functional evidence, not a claim of performance on a phone.

@@ -10,7 +10,7 @@ The work started from `next-pass` commit `4e51307`, which was the source of the 
 
 - **Atmosphere:** muted wet turf, pale overcast reflections, soft shadows, depth and low ground fog, wind-driven mist, coherent grass/tree/banner/water/cloth movement, lower opening banks and restrained film grain. Fog leaves close puzzle controls clear and distant towers readable.
 - **Characters:** explicit story-pose reset across chapters; scripted movement is posed after physics so the prologue walk animates correctly; newer cutscene marks own a character rather than old tracks rewinding it. Smaller helm and gauntlets, a two-handed idle sword, softer kitten face/eyes and short fur detail. Cloth motion is substepped at low frame rates.
-- **Play:** genuine kitten/knight dependencies at the root hollow and mill; persistent weight substitution; throw prediction; safe follower routes; both-character checkpoints; optional progressive hints; matching visible ridge slopes and fall recovery.
+- **Play:** genuine kitten/knight dependencies at the root hollow and mill; persistent weight substitution; throw prediction; automatic companion following with safe routes; both-character checkpoints; optional progressive hints; matching visible ridge slopes and fall recovery. Switching preserves plate weight and held actions; Q explicitly parks or calls the companion.
 - **Startup and frame cost:** legacy renderer modules load only on explicit request in a developer build; the release omits them. The rig payload is 358,936 bytes instead of 3,566,412, retaining the exact required tracks and hierarchy. Grass roots update on cell crossings, distant blades use simpler geometry, water detail uses fewer samples, forest cells cull, and idle ropes no longer rebuild each frame. The release does not fetch fonts, textures, music files or remote assets.
 - **Reliability:** pause freezes the cutscene clock; input clears across blur/pause/load; level changes clear old captions and cancel stale chapter handoffs; asynchronous shader compilation lets the loading screen paint.
 
@@ -23,13 +23,15 @@ The work started from `next-pass` commit `4e51307`, which was the source of the 
 | Wheel | | | Camera distance |
 | Space (hold for height) | A / Cross | Jump | Jump / climb out of water |
 | E | X / Square | Act | Use, lift, throw |
-| Tab | Y / Triangle | Switch | Change character; the other stays put |
-| Q | B / Circle | Call | Call companion / wait; meow in prologue; put down when carrying |
+| Tab | Y / Triangle | Switch | Change character; the companion follows unless holding a puzzle role |
+| Q | B / Circle | Wait / Call | Park companion / call back; meow in prologue; put down when carrying |
 | G | LB | Hint | Progressive puzzle hint |
 | Shift | RB | Partial stick | Walk |
 | Esc | | Menu | Pause, quality, chapters, checkpoint restart, volume, credits |
 
-The kitten swims, climbs marked ivy/timber/rope, fits low passages, and rides throws or wind. The knight cannot swim deep channels or climb delicate ivy; he moves heavy ballast, pivots machinery, throws her, and holds gates. Leaving him on a plate or holding a gate preserves his action through a switch. Q calls him only along a safe route.
+The kitten swims, climbs marked ivy/timber/rope, fits low passages, and rides throws. The knight cannot swim deep channels or climb delicate ivy; he moves heavy ballast, pivots machinery, throws her, and holds gates. Ordinary walking follows automatically in either direction after a switch. Leaving a companion on a weight plate or in a held action preserves that role; Q parks or calls them along a safe route. The HUD shows following, waiting, or holding.
+
+Ambient wind moves scenery and cloth, never walking characters. Only a carried, airborne throw at the designated tor crossing receives gust assistance. Ordinary jumps ignore wind, and landing immediately clears the crossing's force.
 
 ## Puzzle progression (spoilers)
 
@@ -37,7 +39,7 @@ The kitten swims, climbs marked ivy/timber/rope, fits low passages, and rides th
 2. **Root hollow:** she reaches the recessed repair wedge through a low passage; he swings the freed oak across the ditch.
 3. **Sheepfold:** he throws her over, she pulls the inside bar and opens a return crawl hole, then he forces the swollen gate.
 4. **Mill scales:** his weight demonstrates the plate/winch connection. He substitutes stone ballast for himself, moves to the distant winch and unloads the bridge rope. She swims, climbs the gallery and releases the pink pin. The bridge latches permanently.
-5. **Windy ridge:** she uses rocks, his lee and the cart he moves; calls cannot teleport either actor past the dependency.
+5. **Rocky ridge:** a heavy cart is wedged across a narrow rock cutting. He shoves it into a stone lay-by so both can pass. Wind remains atmospheric here.
 6. **Tor gap:** the gust becomes useful. A timed, aimed throw carries her to the far pin that lowers his crossing.
 7. **Castle gate:** she swims/climbs to release the drawbridge; he holds the portcullis while she sets its inside catch. Both enter the bailey.
 
@@ -52,6 +54,7 @@ npm run check:game
 npm run release
 npm run preview -- --outDir release --host 127.0.0.1 --port 4178
 node tools/bot-coop.mjs http://127.0.0.1:4178/?level=moor&fresh work/coop-caps
+node tools/qa-companions.mjs http://127.0.0.1:4178/ work/companions-qa
 node tools/qa-release.mjs http://127.0.0.1:4178/ http://127.0.0.1:4177/ work/qa
 ```
 
@@ -59,7 +62,7 @@ node tools/qa-release.mjs http://127.0.0.1:4178/ http://127.0.0.1:4177/ work/qa
 
 `tools/optimize-rig.mjs` reproducibly builds the reduced files from the preserved originals in `public/chars/`. For a host requiring JSON glTF, generate matching `*-lite.gltf.json` files before setting `VITE_CHARS_EXT=.gltf.json`.
 
-The bot drives actual movement, climbing, swimming and interactions rather than invoking puzzle completion methods. It checks negative preconditions, all crossings, both-character checkpoint persistence and reload. The production QA tool records cold-load payload/timing under a controlled 10 Mbps connection, animation/pose handoffs, cutscene pause, camera clearance, touch UI and low/medium/high frame timing. It uses installed Chrome and writes captures/results locally. `tools/bot-moor.mjs` remains a compatible alias.
+The bot drives actual movement, climbing, swimming and interactions rather than invoking puzzle completion methods. It checks negative preconditions, all crossings, both-character checkpoint persistence and reload. Companion QA checks automatic following in both directions, explicit wait/call, preserved plate weight, cosmetic ordinary wind, the exceptional crossing throw, and safe stopping at an unbridged cliff. The production QA tool records cold-load payload/timing under a controlled 10 Mbps connection, animation/pose handoffs, cutscene pause, camera clearance, touch UI and low/medium/high frame timing. It uses installed Chrome and writes captures/results locally. `tools/bot-moor.mjs` remains a compatible alias.
 
 The scoped game typecheck passes. A full `tsc --noEmit` also checks the preserved v1 experiments and still reports their pre-existing TSL/typing issues. Current validation is desktop Chrome on an NVIDIA GPU plus touch/viewport emulation; this is not a real-phone frame-rate measurement. This remains a one-player character-switching prototype, not network or split-screen multiplayer, and later chapters in the story drafts are not implemented.
 

@@ -47,7 +47,8 @@ export class Climber {
     const nl = Math.hypot(h.normal.x, h.normal.z) || 1;
     if ((dirX * -h.normal.x + dirZ * -h.normal.z) / nl < 0.55) return false;
     m.mode = 'held';
-    m.grounded = false; m.swimming = b.swimming = false; m.windVel.set(0, 0);
+    m.grounded = false; m.swimming = b.swimming = false;
+    m.thrown = false; m.windVel.set(0, 0); b.wind = 0;
     this.normal.copy(h.normal);
     const n = this.flatNormal(_d);
     this.target.set(h.point.x + n.x * CLIMB_DIST, h.point.y - this.chestY(), h.point.z + n.z * CLIMB_DIST);

@@ -34,6 +34,15 @@ export class Interactions {
   add(u: Usable) { this.usables.push(u); return u; }
   plate(p: Omit<Plate, 'pressed'>) { const q = { ...p, pressed: false, restY: p.restY ?? p.mesh?.position.y ?? 0 }; this.plates.push(q); return q; }
 
+  // Switching away from an actor on a puzzle plate means leaving their weight in place. Once ballast
+  // holds it independently, ordinary following can resume without undoing the puzzle.
+  needsWeight(a: Actor) {
+    if (!a.motor.grounded || a.char.carriedBy) return false;
+    const p = a.char.body.pos;
+    return this.plates.some(pl => !pl.load?.() && (!pl.heavy || a.motor.build.kind === 'knight')
+      && Math.hypot(p.x - pl.pos.x, p.z - pl.pos.z) <= pl.radius && Math.abs(p.y - pl.pos.y) <= 0.35);
+  }
+
   // The nearest thing this character can use, if any: in reach, in front of it, ready.
   nearest(a: Actor) {
     const p = a.char.body.pos, yaw = a.char.body.yaw;

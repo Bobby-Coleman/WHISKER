@@ -63,7 +63,8 @@ export class Motor {
   airTime = 0;
   // Swimming (the kitten), or how deep the water is round its legs (m).
   swimming = false;
-  // The wind's hold on a light body in the open (m/s, world x/z), which her legs cannot cancel.
+  // Only a carried throw can receive the designated crossing's gust. Walking and ordinary jumps cannot.
+  thrown = false;
   windVel = new THREE.Vector2();
   wade = 0;
   onSplash?: (strength: number) => void;
@@ -108,7 +109,7 @@ export class Motor {
     b.yaw = b.prevYaw = yaw; b.turnRate = 0;
     b.vel.set(0, 0, 0); b.vy = 0; b.visualDY = 0;
     this.vel.set(0, 0, 0);
-    this.windVel.set(0, 0); this.wade = b.wade = 0; b.wind = 0;
+    this.wade = b.wade = 0; b.wind = 0; this.thrown = false; this.windVel.set(0, 0);
     this.jumping = false; this.buffer = 0; this.coyote = 0; this.airTime = 0;
     this.swimming = b.swimming = false;
     this.mode = 'move';
@@ -121,6 +122,7 @@ export class Motor {
   // Launched (a throw, a push off a wall): airborne with this velocity.
   launch(v: THREE.Vector3, asJump = false) {
     this.mode = 'move';
+    this.thrown = false; this.windVel.set(0, 0);
     this.vel.copy(v);
     this.grounded = this.body.grounded = false;
     this.jumping = asJump; this.coyote = 0; this.platform = null;
@@ -162,7 +164,7 @@ export class Motor {
       if (this.swimming && !was) { this.onSplash?.(THREE.MathUtils.clamp(-this.vel.y / 4, 0.25, 1)); this.vel.y *= 0.2; this.jumping = false; }
       b.swimming = this.swimming;
     }
-    if (this.swimming) { this.swimStep(dt, input, surf!); return; }
+    if (this.swimming) { this.thrown = false; this.windVel.set(0, 0); b.wind = 0; this.swimStep(dt, input, surf!); return; }
 
     // Horizontal: toward the stick at run or walk speed (slower wading deep).
     const wl = Math.min(1, input.wish.length());
@@ -209,14 +211,15 @@ export class Motor {
       vy = Math.max(vy - g * dt, -MOVE.terminal);
     } else vy = 0;
 
-    // The wind: on her in the open it builds toward the gust's speed (blowing her along); in shelter, or for him, nothing.
-    if (B.kind === 'kitten') {
+    // Ambient wind never moves her. The one authored crossing may carry an airborne throw, then stops
+    // immediately on landing so a gust cannot shove her while she walks or stands on its platforms.
+    if (B.kind === 'kitten' && this.thrown && !this.grounded) {
       const open = WIND.push > 0.05 && !WIND.sheltered(b.pos) && !b.climb;
-      const tx = open ? WIND.dir.x * WIND.push : 0, tz = open ? WIND.dir.y * WIND.push : 0;
+      const wx = open ? WIND.dir.x * WIND.push : 0, wz = open ? WIND.dir.y * WIND.push : 0;
       const k = Math.min(1, dt * (open ? 3.5 : 6));
-      this.windVel.x += (tx - this.windVel.x) * k; this.windVel.y += (tz - this.windVel.y) * k;
+      this.windVel.x += (wx - this.windVel.x) * k; this.windVel.y += (wz - this.windVel.y) * k;
       b.wind = Math.min(1, this.windVel.length() / 4);
-    }
+    } else { this.windVel.set(0, 0); b.wind = 0; }
     // Move through the world.
     const dx = vx * dt + _carry.x + this.windVel.x * dt, dz = vz * dt + _carry.z + this.windVel.y * dt;
     // On the ground the move is level and snapping keeps it there: pressing down into the floor as well made the
@@ -245,6 +248,7 @@ export class Motor {
     b.pos.set(this.center.x, this.center.y - B.height / 2 - B.skin, this.center.z);
 
     if (this.grounded) {
+      this.thrown = false; this.windVel.set(0, 0); b.wind = 0;
       if (!was) {
         const s = THREE.MathUtils.clamp((-vyBefore - 2) / 9, 0, 1);
         b.landing = Math.max(b.landing, s);

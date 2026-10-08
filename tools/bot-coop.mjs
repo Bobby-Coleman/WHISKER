@@ -60,7 +60,9 @@ await page.evaluate(() => {
       return a.char.body.pos.toArray();
     },
     face(yaw) { const a = V().game.active; a.char.body.yaw = yaw; a.char.body.prevYaw = yaw; },
-    as(k) { const g = V().game; if ((k === 'kitten') !== (g.active === g.kitten)) V().swap(); V().step(2); },
+    // Ordinary switches auto-follow. Deliberate role-position tests explicitly use Q to park the other actor.
+    park() { if (V().game.follower.mode === 'follow') V().call(); },
+    as(k, park = true) { const g = V().game; if ((k === 'kitten') !== (g.active === g.kitten)) V().swap(); if (park) this.park(); V().step(2); },
     prompt() { const p = V().game.prompt(); return p ? p.text : null; },
     tl() { let n = 0; while (V().timeline.playing && n < 6000) { V().step(1); n++; } return n; },
     pos(k) { const g = V().game; return (k === 'kitten' ? g.kitten : g.knight).char.body.pos.toArray().map((v) => +v.toFixed(2)); },
@@ -69,7 +71,14 @@ await page.evaluate(() => {
 const E = (js) => page.evaluate(js);
 const shot = async (name) => { await E('__v3.render()'); await page.screenshot({ path: path.join(outDir, name + '.png') }); };
 let failed = 0;
-const check = (name, ok, extra = '') => { if (!ok) failed++; console.log((ok ? 'PASS ' : 'FAIL ') + name + (extra ? '  ' + extra : '')); if (!ok && !process.env.COOP_CONTINUE) throw new Error(name); };
+const results = [];
+const saveResults = (extra = {}) => fs.writeFileSync(path.join(outDir, 'checks.json'), JSON.stringify({ at: new Date().toISOString(), url, assertions: results.length, passed: results.filter((r) => r.ok).length, failed, results, ...extra }, null, 2));
+const check = (name, ok, extra = '') => {
+  if (!ok) failed++;
+  results.push({ name, ok: !!ok, detail: extra || undefined });
+  console.log((ok ? 'PASS ' : 'FAIL ') + name + (extra ? '  ' + extra : ''));
+  if (!ok && !process.env.COOP_CONTINUE) { saveResults(); throw new Error(name); }
+};
 
 // ---- Intro.
 await E('__v3.begin(); __bot.tl(); __bot.run(30)');
@@ -137,7 +146,7 @@ await E(`__bot.as('knight'); __bot.face(Math.PI)`);
 console.log('prompt:', await E('__bot.prompt()'));
 await E('__v3.act(); __bot.run(40)');
 check('lifted', await E('__bot.S().holding'));
-await E('__bot.face(Math.PI); __v3.act(); __bot.run(150)');
+await E('__bot.face(Math.PI); __v3.act(); __bot.park(); __bot.run(150)');
 check('thrown into the fold', await E('__bot.pos("kitten")[2] < -101.4 && __bot.pos("kitten")[1] < 0.6'), JSON.stringify(await E('__bot.S().kitten')));
 await shot('b3-thrown');
 console.log(await E(`__bot.walk(0.95, -102.5)`), await E(`__bot.walk(0.95, -102.05, 4, 0.1, true)`));
@@ -188,7 +197,7 @@ await E('__v3.act(); __bot.run(30)');
 check('the gallery pin cannot release a loaded bridge rope', await E('!__moor.state.mill && __moor.leaf.p === 0'));
 await E(`__bot.as('knight')`);
 console.log(await E(`__bot.walk(-13.75, -132.3, 8)`), await E(`__bot.walk(-13.75, -133, 8, 0.12, true)`));
-await E(`__bot.face(Math.PI / 2); __v3.act(); __bot.run(180)`);
+await E(`__bot.face(Math.PI / 2); __v3.act(); __bot.park(); __bot.run(180)`);
 check('Bram slides the ballast onto the plate', await E('__moor.state.ballast && __moor.ballast.p === 1 && __moor.millPlate.pressed'));
 console.log(await E(`__bot.walk(-13.75, -131.4, 6)`), await E(`__bot.walk(-6, -131.4, 8)`), await E(`__bot.walk(-6, -132.3, 6, 0.12, true)`));
 await E(`__bot.face(Math.PI); __v3.act(); __bot.run(30)`);
@@ -201,46 +210,40 @@ await E(`__bot.as('knight')`);
 console.log(await E(`__bot.walk(-6, -133)`), await E(`__bot.walk(-6, -147, 15, 0.3, true)`));
 check('knight over the stream', await E('__bot.pos("knight")[2] < -146'), JSON.stringify(await E('__bot.S().knight')));
 await E(`__bot.as('kitten')`);
-await E(`__bot.push(0, 1, 0.6); __bot.run(120)`);
+console.log(await E(`__bot.walk(-3.8, -142.8, 8, 0.15, true)`));
+await E(`__bot.run(120)`);
 console.log(await E(`__bot.walk(-4, -146, 20, 0.4)`));
 
-// ---- 5. The Windy Ridge: up to the first shelter together, then the gaps.
-await E(`__bot.as('knight')`);
-console.log(await E(`__bot.walk(-1, -165)`), await E(`__bot.walk(-1.0, -177.6)`));
+// ---- 5. Ridge road: wind is visual/audio atmosphere; a heavy cart makes the physical strength obstacle.
+await E(`__bot.as('knight', false)`);
+console.log(await E(`__bot.walk(0, -165)`), await E(`__bot.walk(0, -179)`), await E(`__bot.walk(0, -203)`));
+check('ordinary kitten automatically follows Bram along the ridge', await E('__v3.game.follower.mode === "follow" && __bot.pos("kitten")[2] < -200'));
+await E('__bot.run(600)');
+check('full gust cycles cannot move the standing kitten', await E('__v3.WIND.push === 0 && __bot.pos("kitten")[1] > 5.8 && Math.abs(__v3.game.kitten.motor.vel.x) < 0.001'));
+console.log(await E(`__bot.walk(0, -213, 3, 0.2)`));
+check('the wedged cart physically blocks the knight', await E('__bot.pos("knight")[2] > -211 && !__moor.state.cart'));
 await E(`__bot.as('kitten')`);
-console.log(await E(`__bot.walk(-1, -165, 30)`), await E(`__bot.walk(-1.2, -178.5, 20)`));
-check('kitten sheltered behind the first rock', await E('__v3.WIND.sheltered(__v3.game.kitten.char.body.pos)'));
-// Wait for a lull's start, then hop rock to rock.
-const lull = `(() => { let n = 0; while (__moor.gusts.phase !== 'gust' && n < 600) { __v3.step(1); n++; } while (__moor.gusts.phase === 'gust' && n < 900) { __v3.step(1); n++; } return n; })()`;
-for (const z of [-181.5, -184.5, -187.5, -190.5]) { await E(lull); console.log(await E(`__bot.walk(-1.2, ${z}, 5, 0.25)`)); }
-check('kitten across 5a', await E('__bot.pos("kitten")[2] < -190 && __bot.pos("kitten")[1] > 4'), JSON.stringify(await E('__bot.pos("kitten")')));
-await E(`__bot.walk(-4.5, -192, 2, 0.2); __bot.run(90)`);
-check('the visible steep windward face rescues her instead of bypassing the ridge', await E('__bot.pos("kitten")[0] > -2.2 && __bot.pos("kitten")[1] > 5.8'), JSON.stringify(await E('__bot.pos("kitten")')));
-// Out into the long gap with no help: she should be blown off and put back behind the last rock.
-await E(lull);
-await E(`__bot.walk(-1.0, -198, 2.4, 0.2); __bot.run(200)`);
-check('blown off in the open, back at shelter', await E('__bot.pos("kitten")[2] > -192 && __bot.pos("kitten")[1] > 4'), JSON.stringify(await E('__bot.pos("kitten")')));
-// Him in the gap (windward edge, midway), her through his lee.
+console.log(await E(`__bot.walk(0, -210.5, 8, 0.1, true)`));
+await E('__bot.face(Math.PI); __v3.act(); __bot.run(30)');
+check('kitten cannot move the loaded cart', await E('!__moor.state.cart && __moor.cart.p === 0'));
+console.log(await E(`__bot.walk(0, -208.7, 5)`));
 await E(`__bot.as('knight')`);
-console.log(await E(`__bot.walk(-1.3, -197.3, 30)`));
-await E(`__bot.as('kitten')`);
-await E(lull);
-console.log(await E(`__bot.walk(-0.75, -197.6, 5, 0.2)`));
-check('kitten in his lee', await E('__v3.WIND.sheltered(__v3.game.kitten.char.body.pos)'), JSON.stringify(await E('__bot.pos("kitten")')));
-await E(lull);
-console.log(await E(`__bot.walk(-1.2, -204.0, 5, 0.25)`));
-check('kitten across 5b', await E('__bot.pos("kitten")[2] < -203 && __bot.pos("kitten")[1] > 4'), JSON.stringify(await E('__bot.pos("kitten")')));
-// The cart into gap 1, him into gap 2.
-await E(`__bot.as('knight')`);
-console.log(await E(`__bot.walk(0.4, -203.5)`), await E(`__bot.walk(-1.0, -204.75, 5, 0.12, true)`));
-await E(`__bot.face(Math.PI)`);
-console.log('prompt:', await E('__bot.prompt()'));
-await E('__v3.act(); __bot.run(420)');
-check('cart in the gap', await E('__moor.cart.p === 1'));
-console.log(await E(`__bot.walk(0.6, -213)`), await E(`__bot.walk(-1.3, -226.2, 30)`));
-await E(`__bot.as('kitten')`);
-for (const z of [-211.0, -219.6, -226.4, -233.9, -237.0]) { await E(lull); console.log(await E(`__bot.walk(-0.75, ${z}, 5, 0.25)`)); }
-check('kitten across the ridge', await E('__bot.pos("kitten")[2] < -236 && __bot.pos("kitten")[1] > 4'), JSON.stringify(await E('__bot.pos("kitten")')));
+console.log(await E(`__bot.walk(0, -210.3, 6, 0.1, true)`));
+await E('__bot.face(Math.PI); __v3.act(); __bot.run(180)');
+check('Bram pushes the cart into its stone lay-by', await E('__moor.state.cart && __moor.cart.p === 1 && __moor.cart.platform.pos.x < -4'));
+await E(`__v3.call()`);
+console.log(await E(`__bot.walk(0, -219)`), await E(`__bot.walk(0, -237)`));
+check('both walk the cleared ridge automatically without weather timing', await E('__bot.pos("knight")[2] < -236 && __bot.pos("kitten")[2] < -234 && __v3.game.follower.mode === "follow"'), JSON.stringify(await E(`(() => {
+  const g = __v3.game, f = g.follower, k = g.kitten, p = k.char.body.pos, t = f.trail?.[0]?.p;
+  let probe = null;
+  if (t) { const d = Math.hypot(t.x - p.x, t.z - p.z), ahead = Math.min(0.45, d); probe = __v3.physics.groundY(p.x + (t.x - p.x) / d * ahead, p.y + k.motor.build.step + 0.1, p.z + (t.z - p.z) / d * ahead, k.motor.build.step + 0.7, 3); }
+  const crumbs = a => a?.map(c => ({ p: c.p.toArray(), jump: c.jump, climb: c.climb }));
+  const floors = [];
+  for (let z = -224; z >= -237; z--) floors.push([z, __v3.physics.groundY(0, p.y + k.motor.build.step + 0.1, z, k.motor.build.step + 0.7, 3)]);
+  const delta = g.active.char.body.pos.clone().sub(p), distance = delta.length(), origin = p.clone().add(new __THREE.Vector3(0, k.motor.build.height * 0.5, 0));
+  const hit = __v3.physics.raycast(origin, delta.normalize(), distance, 3);
+  return { ...__bot.S(), trailFirst: crumbs(f.trail?.slice(0, 20)), trailLast: crumbs(f.trail?.slice(-20)), trailLength: f.trail?.length, last: f.last?.toArray(), best: f.best, stuckT: f.stuckT, jumpT: f.jumpT, grounded: k.motor.grounded, groundNormal: k.motor.groundNormal.toArray(), groundCollider: k.motor.groundCollider?.handle, probe, floors, unseen: g.unseen(p), catchupHit: hit && { point: hit.point.toArray(), dist: hit.dist, surface: hit.surface, collider: hit.collider.handle } };
+})()`)));
 await shot('b5-ridge');
 
 // ---- 6. The Tor Gap.
@@ -250,18 +253,18 @@ await E(`__bot.as('kitten')`);
 console.log(await E(`__bot.walk(1.6, -244.9)`), await E(`__bot.walk(2.75, -245.1)`), await E(`__bot.walk(2.6, -246, 4, 0.1, true)`));
 await E(`__bot.as('knight'); __bot.face(Math.PI / 2)`);
 console.log('prompt:', await E('__bot.prompt()'));
-// A throw in a lull: short, into the gap, and back.
+// The Tor crossing is the one wind puzzle: an ordinary throw falls short, a crossing gust carries it.
 await E(`(() => { let n = 0; while (__moor.gusts.phase !== 'lull' && n < 600) { __v3.step(1); n++; } })()`);
 await E('__v3.act(); __bot.run(30)');
 check('lifted on the tor', await E('__bot.S().holding'));
 await E(`__bot.face(Math.PI / 2); __v3.act(); __bot.run(180)`);
-check('a lull throw falls short and comes back', await E('__bot.pos("kitten")[0] < 3.2 && __bot.pos("kitten")[1] > 5'), JSON.stringify(await E('__bot.pos("kitten")')));
+check('a calm Tor throw falls short and returns to firm ground', await E('__bot.pos("kitten")[0] < 3.2 && __bot.pos("kitten")[1] > 5'), JSON.stringify(await E('__bot.pos("kitten")')));
 console.log(await E(`__bot.walk(2.75, -245.1)`), await E(`__bot.walk(2.6, -246, 4, 0.1, true)`));
-await E(`__bot.as('knight'); __bot.face(Math.PI / 2)`);
-await E('__v3.act(); __bot.run(30)');
+await E(`__bot.as('knight'); __bot.face(Math.PI / 2); __v3.act(); __bot.run(30)`);
 await E(`(() => { let n = 0; while (__moor.gusts.phase !== 'gust' && n < 600) { __v3.step(1); n++; } })()`);
-await E(`__bot.face(Math.PI / 2); __v3.act(); __bot.run(200)`);
-check('a gust throw carries her across', await E('__bot.pos("kitten")[0] > 7 && __bot.pos("kitten")[1] > 5'), JSON.stringify(await E('__bot.pos("kitten")')));
+await E(`__bot.face(Math.PI / 2); __v3.act(); __bot.park(); __bot.run(200)`);
+check('a crossing gust carries the thrown kitten onto the far Tor ledge', await E('__bot.pos("kitten")[0] > 7 && __bot.pos("kitten")[1] > 5'), JSON.stringify(await E('__bot.pos("kitten")')));
+check('crossing wind clears on landing and cannot drift ordinary Tor movement', await E('!__v3.game.kitten.motor.thrown && __v3.game.kitten.motor.windVel.lengthSq() === 0'));
 await shot('b6-across');
 console.log(await E(`__bot.walk(8.6, -243.6)`), await E(`__bot.walk(7.9, -242.85, 6, 0.12, true)`));
 await E(`__bot.face(Math.PI)`);
@@ -323,12 +326,13 @@ check('completed crossings persist a castle checkpoint', await E('JSON.parse(loc
 const resume = new URL(url); resume.searchParams.delete('fresh');
 await page.goto(resume.href);
 await page.waitForFunction(() => window.__ready || window.__error, null, { timeout: 60000 });
-check('resume restores only the completed crossings and both companions', await E('__moor.cp === "castle" && __moor.state.root && __moor.state.trunk && __moor.state.ballast && __moor.state.brake && __moor.state.mill && __moor.state.tor && !__moor.state.draw && !__moor.state.latched && __v3.game.knight.char.body.pos.z < -263 && __v3.game.kitten.char.body.pos.z < -263'));
+check('resume restores only the completed crossings and both companions', await E('__moor.cp === "castle" && __moor.state.root && __moor.state.trunk && __moor.state.ballast && __moor.state.brake && __moor.state.mill && __moor.state.cart && __moor.state.tor && !__moor.state.draw && !__moor.state.latched && __v3.game.knight.char.body.pos.z < -263 && __v3.game.kitten.char.body.pos.z < -263'));
 
 console.log('camera issues:', await E('JSON.stringify((window.__camIssues || []).slice(0, 20))'));
 console.log('playthrough perf:', playPerf);
 console.log('resume perf:', await E('JSON.stringify(__v3.perf())'));
 const errs = logs.filter((l) => !/GPU stall|Fallback|DevTools|already non-indexed/.test(l));
 if (errs.length) console.log(errs.slice(0, 20).join('\n'));
+saveResults({ playPerf: JSON.parse(playPerf), resumePerf: await E('__v3.perf()'), pageErrors: errs.filter((l) => l.startsWith('pageerror')) });
 await browser.close();
 process.exitCode = failed || errs.some((l) => l.startsWith('pageerror')) ? 1 : 0;

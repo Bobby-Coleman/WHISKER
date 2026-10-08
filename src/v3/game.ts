@@ -1,7 +1,7 @@
 // Engine v2 play: the two characters (a visual avatar, the motor that moves it, and their abilities), which one
 // is played, the fixed physics step, the follow camera, falls and respawns. Single player switches between them; the
-// one not played stays exactly where it was left (on a platform it rides along), so nothing wanders off or glitches
-// behind the player's back.
+// companion follows by default. Puzzle weight/held actions stay in place through a switch, and Q explicitly
+// parks or calls the companion.
 import * as THREE from 'three';
 import { Physics, L, SOLID } from './physics';
 import { Motor, MotorInput, BUILDS, WATER } from './motor';
@@ -92,17 +92,18 @@ export class Game {
   // The camera follows where she walks, not where the wind shoves her.
   private subjVel = new THREE.Vector3();
   subject(a = this.active): Subject {
-    const w = a.motor.windVel;
-    const vel = this.subjVel.copy(a.char.body.vel); vel.x -= w.x; vel.z -= w.y;
+    const vel = this.subjVel.copy(a.char.body.vel);
+    vel.x -= a.motor.windVel.x; vel.z -= a.motor.windVel.y;
     return { pos: a.char.renderPos.lengthSq() > 0 ? a.char.renderPos : a.char.body.pos, vel, grounded: a.motor.grounded, climbing: !!a.char.body.climb, kind: a.motor.build.kind, yaw: a.char.body.yaw };
   }
 
-  // The one left behind stays exactly where it is (on a lift, on a plate, holding a gate) until it is called.
+  // Walk together after switching unless the actor being left is doing a job that requires staying put.
   switchTo(next: Actor) {
     if (next === this.active) return;
+    const left = this.active;
     this.active = next;
     this.climbJump = false;
-    this.follower.mode = 'wait';
+    this.follower.mode = left.motor.mode === 'held' || this.interactions.needsWeight(left) ? 'wait' : 'follow';
     this.follower.clear();
     this.onSwitch?.(next);
   }
@@ -184,7 +185,7 @@ export class Game {
         continue;
       }
       const mi: MotorInput | null = played ? { wish, walk: inp.walk, jumpHeld: this.jumpHeld }
-        : this.locked || this.carry.holding && a === k ? null : this.follower.step(dt, a, this.active, (p) => this.unseen(p));
+        : this.locked || !this.canSwitch || this.carry.holding && a === k ? null : this.follower.step(dt, a, this.active, (p) => this.unseen(p), wish);
       a.motor.step(dt, mi);
       // Running or jumping into a climbable face, she takes hold.
       if (a === k && played && wish.lengthSq() > 0.09) {
@@ -193,7 +194,7 @@ export class Game {
       }
     }
     k.climber.tick(dt);
-    if (!this.locked) this.follower.record(this.active, this.leaderJumped);
+    if (!this.locked && this.canSwitch) this.follower.record(this.active, this.leaderJumped);
     this.leaderJumped = false;
     this.carry.step();
     this.interactions.step([this.kitten, this.knight], dt);

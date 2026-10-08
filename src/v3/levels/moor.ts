@@ -7,8 +7,8 @@
 //     swollen gate. A creep hole she can knock open from inside.
 //   4 the Mill Stream: a deep channel he can't wade; she swims it, climbs the mill's timbers and knocks out the pin
 //     that holds the bridge's leaf up.
-//   5 the Windy Ridge: gusts that blow her off the crest; rocks, his lee and a hay cart for shelter.
-//   6 the Tor Gap (the twist): too wide to throw her across, unless a gust carries her.
+//   5 the Ridge Road: a hay cart wedged across a rock cutting; he slides it into a stone lay-by.
+//   6 the Tor Gap: he throws her into a crossing gust onto the far ledge; she lowers a bridge for him.
 //   7 the Castle Gate: she swims the moat and climbs the counterweight chain; the drawbridge falls; he heaves the
 //     portcullis up and holds it while she throws the catch.
 // Travel is toward -z; the wind blows toward +x (across the ridge, and along the throw at the tor).
@@ -170,7 +170,7 @@ const LINES = {
   ditch: 'There. After you, my lady.',
   fold: 'Never met a gate I couldn’t argue with.',
   mill: 'You swim like an otter. Don’t tell the other cats.',
-  ridge: 'Mind the wind up here. Keep behind the rocks, or behind me.',
+  ridge: 'The ridge road. That cart’s wedged in the cutting. Let me shift it.',
   tor: 'A flying cat. Now I’ve seen everything.',
   moat: 'Bridge is up, and nobody on the walls. Can you get in, little one?',
   draw: 'Ha! That’s my girl!',
@@ -197,7 +197,7 @@ class Director {
   get millBraced() { return this.state.mill || this.ballast?.p >= 0.98 || !!this.millPlate?.pressed; }
   rattle = 0; rattleGate: Hinge | null = null;
   holding = false;
-  lastShelter = new THREE.Vector3();
+  lastRidgeGround = new THREE.Vector3();
   shortThrows = 0;
   ivyT = 0; deepT = 0;
   private lastBrace: boolean | null = null;
@@ -490,25 +490,29 @@ class Director {
       // Windward boulders down the slope (decor) and pennants along the crest.
       for (let i = 0; i < 14; i++) { const z = -180 - i * 4.3, x = -5 - R() * 6; rock(x, z, 0.8 + R(), 0.5 + R() * 0.8, 0.8 + R(), R() * 3); }
       for (const z of [-195, -210, -226]) { const b = banner('#f4ead2', 1.6, 0.35, 0.7, 0); b.position.set(2.2, HIGH - 0.05, z); aimBanner(b); c.root.add(b); this.banners.push(b); }
-      // The hay cart, parked in its groove behind the rock at -204.5; he shoves it to the middle of the gap.
+      // The hay cart is wedged sideways across the cutting. A visibly enclosed rock lay-by gives it a
+      // fixed destination, so his strength opens a shared road instead of solving a weather hazard.
+      const cz = -211.75, cx1 = -4.35;
+      kit.box([-4.25, -2, cz], [4.5, HIGH + 2, 2.6], 0, { color: rockC, bevel: 0.12, rough: 0.95 });
+      for (const dz of [-1.3, 1.3]) kit.box([-4.25, HIGH, cz + dz], [4.8, 1.6, 0.4], 0, { color: rockC, bevel: 0.12, rough: 0.95 });
+      kit.box([-6.45, HIGH, cz], [0.45, 1.6, 2.6], 0, { color: rockC, bevel: 0.12, rough: 0.95 });
       const cart = new THREE.Group();
-      const box = new THREE.Mesh(new RoundedBoxGeometry(1.3, 0.7, 2.0, 2, 0.05), toy(PAL.wood)); box.position.y = 0.55; cart.add(box);
-      const hay = new THREE.Mesh(new RoundedBoxGeometry(1.25, 0.7, 1.9, 3, 0.3), toy(PAL.straw)); hay.position.y = 1.15; cart.add(hay);
-      for (const sx of [-1, 1]) for (const sz of [-0.6, 0.6]) {
+      const box = new THREE.Mesh(new RoundedBoxGeometry(1.3, 0.7, 3.5, 2, 0.05), toy(PAL.wood)); box.position.y = 0.55; cart.add(box);
+      const hay = new THREE.Mesh(new RoundedBoxGeometry(1.25, 0.7, 3.4, 3, 0.3), toy(PAL.straw)); hay.position.y = 1.15; cart.add(hay);
+      for (const sx of [-1, 1]) for (const sz of [-1.3, 1.3]) {
         const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 14).rotateZ(Math.PI / 2), toy(PAL.woodDark)); w.position.set(sx * 0.7, 0.32, sz); cart.add(w);
       }
-      const hdl = handleMesh(0.9); hdl.position.set(0, 0.85, 1.1); cart.add(hdl);
+      const hdl = handleMesh(0.9); hdl.position.set(-0.75, 0.85, 0); hdl.rotation.y = Math.PI / 2; cart.add(hdl);
       cart.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
       c.root.add(cart);
-      for (const sx of [-0.45, 0.45]) { const g = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 7.6), toy('#6d5640')); g.position.set(-1.0 + sx, HIGH + 0.012, -209); c.root.add(g); }
-      const cz0 = -206.3, cz1 = -211.75;
-      this.cart = new Hinge(c.physics, cart, [RAPIER.ColliderDesc.cuboid(0.62, 0.75, 1.0).setTranslation(0, 0.75, 0)], new THREE.Vector3(-1.0, HIGH, cz0), new THREE.Vector3(), new THREE.Vector3(0, 1, 0), 0, 0, 0.32, EASE.smooth, new THREE.Quaternion(), { kind: 'wood' });
+      for (const dz of [-0.43, 0.43]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.025, 0.11), toy('#6d5640')); rail.position.set(-2.15, HIGH + 0.012, cz + dz); c.root.add(rail); }
+      this.cart = new Hinge(c.physics, cart, [RAPIER.ColliderDesc.cuboid(0.65, 0.75, 1.75).setTranslation(0, 0.75, 0)], new THREE.Vector3(0, HIGH, cz), new THREE.Vector3(), new THREE.Vector3(0, 1, 0), 0, 0, 0.45, EASE.smooth, new THREE.Quaternion(), { kind: 'wood' });
       // A hinge used as a slide: its path is rewritten to run along the groove.
       const ch = this.cart;
-      ch.platform.path = (_t, pos, quat) => { pos.set(-1.0, HIGH, lerp(cz0, cz1, EASE.smooth(ch.p))); quat.identity(); };
-      this.cart.onArrive = () => c.audio.play('thud', new THREE.Vector3(-1, HIGH, cz1), 0.8);
-      this.use({ pos: new THREE.Vector3(-1.0, HIGH, cz0 + 1.45), radius: 0.9, who: 'knight', text: 'Shove the hay cart along', ready: () => !this.state.cart && this.cart.p === 0, use: () => this.shoveCart() });
-      this.use({ pos: new THREE.Vector3(-1.0, HIGH, cz0 + 1.3), radius: 0.7, who: 'kitten', text: 'Push the cart', ready: () => !this.state.cart && this.cart.p === 0, use: () => c.hud.say('Far too heavy for her.', 2.5) });
+      ch.platform.path = (_t, pos, quat) => { pos.set(lerp(0, cx1, EASE.smooth(ch.p)), HIGH, cz); quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2); };
+      this.cart.onArrive = () => c.audio.play('thud', new THREE.Vector3(cx1, HIGH, cz), 0.8);
+      this.use({ pos: new THREE.Vector3(0, HIGH, cz + 1.45), radius: 0.9, who: 'knight', text: 'Shove the cart into the lay-by', ready: () => !this.state.cart && this.cart.p === 0, use: () => this.shoveCart() });
+      this.use({ pos: new THREE.Vector3(0, HIGH, cz + 1.25), radius: 0.7, who: 'kitten', text: 'Push the cart', ready: () => !this.state.cart && this.cart.p === 0, use: () => c.hud.say('Wedged tight. Bram can clear the road for both of them.', 3) });
     }
 
     // ===== 6. The Tor Gap =====
@@ -827,10 +831,11 @@ class Director {
     const c = this.c, kn = c.knight;
     this.state.cart = true;
     kn.pushing = true; kn.play('Push');
-    c.audio.play('creak', new THREE.Vector3(-1, HIGH + 0.5, -206), 0.8);
+    c.audio.play('creak', new THREE.Vector3(0, HIGH + 0.5, -211.75), 0.8);
     this.after(0.25, () => { this.cart.target = 1; });
     this.after(1.5, () => { kn.pushing = false; });
-    this.hint('cart', 'Rolled into the middle of the gap: a windbreak she can rest behind.', 4.5);
+    this.hint('cart', 'Rolled into the stone lay-by. The ridge road is clear for both of you.', 4.5);
+    this.objective();
   }
 
   dropTorBridge() {
@@ -930,11 +935,12 @@ class Director {
     this.cp = (ORDER as readonly string[]).includes(checkpoint ?? '') ? checkpoint as CP : 'start';
     const i = ORDER.indexOf(this.cp);
     const s = this.state;
-    s.gate = i >= 1; s.root = s.trunk = i >= 2; s.bar = s.fold = s.stone = i >= 3; s.ballast = s.brake = s.mill = i >= 4; s.tor = i >= 6;
+    s.gate = i >= 1; s.root = s.trunk = i >= 2; s.bar = s.fold = s.stone = i >= 3; s.ballast = s.brake = s.mill = i >= 4; s.cart = i >= 5; s.tor = i >= 6;
     if (s.gate) { this.gate.set(1); this.loop.visible = false; }
     if (s.trunk) { this.rootWedge.visible = false; this.trunk.set(1); this.shoveTrunkRamps(); }
     if (s.bar) { this.bar.visible = false; (this.bar.userData.pin as THREE.Object3D).visible = false; this.foldGate.set(1); this.knockStoneInstant(); }
     if (s.mill) { this.ballast.set(1); this.leaf.set(1); this.millRope.mesh.visible = false; (this.millRope.mesh.userData.other as Rope).mesh.visible = false; }
+    if (s.cart) this.cart.set(1);
     if (s.tor) { this.torBridge.set(1); this.torRope.mesh.visible = false; }
     this.place(this.cp);
     // Walking together: she follows him.
@@ -963,7 +969,8 @@ class Director {
       : !s.trunk ? 'Free the oak and bridge the <b>ditch</b>.'
       : !s.fold ? 'Get both companions through the <b>sheepfold</b>.'
       : !s.mill ? (s.brake ? 'The rope is slack. Release the <b>far-bank bridge pin</b>.' : 'Take the bridge’s weight on the <b>mill winch</b>.')
-      : !s.tor ? 'Cross the <b>windy ridge</b> together.'
+      : !s.cart ? 'Clear the <b>ridge road</b> for both companions.'
+      : !s.tor ? 'Get Whisker across the <b>tor gap</b>.'
       : !s.draw ? 'Get Whisker into the <b>castle gatehouse</b>.'
       : !s.latched ? 'Raise and secure the <b>portcullis</b>.' : 'Bring <b>both companions</b> into the castle.';
     c.hud.objective(text);
@@ -1041,19 +1048,20 @@ class Director {
     this.stage = 'play';
   }
 
-  // Q from the one played, toward the one waiting. She won't come out into the wind on the ridge.
+  // Q is handled by Game: the ordinary companion follows unless explicitly asked to wait.
   heard() {}
 
   private hintSteps = new Map<string, number>();
   giveHint() {
     const s = this.state;
-    const key = !s.gate ? 'wall' : !s.trunk ? 'oak' : !s.fold ? 'fold' : !s.mill ? 'mill' : !s.tor ? 'wind' : !s.draw ? 'moat' : !s.latched ? 'gate' : 'together';
+    const key = !s.gate ? 'wall' : !s.trunk ? 'oak' : !s.fold ? 'fold' : !s.mill ? 'mill' : !s.cart ? 'ridge' : !s.tor ? 'tor' : !s.draw ? 'moat' : !s.latched ? 'gate' : 'together';
     const clues: Record<string, string[]> = {
       wall: ['The field gate is tied on its far side. Look for a way around its latch.', 'Ivy can hold claws, but tears under steel.', 'Whisker can climb the ivy to the right of the gate, then lift the rope loop inside.'],
       oak: ['The oak pivots at its roots, but an old repair wedge jams it.', 'Something small can get under the root hollow beside the oak.', 'Whisker pulls the pink wedge from the low hollow; Bram can then swing the oak across.'],
       fold: ['The gate has two problems: an inside bar and a swollen frame.', 'She can reach the inside; he can force the frame once it is unbarred.', 'Bram throws Whisker over the wall. She pulls the bar pin; he shoulders the gate.'],
       mill: ['Follow the rope: the blue plate engages the winch, and the gallery pin carries the bridge’s weight.', 'Bram cannot stand on the plate and turn the distant handle at the same time. Find a substitute for his weight.', 'Bram slides the ballast onto the plate and turns the blue winch. Whisker swims across, climbs the mill, and releases the pink pin.'],
-      wind: ['A gust is a threat in the open, but rocks and Bram leave a calm patch downwind.', 'Leave Bram on the windward edge, then move Whisker through his lee. The cart can fill another gap.', 'At the tor, aim Bram across the gap and throw during a gust. Whisker reaches the far pin and lowers his bridge.'],
+      ridge: ['The cart is wedged across the road. Its wheels line up with the grooves into the rock alcove.', 'Whisker is too small to shift it, but Bram can move its weight.', 'Bring Bram to the blue handle on the near side and shove the cart into the stone lay-by.'],
+      tor: ['A raised bridge waits on the far lip. The pennants show a strong crossing gust over the cleft.', 'An ordinary throw falls short. The crossing wind only carries Whisker when Bram throws her into the air.', 'Lift Whisker near the lip, aim at the far hay, and throw as the gust rises. She can then lower Bram’s bridge.'],
       moat: ['The drawbridge is held from the winding room. Follow its counterweight chain.', 'Steel cannot swim the moat. Whisker can reach the chain from the water.', 'Swim Whisker to the right-hand chain, climb to the winding room, and pull the drawbridge pin.'],
       gate: ['The portcullis needs strength to rise and a small paw to catch its ratchet.', 'Bram will keep holding while you switch. The catch is on the inside wall.', 'Have Bram lift the gate, switch to Whisker to set its catch, then let him release it.'],
       together: ['The road is only crossed when both companions reach the bailey. Call the other one, or switch and bring them through.'],
@@ -1109,39 +1117,36 @@ class Director {
       c.knight.hands = { left: new THREE.Vector3(GATE_X - 0.3, Math.min(y, HIGH + 2.05), Z.moatS - 1.88), right: new THREE.Vector3(GATE_X + 0.3, Math.min(y, HIGH + 2.05), Z.moatS - 1.88) };
     }
 
-    // ---- The wind: gusts all over the moor (seen and heard), but they only push her on the ridge and the tor.
+    // Ordinary wind is atmosphere. Only the Tor's authored crossing force may carry an airborne throw;
+    // the motor ignores this field when either actor is walking, standing, swimming or normally jumping.
     const phase = this.gusts.update(dt);
     const kb = this.k.char.body, nb = this.n.char.body;
-    const zone = this.windZone(kb.pos);
-    const active = g.active === g.kitten && !c.timeline.playing;
-    const force = zone ? 1 : 0.1;
+    const zone = this.ridgeZone(kb.pos);
     WIND.base = 0.65 + (zone ? 0.25 : 0);
-    WIND.push = active || g.follower.mode === 'follow' && g.active === g.knight ? force * (0.8 + 4.6 * this.gusts.strength) : 0;
+    const crossingWind = 0.8 + 4.6 * this.gusts.strength;
+    WIND.push = zone === 'tor' ? crossingWind : 0;
     this.throwArc.visible = g.carry.holding && !c.timeline.playing;
     if (this.throwArc.visible) {
-      const throwWind = this.windZone(nb.pos) ? 0.8 + 4.6 * this.gusts.strength : 0.08 + 0.46 * this.gusts.strength;
-      const count = g.carry.predict(this.throwPoints, throwWind);
+      const count = g.carry.predict(this.throwPoints, this.ridgeZone(nb.pos) === 'tor' ? crossingWind : 0);
       this.throwArc.geometry.setDrawRange(0, count);
       this.throwArc.geometry.attributes.position.needsUpdate = true;
       this.hint('aim', 'The pale arc shows her throw. Turn Bram to aim; steer Whisker in the air.', 5);
     }
     this.streaks.update(dt, c.camera.position.clone().lerp(g.active.char.renderPos, 0.6));
-    if (zone && this.k.motor.grounded && !kb.climb && kb.pos.y > HIGH - 0.02 && kb.pos.x < 1.9 && WIND.sheltered(kb.pos)) this.lastShelter.copy(kb.pos);
-    if (zone === 'tor' && (this.lastShelter.lengthSq() === 0 || this.lastShelter.z > Z.ridge1 - 1)) this.lastShelter.set(-0.6, HIGH, -244.5);
-    if (zone && this.lastShelter.lengthSq() > 0) this.k.motor.safe.copy(this.lastShelter);
+    if (zone && this.k.motor.grounded && !kb.climb && kb.pos.y > HIGH - 0.02 && kb.pos.x > -1.7 && kb.pos.x < (zone === 'tor' ? 2.8 : 1.7)) this.lastRidgeGround.copy(kb.pos);
+    if (zone === 'tor' && (this.lastRidgeGround.lengthSq() === 0 || this.lastRidgeGround.z > Z.ridge1 - 1)) this.lastRidgeGround.set(-0.6, HIGH, -244.5);
     // Down in the bowl or the gap, nowhere there is a place to come back to: the crest is.
     const below = (p: THREE.Vector3) => p.z < Z.ridge0 - 1 && p.z > Z.torS - 1 && (p.x > 2.0 && p.x < 40 || p.x < -2.2 && p.x > -13) && p.y < HIGH - 0.12;
-    if (below(kb.pos)) this.k.motor.safe.copy(this.lastShelter.lengthSq() > 0 ? this.lastShelter : new THREE.Vector3(-0.6, HIGH, clamp(kb.pos.z, -250, -179)));
+    if (below(kb.pos)) this.k.motor.safe.copy(this.lastRidgeGround.lengthSq() > 0 ? this.lastRidgeGround : new THREE.Vector3(-0.6, HIGH, clamp(kb.pos.z, -250, -179)));
     if (below(nb.pos)) this.n.motor.safe.set(-0.4, HIGH, clamp(nb.pos.z, -250, -179));
-    if (zone && phase === 'warn' && active) this.hint('gust', 'A gust is coming. Get behind a rock!', 3.5);
-    c.hud.wind(this.windZone(g.active.char.body.pos) && !c.timeline.playing ? (phase === 'lull' ? 'calm' : phase) : 'off');
+    c.hud.wind(this.ridgeZone(nb.pos) === 'tor' && (g.carry.holding || this.k.motor.thrown) && !c.timeline.playing ? (phase === 'lull' ? 'calm' : phase) : 'off');
 
     if (this.stage !== 'play' || c.timeline.playing) return;
 
     // A checkpoint certifies a completed shared crossing. Saving by the leader alone let a kitten scouting
     // ahead skip unfinished puzzles on reload, and stranded Bram on the wrong bank.
     const lead = g.active.char.body.pos;
-    const solved: Record<CP, boolean> = { start: true, ditch: this.state.gate, fold: this.state.trunk, mill: this.state.fold, ridge: this.state.mill, tor: this.state.mill, castle: this.state.tor };
+    const solved: Record<CP, boolean> = { start: true, ditch: this.state.gate, fold: this.state.trunk, mill: this.state.fold, ridge: this.state.mill, tor: this.state.cart, castle: this.state.tor };
     for (const [cp, z] of SAVE_AT) if (kb.pos.z < z && nb.pos.z < z && solved[cp] && ORDER.indexOf(cp) > ORDER.indexOf(this.cp)) { this.cp = cp; c.checkpoint(cp); this.objective(); }
 
     // ---- Hints and lines by place.
@@ -1158,46 +1163,33 @@ class Director {
     if (lead.z < -128 && lead.z > -137 && !this.state.mill) this.hint('millseen', 'The bridge rope is stretched tight. A blue handle, a weight plate, and a stone worn smooth in its groove…', 6);
     if (Math.abs(lead.z - (Z.stream - 4)) < 3 && g.active === g.kitten) this.hint('mill', 'The mill’s rough timbers: she can climb them to the gallery.', 4.5);
     if (lead.z < Z.ridge0 + 2 && !this.hints.has('ridgeLine')) { this.hints.add('ridgeLine'); this.line(LINES.ridge, 4); }
-    if (lead.z < -190.5 && lead.z > -203 && g.active === g.kitten && kp.y > 4) this.hint('lee', this.key('Too far to run between gusts. Bram is a wall the wind can’t move: <b>Tab</b>, and stand him in the gap.', 'Too far to run between gusts. Bram is a wall the wind can’t move: switch, and stand him in the gap.'), 6);
-    if (lead.z < Z.ridge1 + 1 && lead.z > Z.torS && !this.hints.has('torSeen')) { this.hints.add('torSeen'); c.hud.say('Too wide to throw her across. But see how the pennants stream over the gap…', 5); }
+    if (lead.z < -205 && lead.z > -213 && !this.state.cart) this.hint('cartSeen', 'A loaded cart jams the cutting. The stone lay-by beside it has room for those wheels.', 5);
+    if (lead.z < Z.ridge1 + 1 && lead.z > Z.torS && !this.hints.has('torSeen')) { this.hints.add('torSeen'); c.hud.say('Too wide for an ordinary throw. The pennants stream across the cleft: a crossing gust can carry her to the hay.', 5); }
     if (lead.z < -270 && !this.hints.has('moat')) { this.hints.add('moat'); this.line(LINES.moat, 4); }
     if (kb.swimming && kp.z < Z.moatN) this.hint('chain', 'The counterweight chain hangs down into the moat by the right-hand tower. She can climb it.', 5);
     if (this.state.draw && !this.hints.has('portc') && g.active === g.knight && np.z < Z.moatS + 0.5) { this.hints.add('portc'); c.hud.say('The portcullis. Heavy, but he can heave it up and hold it.', 4); }
 
-    // ---- She won't come out into the wind to follow him; he won't follow her into deep water.
-    if (g.follower.mode === 'follow' && g.active === g.knight && zone && !WIND.sheltered(kp)) {
-      g.follower.mode = 'wait'; g.follower.clear();
-      this.k.char.play?.('flinch');
-      c.kitten.meow('mew'); c.audio.play('mew', kp);
-      c.hud.say('She flattens her ears. She won’t come out into the wind.', 3);
-    }
-
-    // ---- Throws at the tor that fall short.
-    if (this.windZone(kp) === 'tor' && kp.y < 2 && !this.state.tor) {
-      // (the bowl's kill zone respawns her; count it once per fall)
-    }
     // ---- The end: both through the gate.
     if (this.state.latched && !this.holding && np.z < Z.moatS - 3.2 && kp.z < Z.moatS - 2.6) this.ending();
   }
 
-  // Where the wind can blow her off: the ridge's crest and the tor's top.
-  windZone(p: THREE.Vector3): 'ridge' | 'tor' | null {
+  // The crest and tor, used for the scenery's stronger wind and ordinary cliff-fall rescue.
+  ridgeZone(p: THREE.Vector3): 'ridge' | 'tor' | null {
     if (p.y < 3) return null;
     if (p.z < Z.ridge0 && p.z > Z.ridge1 && p.x < 6) return 'ridge';
     if (p.z <= Z.ridge1 && p.z > Z.torS - 1 && p.x < 7.2) return 'tor';
     return null;
   }
 
-  // A fall from the ridge or the tor: back to her last shelter, with a word the first time.
+  // A fall from the ridge or tor returns her to firm ground; it has no relation to the gust cycle.
   onFall(a: Actor) {
     const c = this.c;
     if (a !== c.game.kitten) return;
     const zone = a.char.body.pos.z <= Z.ridge1 + 0.5 ? 'tor' : 'ridge';
     if (zone === 'tor' && !this.state.tor) {
       this.shortThrows++;
-      if (this.shortThrows === 1) c.hud.say('Short! Throw her into a gust, and let the wind carry her.', 4.5);
-      else if (this.shortThrows === 3) c.hud.say('Wait for the grass to flatten and the whistle to rise, then throw.', 4.5);
-    } else this.hint('blown', 'Blown off! Rest behind the rocks while a gust passes.', 3.5);
+      if (this.shortThrows === 1) c.hud.say('Short! Lift her near the lip, aim at the hay, and throw into the crossing gust.', 4.5);
+    } else this.hint('ridgeFall', 'Back on firm ground. Keep to the ridge road.', 3.5);
   }
 }
 
@@ -1237,13 +1229,13 @@ export const moor: Level = {
     const visualBed = (x: number, z: number) => (Math.abs(z - Z.stream) < 1.5 ? -2.3 : height(x, z));
     c.root.add(water.build(visualBed, { sunDir: c.look.sunDir, sun: new THREE.Color(p.sun).multiplyScalar(p.sunIntensity * 0.4), sky: new THREE.Color(p.hemiSky), horizon: new THREE.Color(p.horizon) }));
     WATER.surface = (x, z) => water.surfaceAt(x, z);
-    WIND.dir.set(1, 0); WIND.base = 0.35;
+    WIND.dir.set(1, 0); WIND.base = 0.65; WIND.push = 0;
     WIND.sheltered = (q) => shelteredAt(q, c.physics, c.game ? c.game.knight.char.body.pos : null);
     dir.build();
     const s = SPAWN.start;
     return {
       killY: -30,
-      // The bowl under the ridge and the tor's gap: a fall there puts her back at her last shelter.
+      // The bowl under the ridge and the tor's gap: an ordinary cliff fall returns to firm ground.
       killZones: [
         // Off the crest's lee edge: the slope is too steep to cling to; back to the last shelter.
         new THREE.Box3(new THREE.Vector3(2.0, -10, Z.ridge1), new THREE.Vector3(40, HIGH - 0.03, Z.ridge0 - 2)),
@@ -1259,8 +1251,7 @@ export const moor: Level = {
   start(c, checkpoint) {
     dir!.start(checkpoint);
     const g = c.game, prev = g.onFall;
-    // No carrying her along the ridge: she has to cross it on her own paws (the tor's throw is fine).
-    g.carry.allow = () => { const p = g.knight.char.body.pos; return !(p.z < Z.ridge0 + 2 && p.z > Z.ridge1 + 0.5 && p.y > 3); };
+    g.carry.allow = () => true;
     g.onFall = (a, phase) => { prev?.(a, phase); if (phase === 'in') dir?.onFall(a); };
   },
   begin() { dir?.begin(); },

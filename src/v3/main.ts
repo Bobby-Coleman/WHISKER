@@ -96,6 +96,7 @@ export async function run(params: URLSearchParams) {
   let changingLevel = false;
   let clockT = 0;
   let loadToken = 0;
+  let callLabelKey = '';
   const sim = { move: new THREE.Vector2(), until: 0, jumpHeld: false };
   let freeCam: { pos: THREE.Vector3; look: THREE.Vector3; mm?: number } | null = null;
   const camera = new THREE.PerspectiveCamera(fovFromMM(28), innerWidth / innerHeight, 0.03, 6000);
@@ -311,9 +312,15 @@ export async function run(params: URLSearchParams) {
     audio.update(dt);
     // HUD.
     input.showPad?.(started && !tl.playing);
+    if (g.canSwitch) {
+      const label = g.active === g.knight && g.carry.holding ? 'Set down' : g.follower.mode === 'wait' ? 'Call' : 'Wait';
+      const key = `${loadToken}:${label}`;
+      if (callLabelKey !== key) { input.label('KeyQ', label); callLabelKey = key; }
+    }
     const a = g.active;
     const state = a === g.knight && g.carry.holding ? 'carrying' : '';
-    hud.who(started && !tl.playing ? (a === g.kitten ? 'kitten' : 'knight') : null, g.canSwitch, state);
+    const companionState = g.companion.motor.mode === 'held' ? 'holding' : g.follower.mode === 'wait' ? 'waiting' : 'following';
+    hud.who(started && !tl.playing ? (a === g.kitten ? 'kitten' : 'knight') : null, g.canSwitch, state, companionState);
     const pr = started && !tl.playing ? g.prompt() : null;
     hud.prompt(pr ? pr.text : null, pr ? (pr.key === 'jump' ? (input.touchMode ? 'Jump' : '␣') : (input.touchMode ? 'Act' : 'E')) : undefined);
     if (physLines) {
