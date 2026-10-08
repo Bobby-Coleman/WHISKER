@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RAPIER, Physics, L, Surface, Platform, Prop } from '../physics';
 import { toy, PAL } from '../render/materials';
-import { RIM } from '../render/materials';
+import { RIM, MOOR_FOG, moorAir } from '../render/materials';
 
 type V3 = [number, number, number];
 export type PieceOpts = { color?: string; stone?: number; rough?: number; surface?: Surface; member?: number; bevel?: number; cast?: boolean; name?: string; collide?: boolean };
@@ -19,12 +19,14 @@ export function stone(color: string = PAL.stone, size = 0.45) {
   if (m) return m;
   m = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.92, envMapIntensity: 0.5 });
   m.onBeforeCompile = (sh) => {
+    moorAir(sh);
     sh.uniforms.rimColor = RIM.color; sh.uniforms.rimStrength = RIM.strength; sh.uniforms.wrapAmt = RIM.wrap;
     sh.uniforms.stoneSize = { value: size };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
+      .replace('#include <fog_fragment>', MOOR_FOG)
       .replace('#include <common>', `#include <common>
         uniform vec3 rimColor; uniform float rimStrength; uniform float wrapAmt; uniform float stoneSize;
         varying vec3 vWP; varying vec3 vWN;

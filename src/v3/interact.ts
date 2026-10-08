@@ -22,6 +22,9 @@ export type Plate = {
   onChange?: (pressed: boolean, by: Actor | null) => void;
   // The plate's top moves down when pressed (visual).
   mesh?: THREE.Object3D; travel?: number;
+  // Authored ballast can stand in for an actor without introducing free physics or a puzzle softlock.
+  load?: () => boolean;
+  restY?: number;
 };
 
 export class Interactions {
@@ -29,7 +32,16 @@ export class Interactions {
   plates: Plate[] = [];
 
   add(u: Usable) { this.usables.push(u); return u; }
-  plate(p: Omit<Plate, 'pressed'>) { const q = { ...p, pressed: false }; this.plates.push(q); return q; }
+  plate(p: Omit<Plate, 'pressed'>) { const q = { ...p, pressed: false, restY: p.restY ?? p.mesh?.position.y ?? 0 }; this.plates.push(q); return q; }
+
+  // Switching away from an actor on a puzzle plate means leaving their weight in place. Once ballast
+  // holds it independently, ordinary following can resume without undoing the puzzle.
+  needsWeight(a: Actor) {
+    if (!a.motor.grounded || a.char.carriedBy) return false;
+    const p = a.char.body.pos;
+    return this.plates.some(pl => !pl.load?.() && (!pl.heavy || a.motor.build.kind === 'knight')
+      && Math.hypot(p.x - pl.pos.x, p.z - pl.pos.z) <= pl.radius && Math.abs(p.y - pl.pos.y) <= 0.35);
+  }
 
   // The nearest thing this character can use, if any: in reach, in front of it, ready.
   nearest(a: Actor) {
@@ -52,15 +64,16 @@ export class Interactions {
     for (const pl of this.plates) {
       let by: Actor | null = null;
       for (const a of actors) {
+        if (!a.motor.grounded || a.char.carriedBy) continue;
         const p = a.char.body.pos;
         if (Math.hypot(p.x - pl.pos.x, p.z - pl.pos.z) > pl.radius || Math.abs(p.y - pl.pos.y) > 0.35) continue;
         if (pl.heavy && a.motor.build.kind !== 'knight') continue;
         by = a;
       }
-      const now = by !== null;
+      const now = by !== null || !!pl.load?.();
       if (now !== pl.pressed) { pl.pressed = now; pl.onChange?.(now, by); }
       if (pl.mesh) {
-        const want = (now ? -(pl.travel ?? 0.04) : 0);
+        const want = (pl.restY ?? 0) - (now ? (pl.travel ?? 0.04) : 0);
         pl.mesh.position.y += (want - pl.mesh.position.y) * Math.min(1, dt * 10);
       }
     }

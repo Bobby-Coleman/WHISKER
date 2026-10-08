@@ -3,7 +3,7 @@
 // material so a whole moor is a handful of draw calls.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { toy, PAL, col } from '../render/materials';
+import { toy, PAL, col, SCENERY_WIND } from '../render/materials';
 import { stone } from './kit';
 import { RAPIER, Physics, L } from '../physics';
 import { WIND } from '../body';
@@ -15,10 +15,10 @@ function blob(r: number, seed: number, top: THREE.Color, bottom: THREE.Color, de
   const g = new THREE.IcosahedronGeometry(r, detail);
   const p = g.attributes.position, R = rng(seed);
   const a = [R() * 6, R() * 6, R() * 6, R() * 6];
-  const v = new THREE.Vector3();
+  const v = new THREE.Vector3(), n = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
-    const n = v.clone().normalize();
+    n.copy(v).normalize();
     const k = 1 + 0.12 * Math.sin(n.x * 4 + a[0]) * Math.sin(n.y * 3 + a[1]) + 0.08 * Math.sin(n.z * 5 + a[2]) + 0.05 * Math.sin((n.x + n.z) * 7 + a[3]);
     v.multiplyScalar(k);
     v.y *= 0.82;
@@ -90,10 +90,42 @@ function trunk(height: number, radius: number, lean: THREE.Vector3, seed: number
 
 export type TreeKind = { height: number; radius: number; canopy: number; leaf: string; leafDark: string; bark: string; blobs: number; lean?: number };
 export const TREES: Record<string, TreeKind> = {
-  oak: { height: 3.6, radius: 0.2, canopy: 1.5, leaf: '#79b452', leafDark: '#3d7a3c', bark: '#6b4a33', blobs: 6 },
-  birch: { height: 4.4, radius: 0.11, canopy: 1.0, leaf: '#a6c95a', leafDark: '#5f8f3c', bark: '#d8d2c4', blobs: 4 },
-  pine: { height: 5, radius: 0.16, canopy: 1.2, leaf: '#3f7a4f', leafDark: '#22503a', bark: '#5a3e2c', blobs: 0 },
+  oak: { height: 3.6, radius: 0.2, canopy: 1.5, leaf: '#6b775b', leafDark: '#384a3c', bark: '#625447', blobs: 6, lean: 1.8 },
+  birch: { height: 4.4, radius: 0.11, canopy: 1.0, leaf: '#92967a', leafDark: '#4e6048', bark: '#c3c4b6', blobs: 4, lean: 1.5 },
+  pine: { height: 5, radius: 0.16, canopy: 1.2, leaf: '#4e6758', leafDark: '#2b4138', bark: '#574c40', blobs: 0 },
 };
+
+const plantMats = new Map<number, THREE.MeshStandardMaterial>();
+function plantMaterial(height: number) {
+  const key = Math.round(height * 10);
+  const cached = plantMats.get(key);
+  if (cached) return cached;
+  const base = toy('#ffffff', { vertexColors: true, rough: 0.9 });
+  const mat = base.clone();
+  mat.onBeforeCompile = (sh, renderer) => {
+    base.onBeforeCompile(sh, renderer);
+    sh.uniforms.plantTime = SCENERY_WIND.time; sh.uniforms.plantWind = SCENERY_WIND.direction;
+    sh.uniforms.plantStrength = SCENERY_WIND.strength; sh.uniforms.plantGust = SCENERY_WIND.gust;
+    sh.uniforms.plantHeight = { value: height };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float plantTime, plantStrength, plantGust, plantHeight; uniform vec2 plantWind;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        float crown = pow(clamp(position.y / max(plantHeight, 0.1), 0.0, 1.0), 2.0);
+        vec4 treeRoot = vec4(0.0, 0.0, 0.0, 1.0);
+        #ifdef USE_INSTANCING
+          treeRoot = instanceMatrix * treeRoot;
+        #endif
+        treeRoot = modelMatrix * treeRoot;
+        float wave = sin(dot(treeRoot.xz, plantWind) * 0.09 - plantTime * 1.1) * 0.5 + 0.5;
+        float bend = crown * (0.025 + plantStrength * 0.035 + plantGust * wave * 0.085) * plantHeight;
+        bend *= 0.75 + 0.25 * sin(plantTime * 2.1 + treeRoot.x * 0.3);
+        mvPosition.xyz += mat3(viewMatrix) * vec3(plantWind.x * bend, -abs(bend) * 0.08, plantWind.y * bend);
+        gl_Position = projectionMatrix * mvPosition;`);
+  };
+  mat.customProgramCacheKey = () => 'moor-plant';
+  plantMats.set(key, mat);
+  return mat;
+}
 
 // One tree's geometry (trunk + canopy), vertex-coloured, centred on its base.
 // lo: a distant tree (coarser trunk, faceted canopy), about a quarter of the triangles.
@@ -124,21 +156,25 @@ export function treeGeometry(k: TreeKind, seed: number, lo = false) {
 // every instance again into it).
 export function forest(kind: TreeKind, spots: { x: number; y: number; z: number; s?: number; yaw?: number }[], physics?: Physics, variants = 3, seed = 1, far = false) {
   const group = new THREE.Group(); group.name = far ? 'ForestFar' : 'Forest';
-  const mat = toy('#ffffff', { vertexColors: true, rough: 0.9 });
+  const mat = far ? toy('#ffffff', { vertexColors: true, rough: 0.9 }) : plantMaterial(kind.height);
   const geos = Array.from({ length: variants }, (_, i) => treeGeometry(kind, seed * 31 + i * 7, far));
-  const buckets: THREE.Matrix4[][] = geos.map(() => []);
+  const buckets = new Map<string, { variant: number; matrices: THREE.Matrix4[] }>();
   spots.forEach((p, i) => {
     const s = p.s ?? 1;
-    buckets[i % variants].push(new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw ?? i * 2.4), new THREE.Vector3(s, s, s)));
+    // Spatial batches keep a whole woodland's bounding sphere from making every tree render in every view.
+    const variant = i % variants, cell = far ? 72 : 32;
+    const key = `${variant}|${Math.floor(p.x / cell)},${Math.floor(p.z / cell)}`;
+    let bucket = buckets.get(key);
+    if (!bucket) buckets.set(key, bucket = { variant, matrices: [] });
+    bucket.matrices.push(new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw ?? i * 2.4), new THREE.Vector3(s, s, s)));
     if (physics) physics.addFixed(RAPIER.ColliderDesc.capsule(kind.height * s * 0.35, kind.radius * s * 1.1).setTranslation(p.x, p.y + kind.height * s * 0.35, p.z), { kind: 'wood' }, L.world);
   });
-  geos.forEach((g, i) => {
-    if (!buckets[i].length) return;
-    const m = new THREE.InstancedMesh(g, mat, buckets[i].length);
-    buckets[i].forEach((mm, j) => m.setMatrixAt(j, mm));
+  for (const bucket of buckets.values()) {
+    const m = new THREE.InstancedMesh(geos[bucket.variant], mat, bucket.matrices.length);
+    bucket.matrices.forEach((mm, j) => m.setMatrixAt(j, mm));
     m.castShadow = !far; m.receiveShadow = !far; m.computeBoundingSphere();
     group.add(m);
-  });
+  }
   return group;
 }
 
@@ -150,12 +186,13 @@ export function hawthorn(seed = 3) {
   const tips = t.tips.concat([t.top.clone().add(new THREE.Vector3(0.6, -0.2, -0.5)), t.top.clone().add(new THREE.Vector3(-0.5, 0.1, 0.6))]);
   tips.forEach((p, i) => {
     const r = 0.75 + R() * 0.45;
-    geos.push(blob(r, seed * 13 + i, col('#e0773e'), col('#8a3a2a')).scale(1.25, 0.8, 1.15).translate(p.x + 0.25, p.y + 0.15, p.z));
+    geos.push(blob(r, seed * 13 + i, col('#aa7755'), col('#655244')).scale(1.38, 0.67, 1.05).translate(p.x + 0.25, p.y + 0.15, p.z));
   });
   const merged = mergeGeometries(geos.map((g) => strip(g)))!;
   const g = new THREE.Group(); g.name = 'Hawthorn';
-  const m = new THREE.Mesh(merged, toy('#ffffff', { vertexColors: true, rough: 0.9 }));
+  const m = new THREE.Mesh(merged, plantMaterial(3.4));
   m.castShadow = true; m.receiveShadow = true;
+  m.userData.dynamic = true; m.userData.keep = true;
   g.add(m);
   // Haws: little red berries among the leaves.
   const haws = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.045, 1), toy('#c2262e', { rough: 0.4 }), 60);
@@ -190,9 +227,9 @@ export function boulders(spots: { x: number; y: number; z: number; s: number; ya
 }
 
 // Bushes (and hedgerows when packed along a line), instanced.
-export function bushes(spots: { x: number; y: number; z: number; s: number }[], leaf = '#5f9a45', dark = '#2f6234', physics?: Physics) {
-  const g = blob(1, 77, col(leaf), col(dark), 2);
-  const m = new THREE.InstancedMesh(g, toy('#ffffff', { vertexColors: true, rough: 0.9 }), spots.length);
+export function bushes(spots: { x: number; y: number; z: number; s: number }[], leaf = '#68775c', dark = '#374d3e', physics?: Physics) {
+  const g = blob(1, 77, col(leaf).lerp(col('#7a8171'), 0.4), col(dark).lerp(col('#435247'), 0.25), 2);
+  const m = new THREE.InstancedMesh(g, plantMaterial(1.3), spots.length);
   spots.forEach((p, i) => {
     m.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y + p.s * 0.45, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), i * 2.1), new THREE.Vector3(p.s, p.s * 0.9, p.s)));
     if (physics) physics.addFixed(RAPIER.ColliderDesc.ball(p.s * 0.85).setTranslation(p.x, p.y + p.s * 0.4, p.z), { kind: 'leaves' }, L.world);
@@ -202,7 +239,7 @@ export function bushes(spots: { x: number; y: number; z: number; s: number }[], 
 }
 
 // Flowers: tiny bright heads on stalks scattered through the grass (no collision).
-export function flowers(spots: { x: number; y: number; z: number }[], colors = ['#ffffff', '#ffd84a', '#c39be8', '#ff9fb2']) {
+export function flowers(spots: { x: number; y: number; z: number }[], colors = ['#d5d4c5', '#b8ad79', '#9a94a6', '#b38d94']) {
   const head = new THREE.IcosahedronGeometry(0.035, 0).translate(0, 0.16, 0);
   const stalk = new THREE.CylinderGeometry(0.005, 0.006, 0.16, 3).translate(0, 0.08, 0);
   const g = mergeGeometries([colored(head, new THREE.Color(1, 1, 1)), colored(stalk, col('#4f8a3a'))].map(strip))!;
@@ -262,7 +299,7 @@ export function fence(line: THREE.Vector3[], physics?: Physics, gapUnder = true)
 }
 
 // A banner on a pole: the cloth waves in the wind in its vertex shader (one shared clock).
-export const BANNER_TIME = { value: 0 };
+export const BANNER_TIME = SCENERY_WIND.time;
 const bannerMats = new Map<string, THREE.Material>();
 export function banner(color: string, h = 3.2, w = 0.7, len = 1.3, lean = 0) {
   const g = new THREE.Group();
@@ -273,20 +310,26 @@ export function banner(color: string, h = 3.2, w = 0.7, len = 1.3, lean = 0) {
   // Swallow-tail cut.
   const p = cloth.attributes.position;
   for (let i = 0; i < p.count; i++) { const x = p.getX(i) / w, y = -p.getY(i) / len; if (y > 0.85) p.setY(i, -len * (0.85 + 0.15 * (1 - Math.abs(x - 0.5) * 2))); }
-  let mat = bannerMats.get(color);
+  const materialKey = `${color}|${w}`;
+  let mat = bannerMats.get(materialKey);
   if (!mat) {
-    const m = toy(color, { side: THREE.DoubleSide }).clone();
-    m.onBeforeCompile = (sh) => {
+    const base = toy(color, { side: THREE.DoubleSide });
+    const m = base.clone();
+    m.onBeforeCompile = (sh, renderer) => {
+      base.onBeforeCompile(sh, renderer);
       sh.uniforms.bTime = BANNER_TIME;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float bTime;')
+      sh.uniforms.bStrength = SCENERY_WIND.strength; sh.uniforms.bGust = SCENERY_WIND.gust;
+      sh.uniforms.bWidth = { value: w };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float bTime, bStrength, bGust, bWidth;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
-          float f = transformed.x / ${w.toFixed(2)};
-          transformed.z += sin(bTime * 3.1 + transformed.x * 4.0 - transformed.y * 1.5) * 0.12 * f;
-          transformed.y += sin(bTime * 2.3 + transformed.x * 3.0) * 0.03 * f;`);
+          float f = clamp(transformed.x / bWidth, 0.0, 1.0);
+          float force = 0.09 + bStrength * 0.16 + bGust * 0.18;
+          transformed.z += sin(bTime * (3.1 + bGust * 2.0) + f * 4.0 - transformed.y * 1.5) * force * f;
+          transformed.y += sin(bTime * 2.3 + f * 3.0) * (0.025 + bGust * 0.065) * f;`);
     };
     m.customProgramCacheKey = () => 'banner';
     mat = m;
-    bannerMats.set(color, m);
+    bannerMats.set(materialKey, m);
   }
   const c = new THREE.Mesh(cloth, mat);
   c.position.y = h - 0.08;

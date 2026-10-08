@@ -8,7 +8,9 @@ import { KeyboardMouseGamepad, InputFrame } from './input';
 import { Soundscape } from './audio';
 import { Hud } from './ui/hud';
 import { Look, LOOKS } from './render/look';
+import { FilmTreatment } from './render/film';
 import { Terrain } from './world/terrain';
+import { GroundMist, MIST_COUNTS } from './world/fx';
 import { Grass, GRASS_TIERS, GrassLook } from './world/grass';
 import { ToyKitten } from './chars/kitten';
 import { ToyKnight } from './chars/knight';
@@ -36,12 +38,15 @@ function loadSave(): Save {
 function writeSave(s: Save) { try { localStorage.setItem('whisker3', JSON.stringify(s)); } catch { /* not kept */ } }
 
 export async function run(params: URLSearchParams) {
+  const bootAt = performance.now();
+  const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 900;
   let stored: string | null = null;
   try { stored = localStorage.getItem('whisker3.q'); } catch { /* storage blocked */ }
   let qName: QualityName = (params.get('q') as QualityName) || (stored as QualityName) || (phone ? 'low' : 'medium');
   if (!QUALITY[qName]) qName = 'medium';
   const Q = QUALITY[qName];
+  W.__backend = 'WebGL 2';
   const hud = new Hud();
   hud.quality = qName;
   hud.progress(0.05, 'Starting…');
@@ -60,6 +65,8 @@ export async function run(params: URLSearchParams) {
   document.getElementById('app')!.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   const look = new Look(renderer, scene, Q.shadow);
+  const film = Q.name === 'low' ? null : new FilmTreatment();
+  if (film) renderer.compile(film.scene, film.camera);
   look.shadowSpan(Q.shadowSpan);
 
   // ---- Input, sound, characters.
@@ -81,11 +88,15 @@ export async function run(params: URLSearchParams) {
   let timeline: Timeline | null = null;
   let terrain: Terrain | null = null;
   let grass: Grass | null = null;
+  let mist: GroundMist | null = null;
   let root = new THREE.Group();
   scene.add(root);
   let ctx: Ctx | null = null;
   let paused = false, started = false, loading = false;
+  let changingLevel = false;
   let clockT = 0;
+  let loadToken = 0;
+  let callLabelKey = '';
   const sim = { move: new THREE.Vector2(), until: 0, jumpHeld: false };
   let freeCam: { pos: THREE.Vector3; look: THREE.Vector3; mm?: number } | null = null;
   const camera = new THREE.PerspectiveCamera(fovFromMM(28), innerWidth / innerHeight, 0.03, 6000);
@@ -98,26 +109,36 @@ export async function run(params: URLSearchParams) {
     const sc = new THREE.Color(p.sun).multiplyScalar(p.sunIntensity * 0.42), sky = new THREE.Color(p.hemiSky).multiplyScalar(p.hemiIntensity * 0.9);
     grass = new Grass(t, GRASS_TIERS[Q.name], gl, { sunDir: look.sunDir.clone(), sun: sc, sky, ground: new THREE.Color(p.hemiGround) });
     root.add(grass.group);
+    mist = new GroundMist(t, MIST_COUNTS[Q.name]);
+    root.add(mist.mesh);
   };
 
   async function load(id: string, checkpoint: string | null) {
+    if (loading) return;
     loading = true;
+    const token = ++loadToken;
+    hud.resetSceneUI();
     const L = LEVELS[id] ?? LEVELS.prologue;
+    game = null; timeline = null; ctx = null;
+    input.clear(); sim.until = 0; sim.move.set(0, 0); sim.jumpHeld = false;
+    acc = 0; freeCam = null; knightFade = 1; skipArm = 0;
     if (level) { level.dispose?.(); }
     scene.remove(root);
     root.traverse((o: any) => { if (o.isMesh || o.isInstancedMesh) { o.geometry?.dispose?.(); } });
-    grass?.dispose(); terrain?.dispose(); grass = null; terrain = null;
+    grass?.dispose(); terrain?.dispose(); mist?.dispose(); grass = null; terrain = null; mist = null;
     physics?.world.free();
     root = new THREE.Group(); root.name = `Level_${id}`;
     scene.add(root);
     physics = await Physics.create(H);
     look.set(LOOKS[L.look] ?? LOOKS.morning);
+    // Spatial scenery beyond the fully fogged horizon contributes no visible detail.
+    camera.far = look.preset.fogFar * 1.25; camera.updateProjectionMatrix();
     WIND.base = 0.3; WIND.gust = 0; WIND.push = 0; WIND.sheltered = () => false;
     level = L;
     ctx = {
-      scene, root, physics, look, quality: Q, renderer, camera, hud, audio, kitten, knight,
+      scene, root, physics, look, quality: Q, renderer, camera, hud, audio, kitten, knight, time: clockT,
       game: null as any, timeline: null as any, touch: () => input.touchMode,
-      next: (n) => { void transition(n); }, checkpoint: (name) => { save.level = id; save.checkpoint = name; writeSave(save); },
+      next: (n) => { if (token === loadToken) void transition(n); }, checkpoint: (name) => { if (token === loadToken) { save.level = id; save.checkpoint = name; writeSave(save); } },
       padLabel: (code, text) => input.label(code, text), setTerrain,
     };
     const info: LevelInfo = await L.build(ctx);
@@ -130,7 +151,9 @@ export async function run(params: URLSearchParams) {
     hud.setChapters(LEVEL_ORDER.map((l) => ({ id: l, title: LEVELS[l].title, unlocked: save.unlocked.includes(l) || params.has('all') })));
     L.start?.(ctx, checkpoint);
     // Compile every material against this level's lights before play.
-    renderer.compile(scene, camera);
+    hud.progress(0.8, 'Preparing the first view…');
+    await nextPaint();
+    await renderer.compileAsync(scene, camera);
     for (const v of L.warmViews?.() ?? []) {
       camera.position.set(...v.pos); camera.lookAt(...v.look); camera.updateMatrixWorld();
       look.update(0, new THREE.Vector3(...v.look));
@@ -140,17 +163,21 @@ export async function run(params: URLSearchParams) {
   }
 
   // Between levels: to black, build, back in.
-  async function transition(id: string) {
-    if (loading) return;
-    await hud.fade(1, 1.2);
-    await load(id, null);
-    hud.fadeLevel(1);
-    level?.begin?.(ctx!);
-    setTimeout(() => { if (!timeline?.playing) void hud.fade(0, 1.4); }, 120);
+  async function transition(id: string, checkpoint: string | null = null, fadeSecs = 1.2) {
+    if (loading || changingLevel) return;
+    changingLevel = true;
+    try {
+      await hud.fade(1, fadeSecs);
+      await load(id, checkpoint);
+      hud.fadeLevel(1);
+      level?.begin?.(ctx!);
+      if (!timeline?.playing) await hud.fade(0, 1.4);
+    } finally { changingLevel = false; }
   }
 
   function wireGame(g: Game) {
     g.onSwitch = (to) => audio.play('clank', to.char.body.pos, 0.12);
+    g.onHint = () => level?.hint?.(ctx!);
     g.onWait = (who, waiting) => hud.say(`The ${who === g.knight ? 'knight' : 'kitten'} ${waiting ? 'waits here' : 'comes with you'}.`, 2.2);
     g.onFall = (_a, phase) => { hud.fade(phase === 'out' ? 1 : 0, 0.28); };
     g.onSink = (a) => { if (a === g.knight) hud.say('Too deep for him in all that steel.', 3); };
@@ -169,17 +196,22 @@ export async function run(params: URLSearchParams) {
 
   // ---- Menu.
   hud.onMenu = (a, v) => {
-    if (a === 'pause') paused = true;
-    else if (a === 'unpause') paused = false;
+    if (a === 'pause') { paused = true; input.clear(); document.exitPointerLock?.(); }
+    else if (a === 'unpause') { paused = false; input.clear(); }
     else if (a === 'volume') audio.setVolume(+v!);
     else if (a === 'quality') { try { localStorage.setItem('whisker3.q', v!); } catch { /* */ } location.reload(); }
     else if (a === 'chapter') { paused = false; void transition(v!); }
-    else if (a === 'restart') { paused = false; void (async () => { await hud.fade(1, 0.8); await load(level!.id, save.checkpoint); level?.begin?.(ctx!); void hud.fade(0, 1); })(); }
+    else if (a === 'restart') { paused = false; void transition(level!.id, save.checkpoint, 0.8); }
   };
+
+  let acc = 0;
+  let knightFade = 1;
+  let skipArm = 0;
 
   // ---- First level.
   const first = params.get('level') || (params.has('fresh') ? 'prologue' : save.level);
   await load(LEVELS[first] ? first : 'prologue', params.has('fresh') ? null : save.checkpoint);
+  W.__loadMs = performance.now() - bootAt;
   hud.progress(1);
   hud.ready(save.level !== 'prologue' && !params.has('level') ? 'Continue' : 'Play', () => {
     audio.start(); started = true;
@@ -205,15 +237,16 @@ export async function run(params: URLSearchParams) {
   };
 
   // ---- Loop.
-  let acc = 0;
   const kHead = new THREE.Vector3(), nHead = new THREE.Vector3();
   const frame = (dt: number, render = true) => {
     const g = game!, tl = timeline!, c = ctx!;
+    if (paused || loading) dt = 0;
     clockT += dt;
+    c.time = clockT;
     WIND.time = clockT;
     let inp: InputFrame = input.poll(dt);
     if (sim.until > clockT) inp = { ...inp, move: sim.move.clone(), jumpHeld: inp.jumpHeld || sim.jumpHeld };
-    if (!started || paused || loading) inp = { ...inp, move: new THREE.Vector2(), look: new THREE.Vector2(), jumpPressed: false, switchPressed: false, interactPressed: false, waitPressed: false };
+    if (!started || paused || loading) inp = { ...inp, move: new THREE.Vector2(), look: new THREE.Vector2(), jumpHeld: false, jumpPressed: false, switchPressed: false, interactPressed: false, waitPressed: false, resetPressed: false, hintPressed: false, skipPressed: false, zoom: 0 };
     if (!paused && !loading) {
       level?.update?.(dt, c);
       g.handleInput(inp);
@@ -221,6 +254,9 @@ export async function run(params: URLSearchParams) {
       while (acc >= H) { g.fixedStep(H, inp); acc -= H; }
       physics!.sync(acc / H);
     }
+    // Timeline placement must follow held motors and precede posing, so scripted walk velocity and grounding
+    // drive this frame's animation rather than being cleared by the next fixed physics step.
+    if (tl.playing && !paused && !loading) tl.update(dt, camera);
     const alpha = acc / H;
     kitten.headPos(kHead); knight.headPos(nHead);
     const ground = (a: { ground: (x: number, z: number) => number }) => a.ground;
@@ -236,8 +272,7 @@ export async function run(params: URLSearchParams) {
       else { skipArm = 2.5; hud.skipHint(true, input.touchMode); }
     }
     if (!tl.playing || skipArm === 0) hud.skipHint(false);
-    if (tl.playing) tl.update(dt, camera);
-    else g.camera.update(dt, g.subject(), started ? inp.look : new THREE.Vector2(), inp.zoom, physics!);
+    if (!tl.playing) g.camera.update(dt, g.subject(), started ? inp.look : new THREE.Vector2(), inp.zoom, physics!);
     // Cutscene camera checks (tests): the lens inside a character or inside the world.
     if (tl.playing && camIssues) {
       const cp = camera.position;
@@ -264,6 +299,7 @@ export async function run(params: URLSearchParams) {
       knight.setFade(knightFade);
     }
     const focus = g.active.char.renderPos;
+    mist?.update(dt, focus, scene.fog as THREE.Fog, g.active.char.body.swimming ? 0.7 : 1);
     look.update(dt, tl.playing ? cutFocus(camera, focus) : focus, WIND.dir);
     if (grass) {
       grass.pushers[0].set(kitten.renderPos.x, kitten.renderPos.z, 0.22, kitten.carriedBy ? 0 : 1);
@@ -276,9 +312,15 @@ export async function run(params: URLSearchParams) {
     audio.update(dt);
     // HUD.
     input.showPad?.(started && !tl.playing);
+    if (g.canSwitch) {
+      const label = g.active === g.knight && g.carry.holding ? 'Set down' : g.follower.mode === 'wait' ? 'Call' : 'Wait';
+      const key = `${loadToken}:${label}`;
+      if (callLabelKey !== key) { input.label('KeyQ', label); callLabelKey = key; }
+    }
     const a = g.active;
     const state = a === g.knight && g.carry.holding ? 'carrying' : '';
-    hud.who(started && !tl.playing ? (a === g.kitten ? 'kitten' : 'knight') : null, g.canSwitch, state);
+    const companionState = g.companion.motor.mode === 'held' ? 'holding' : g.follower.mode === 'wait' ? 'waiting' : 'following';
+    hud.who(started && !tl.playing ? (a === g.kitten ? 'kitten' : 'knight') : null, g.canSwitch, state, companionState);
     const pr = started && !tl.playing ? g.prompt() : null;
     hud.prompt(pr ? pr.text : null, pr ? (pr.key === 'jump' ? (input.touchMode ? 'Jump' : '␣') : (input.touchMode ? 'Act' : 'E')) : undefined);
     if (physLines) {
@@ -289,13 +331,11 @@ export async function run(params: URLSearchParams) {
       g.computeBoundingSphere();
       if (!physLines.parent) scene.add(physLines);
     }
-    if (render) renderer.render(scene, camera);
+    if (render) { renderer.render(scene, camera); film?.render(renderer, clockT); }
   };
   // ?phys: the colliders drawn as lines over the scene.
   const physLines = params.has('phys') ? new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false })) : null;
   if (physLines) { physLines.frustumCulled = false; physLines.renderOrder = 10; }
-  let knightFade = 1;
-  let skipArm = 0;
   const camIssues: string[] | null = params.has('camcheck') ? [] : null;
   W.__camIssues = camIssues;
   // In a cutscene the shadows follow what the camera looks at.
@@ -328,6 +368,7 @@ export async function run(params: URLSearchParams) {
     begin: () => { if (hud.go && !hud.started) hud.go(); else { started = true; audio.start(); level?.begin?.(ctx!); } },
     play: () => { started = true; },
     load: (id: string) => load(id, null),
+    pause: (on: boolean) => { paused = on; input.clear(); },
     go: (id: string) => transition(id),
     simMove: (x: number, y: number, seconds: number, jumpHeld = false) => { sim.move.set(x, y); sim.until = clockT + seconds; sim.jumpHeld = jumpHeld; },
     step: (n: number, dt = H) => { for (let i = 0; i < n; i++) frame(dt, false); },
@@ -352,10 +393,10 @@ export async function run(params: URLSearchParams) {
     call: () => game!.handleInput({ ...input.poll(0), waitPressed: true }),
     swap: () => game!.handleInput({ ...input.poll(0), switchPressed: true }),
     state: () => {
-      const s = (a: any) => ({ pos: a.char.body.pos.toArray().map((v: number) => +v.toFixed(3)), grounded: a.motor.grounded, mode: a.motor.mode, climb: !!a.char.body.climb, swim: a.motor.swimming, vel: a.motor.vel.toArray().map((v: number) => +v.toFixed(2)) });
+      const s = (a: any) => ({ pos: a.char.body.pos.toArray().map((v: number) => +v.toFixed(3)), grounded: a.char.body.grounded, mode: a.motor.mode, climb: !!a.char.body.climb, swim: a.motor.swimming, vel: a.char.body.vel.toArray().map((v: number) => +v.toFixed(2)) });
       return { active: game!.active === game!.kitten ? 'kitten' : 'knight', kitten: s(game!.kitten), knight: s(game!.knight), holding: game!.carry.holding, follow: game!.follower.mode };
     },
-    perf: () => ({ fps: +(1000 / perf.ema).toFixed(1), cpu: +perf.cpu.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, scale, ratio: renderer.getPixelRatio(), q: Q.name }),
+    perf: () => ({ loadMs: Math.round(W.__loadMs), fps: +(1000 / perf.ema).toFixed(1), cpu: +perf.cpu.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, scale, ratio: renderer.getPixelRatio(), q: Q.name }),
     // Average JS time of n frames of play (sim + animation + culling + draw submission), rendering each.
     bench: (n = 60) => { const t0 = performance.now(); for (let i = 0; i < n; i++) frame(H, true); return +((performance.now() - t0) / n).toFixed(2); },
   };

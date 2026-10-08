@@ -1,9 +1,89 @@
 // Atmosphere (v3): columns of smoke over the battlefield, crows wheeling, a small fire, and streaks that show the
 // wind. All cheap: instanced quads posed on the GPU or a handful of meshes.
 import * as THREE from 'three';
-import { toy } from '../render/materials';
+import { toy, MOOR_FOG, MOOR_FOG_PARS, AIR_LEVEL } from '../render/materials';
 import { WIND } from '../body';
 import { rng } from './foliage';
+import { noiseTexture } from '../render/look';
+import type { Terrain } from './terrain';
+
+export const MIST_COUNTS: Record<string, number> = { low: 16, medium: 28, high: 42 };
+
+// Ground mist is one instanced draw on every tier, using the same tiny noise tile as sky and water. World-space
+// roots drift downwind and wrap outside the camera's clear foreground; GPU height-map samples keep it on the land.
+export class GroundMist {
+  mesh: THREE.Mesh;
+  amount = 1;
+  private u: Record<string, THREE.IUniform>;
+  constructor(terrain: Terrain, count = MIST_COUNTS.medium) {
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const seeds = new Float32Array(count * 4), R = rng(6143);
+    for (let i = 0; i < seeds.length; i++) seeds[i] = R();
+    g.setAttribute('seed', new THREE.InstancedBufferAttribute(seeds, 4));
+    g.instanceCount = count;
+    const t = terrain.spec;
+    this.u = {
+      time: { value: 0 }, center: { value: new THREE.Vector3() }, wind: { value: new THREE.Vector2(1, 0) },
+      strength: { value: 0.3 }, gust: { value: 0 }, amount: { value: 1 }, color: { value: new THREE.Color('#b4bfc4') },
+      noise: { value: noiseTexture() }, map: { value: terrain.map },
+      mapOrigin: { value: new THREE.Vector2(t.cx - t.half, t.cz - t.half) }, mapSize: { value: t.half * 2 }, mapN: { value: terrain.n },
+    };
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.u, transparent: true, depthWrite: false, fog: false,
+      vertexShader: /* glsl */ `
+        uniform float time, strength, gust, amount, mapSize, mapN;
+        uniform vec3 center; uniform vec2 wind, mapOrigin; uniform sampler2D map;
+        attribute vec4 seed; varying vec2 vUv; varying vec3 vWorld; varying float vAlpha;
+        void main(){
+          float radius = 74.0;
+          vec2 drift = wind * time * (0.6 + strength * 1.4) * (0.65 + seed.z * 0.7);
+          vec2 xz = mod(seed.xy * radius * 2.0 + drift - center.xz + radius, radius * 2.0) - radius + center.xz;
+          vec2 uv = (xz - mapOrigin) / mapSize;
+          vec2 tuv = (clamp(uv, 0.0, 1.0) * (mapN - 1.0) + 0.5) / mapN;
+          float ground = texture2D(map, tuv).r;
+          vec3 world = vec3(xz.x, ground + 0.6 + seed.z * 0.55, xz.y);
+          float width = 13.0 + seed.w * 19.0;
+          vec4 mvPosition = viewMatrix * vec4(world, 1.0);
+          mvPosition.xy += position.xy * vec2(width, width * (0.07 + seed.z * 0.035));
+          gl_Position = projectionMatrix * mvPosition;
+          vUv = position.xy + 0.5; vWorld = world;
+          float distanceFade = smoothstep(7.0, 17.0, length(world - cameraPosition)) *
+            (1.0 - smoothstep(58.0, radius, length(xz - center.xz)));
+          // The lower hills collect mist; a gust pulls it into thin horizontal streamers.
+          vAlpha = distanceFade * amount * (0.14 + seed.w * 0.08) * (1.0 + gust * 0.18);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D noise; uniform vec3 color; uniform float time; uniform vec2 wind;
+        varying vec2 vUv; varying vec3 vWorld; varying float vAlpha;
+        void main(){
+          vec2 q = (vUv - 0.5) * vec2(1.0, 1.9);
+          float edge = 1.0 - smoothstep(0.13, 0.5, length(q));
+          float n = texture2D(noise, vWorld.xz * 0.036 + vUv * vec2(0.8, 0.25) - wind * time * 0.009).g;
+          float alpha = edge * smoothstep(0.2, 0.76, n) * vAlpha;
+          if (alpha < 0.003) discard;
+          gl_FragColor = vec4(color, alpha);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    this.mesh = new THREE.Mesh(g, mat);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 4;
+    this.mesh.name = 'GroundMist';
+  }
+  update(dt: number, focus: THREE.Vector3, fog: THREE.Fog | null, amount = this.amount) {
+    this.u.time.value += dt;
+    (this.u.center.value as THREE.Vector3).copy(focus);
+    (this.u.wind.value as THREE.Vector2).copy(WIND.dir);
+    this.u.strength.value = WIND.base; this.u.gust.value = WIND.gust;
+    this.u.amount.value = Math.max(0, amount);
+    if (fog) (this.u.color.value as THREE.Color).copy(fog.color);
+    this.mesh.visible = amount > 0.005;
+  }
+  dispose() { this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }
+}
 
 // A column of smoke: soft puffs rising and leaning downwind, drawn as camera-facing quads (one draw).
 export class Smoke {
@@ -22,16 +102,19 @@ export class Smoke {
       time: { value: 0 }, base: { value: at.clone() }, height: { value: height }, wind: { value: new THREE.Vector2() },
       color: { value: new THREE.Color(color) }, opacity: { value: opacity }, width: { value: width },
     }]);
+    this.u.airLevel = AIR_LEVEL;
     const m = new THREE.ShaderMaterial({
       uniforms: this.u, transparent: true, depthWrite: false, fog: true,
       vertexShader: `
         uniform float time, height, width; uniform vec3 base; uniform vec2 wind; attribute vec2 seed;
         varying vec2 vUv; varying float vA;
+        varying float vAirHeight;
         #include <fog_pars_vertex>
         void main(){
           float t = fract(seed.x + time * 0.022 * (0.8 + seed.y * 0.4));
           float h = t * height;
           vec3 c = base + vec3(wind.x * h * 0.5 + sin(seed.y * 30.0 + t * 4.0) * (0.4 + h * 0.05), h, wind.y * h * 0.5 + cos(seed.y * 21.0) * (0.4 + h * 0.05));
+          vAirHeight = c.y;
           float s = (1.5 + t * 9.0) * width;
           vec4 mvPosition = viewMatrix * vec4(c, 1.0);
           mvPosition.xy += position.xy * s;
@@ -42,13 +125,14 @@ export class Smoke {
         }`,
       fragmentShader: `
         uniform vec3 color; uniform float opacity; varying vec2 vUv; varying float vA;
+        ${MOOR_FOG_PARS}
         #include <fog_pars_fragment>
         void main(){
           float d = length(vUv - 0.5) * 2.0;
-          float a = smoothstep(1.0, 0.2, d) * vA * opacity;
+          float a = (1.0 - smoothstep(0.2, 1.0, d)) * vA * opacity;
           gl_FragColor = vec4(color * (0.85 + 0.3 * (1.0 - vUv.y)), a);
           #include <colorspace_fragment>
-          #include <fog_fragment>
+          ${MOOR_FOG}
         }`,
     });
     this.mesh = new THREE.Mesh(g, m);
@@ -56,7 +140,7 @@ export class Smoke {
     this.mesh.renderOrder = 3;
     this.mesh.name = 'Smoke';
   }
-  update(dt: number) { this.u.time.value += dt; (this.u.wind.value as THREE.Vector2).copy(WIND.dir).multiplyScalar(0.3 + WIND.base); }
+  update(dt: number) { this.u.time.value += dt; (this.u.wind.value as THREE.Vector2).copy(WIND.dir).multiplyScalar(0.3 + WIND.base + WIND.gust * 0.65); }
 }
 
 // Crows: black birds circling over a point, flapping now and then; a caw call is up to the level.
@@ -157,12 +241,12 @@ export class WindStreaks {
           vec2 side = vec2(-wind.y, wind.x);
           vec2 xz = center.xz + side * (seed.z - 0.5) * 22.0 + wind * (life - 0.5) * 30.0;
           float y = center.y + 0.3 + seed.w * 3.5 + sin(life * 6.0 + seed.x * 20.0) * 0.3;
-          float len = 1.2 + seed.y * 2.0;
-          vec3 p = vec3(xz.x, y, xz.y) + vec3(wind.x, 0.0, wind.y) * position.x * len + vec3(0.0, position.y * 0.012, 0.0);
+          float len = 0.55 + seed.y * 1.1;
+          vec3 p = vec3(xz.x, y, xz.y) + vec3(wind.x, 0.0, wind.y) * position.x * len + vec3(0.0, position.y * 0.006, 0.0);
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
           vA = sin(3.14159 * life) * step(seed.y, amount); vX = position.x;
         }`,
-      fragmentShader: `varying float vA; varying float vX; void main(){ float a = vA * sin(3.14159 * vX) * 0.55; gl_FragColor = vec4(1.0, 1.0, 1.0, a); }`,
+      fragmentShader: `varying float vA; varying float vX; void main(){ float a = vA * sin(3.14159 * vX) * 0.12; gl_FragColor = vec4(0.78, 0.84, 0.86, a); }`,
     });
     this.mesh = new THREE.Mesh(g, m);
     this.mesh.frustumCulled = false;
@@ -172,6 +256,6 @@ export class WindStreaks {
     this.u.time.value += dt;
     (this.u.center.value as THREE.Vector3).copy(center);
     (this.u.wind.value as THREE.Vector2).copy(WIND.dir);
-    this.u.amount.value = Math.min(1, WIND.base * 0.35 + WIND.gust * 0.9);
+    this.u.amount.value = Math.min(1, WIND.base * 0.1 + WIND.gust * 0.85);
   }
 }

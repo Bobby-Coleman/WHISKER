@@ -5,6 +5,29 @@
 import * as THREE from 'three';
 import { RAPIER, Physics, L } from '../physics';
 import { toy } from '../render/materials';
+import { noiseTexture } from '../render/look';
+
+let TURF: THREE.MeshStandardMaterial | null = null;
+function turfMaterial() {
+  if (TURF) return TURF;
+  const base = toy('#ffffff', { vertexColors: true, rough: 0.91 });
+  TURF = base.clone();
+  TURF.onBeforeCompile = (sh, renderer) => {
+    base.onBeforeCompile(sh, renderer);
+    sh.uniforms.turfNoise = { value: noiseTexture() };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 turfXZ;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nturfXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D turfNoise; varying vec2 turfXZ;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        // Fine peat/turf variation breaks the broad grid colours without adding geometry or a loaded texture.
+        vec2 turf = texture2D(turfNoise, turfXZ * 0.45).rg;
+        diffuseColor.rgb *= 0.88 + turf.r * 0.16 + turf.g * 0.08;`);
+  };
+  TURF.customProgramCacheKey = () => 'moor-turf';
+  return TURF;
+}
 
 export type TerrainSpec = {
   cx: number; cz: number; half: number; step: number; // the playable square: centre, half-size, grid spacing (m)
@@ -53,7 +76,7 @@ export class Terrain {
     g.setAttribute('color', new THREE.BufferAttribute(colr, 3));
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeVertexNormals();
-    this.mesh = new THREE.Mesh(g, toy('#ffffff', { vertexColors: true, rough: 0.95 }));
+    this.mesh = new THREE.Mesh(g, turfMaterial());
     this.mesh.receiveShadow = true;
     this.mesh.name = 'Terrain';
     // The far skirt: coarse, and deep under the near square (its big triangles would otherwise bridge a narrow glen).

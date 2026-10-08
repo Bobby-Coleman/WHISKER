@@ -34,8 +34,8 @@ export type PoseContext = {
   active: boolean;
 };
 
-// The wind: a direction (x, z, unit), a base strength and gusts. Levels set it; grass, banners, the cape and the
-// kitten's motor read it. `gust` 0..1 is the current gust; `push` is the force on a light body in the open (m/s²).
+// Atmospheric wind: levels set the direction and strength for grass, mist, banners, water and cloth.
+// It never moves walking characters. `push` is reserved for airborne throws at an authored puzzle crossing.
 export const WIND = {
   dir: new THREE.Vector2(0.8, -0.6).normalize(),
   base: 0.3,

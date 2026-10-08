@@ -12,3 +12,7 @@ public/packs-review/
 dist-kitten/
 dist-knight/
 dist-art/
+
+# Local review and release output
+work/
+release/

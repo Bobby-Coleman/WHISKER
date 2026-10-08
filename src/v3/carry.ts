@@ -3,10 +3,11 @@
 // Q sets her down in front of him. She rides in his hands with her motor held; he cannot jump while carrying her.
 import * as THREE from 'three';
 import { Physics, SOLID } from './physics';
-import { Motor } from './motor';
+import { Motor, MOVE } from './motor';
+import { WIND } from './body';
 import type { Avatar } from './game';
 
-// From his hands (about 1.1 m up) she rises some 2 m: ledges up to about 3 m high, a metre or two ahead.
+// From his hands she rises some 2 m. A designated gust-assisted crossing can extend the short throw.
 export const THROW = { forward: 2.6, up: 7.5, reach: 1.15 };
 
 export class Carry {
@@ -59,23 +60,56 @@ export class Carry {
     k.char.carriedBy = null; n.char.holding = null;
   }
 
+  // The same release point feeds the actual throw and its optional aiming ribbon. Predicting uses a small
+  // fixed buffer and the motor's gravity/drag, so it costs nothing when she is not being carried.
+  private throwStart() {
+    const n = this.knight, k = this.kitten, start = this.hold.clone(), B = k.motor.build;
+    const mid = start.clone(); mid.y += B.height / 2;
+    if (this.physics.overlaps(mid, B.radius, SOLID)) { start.copy(n.char.body.pos); start.y += n.motor.build.height + 0.05; }
+    const fwd = new THREE.Vector3(Math.sin(n.char.body.yaw), 0, Math.cos(n.char.body.yaw));
+    if (this.physics.raycast(mid, fwd, 0.95, SOLID)) { start.copy(n.char.body.pos).addScaledVector(fwd, 0.1); start.y += n.motor.build.height + 0.05; }
+    return start;
+  }
+
+  predict(out: Float32Array, windSpeed = WIND.push) {
+    if (!this.holding) return 0;
+    const p = this.throwStart(), yaw = this.knight.char.body.yaw;
+    let vx = Math.sin(yaw) * THROW.forward, vz = Math.cos(yaw) * THROW.forward, vy = THROW.up;
+    let wx = 0, wz = 0;
+    const dt = 0.045, count = Math.floor(out.length / 3), prev = p.clone(), delta = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      out[i * 3] = p.x; out[i * 3 + 1] = p.y + this.kitten.motor.build.height * 0.5; out[i * 3 + 2] = p.z;
+      prev.copy(p);
+      vx *= 1 - MOVE.airDrag * dt; vz *= 1 - MOVE.airDrag * dt;
+      vy -= (vy > 0 ? MOVE.gUp : MOVE.gDown) * dt;
+      const open = windSpeed > 0.05 && !WIND.sheltered(p), f = dt * (open ? 3.5 : 6);
+      wx += ((open ? WIND.dir.x * windSpeed : 0) - wx) * f;
+      wz += ((open ? WIND.dir.y * windSpeed : 0) - wz) * f;
+      p.x += (vx + wx) * dt; p.y += vy * dt; p.z += (vz + wz) * dt;
+      const origin = prev.clone(); origin.y += this.kitten.motor.build.height * 0.5;
+      delta.subVectors(p, prev); const distance = delta.length();
+      const hit = distance > 0 ? this.physics.raycast(origin, delta.multiplyScalar(1 / distance), distance, SOLID) : null;
+      if (hit) {
+        const j = Math.min(count - 1, i + 1);
+        out[j * 3] = hit.point.x; out[j * 3 + 1] = hit.point.y; out[j * 3 + 2] = hit.point.z;
+        return j + 1;
+      }
+    }
+    return count;
+  }
+
   // Up and forward in an arc. She starts at his hands (or above his shoulders if a wall is in the way of them).
   throw() {
     if (!this.holding) return;
     const n = this.knight, k = this.kitten, kb = k.char.body;
     this.release();
-    const start = this.hold.clone();
-    const B = k.motor.build;
-    const mid = start.clone(); mid.y += B.height / 2;
-    if (this.physics.overlaps(mid, B.radius, SOLID)) { start.copy(n.char.body.pos); start.y += n.motor.build.height + 0.05; }
+    const start = this.throwStart();
     const yaw = n.char.body.yaw;
     // Close up to a wall he heaves her from over his head, so she clears it instead of hitting its face.
-    const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-    const near = this.physics.raycast(mid, fwd, 0.95, SOLID);
-    if (near) { start.copy(n.char.body.pos).addScaledVector(fwd, 0.1); start.y += n.motor.build.height + 0.05; }
     k.motor.place(start, yaw);
     kb.prevPos.copy(kb.pos);
     k.motor.launch(new THREE.Vector3(Math.sin(yaw) * THROW.forward, THROW.up, Math.cos(yaw) * THROW.forward));
+    k.motor.thrown = true;
     // Clear of his capsule before she can collide with it.
     k.motor.passThrough(n.motor.collider, 0.45);
   }

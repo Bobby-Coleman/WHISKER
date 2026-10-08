@@ -40,8 +40,8 @@ export const KITTEN_PROPS: Proportions = {
   },
 };
 
-export const HEAD_SIZE = 0.84;
-export const HEAD_OFFSET = new THREE.Vector3(0, 0.054, 0.006); // the head's centre from the Head joint, at rest
+export const HEAD_SIZE = 0.9;
+export const HEAD_OFFSET = new THREE.Vector3(0, 0.039, 0.006); // the chin overlaps her collar instead of sitting on a visible neck stem
 export const TAIL_N = 5, TAIL_SEG = 0.022;
 // The sword: its origin at the crossguard, the blade up +y, the grip down -y.
 export const SWORD = { blade: 0.3, grip: 0.046, pommel: 0.054 };
@@ -152,9 +152,13 @@ export function buildBiped(av: Avatar, fade: Fade): BipedModel {
   }
   {
     const c = P('neck_01').add(new THREE.Vector3(0, 0.008, 0.006));
-    const g = starMesh(union(0.008, ellipsoid(c.x, c.y, c.z - 0.002, 0.031, 0.013, 0.028), ellipsoid(c.x, c.y + 0.002, c.z + 0.016, 0.021, 0.012, 0.012)), c, 18, 10);
+    // A furry neck connects collar and chin even when she looks up at the knight. A flat ruff on the chest alone
+    // left the head visibly floating as the head-centre offset swung away from it.
+    const g = starMesh(union(0.008,
+      ellipsoid(c.x, c.y + 0.009, c.z - 0.002, 0.026, 0.026, 0.023),
+      ellipsoid(c.x, c.y + 0.024, c.z + 0.006, 0.026, 0.023, 0.025)), c, 18, 12);
     paint(g, (p, _n, o) => mix(FUR.fawn, FUR.cheek, sstep(c.z - 0.012, c.z + 0.022, p.z) * 0.8, o));
-    add('fur', g, two(bone('spine_03'), bone('neck_01'), (p) => sstep(c.y - 0.012, c.y + 0.01, p.y)));
+    add('fur', g, two(bone('neck_01'), bone('Head'), (p) => sstep(c.y + 0.005, c.y + 0.028, p.y)));
   }
   {
     // Fluffy: thick, lumpy with tufts, fullest past its middle, a soft point; pale at the tip.
