@@ -28,15 +28,18 @@ export const KC = {
 };
 
 // Points on the gauntlet (left hand's frame: wrist at 0, fingers -Y, palm -X, thumb +Z).
-const GS = 1.3; // the gauntlets' size over a plain hand's
+const GS = 1.08; // armour adds a cuff, without turning a proportional hand into an oversized mitten
 export const HAND = {
   palm: new THREE.Vector3(-0.036, -0.085, 0.004).multiplyScalar(GS), // the palm's middle, facing -X
   grip: new THREE.Vector3(-0.034, -0.103, 0.0).multiplyScalar(GS), // through the curled fingers (a fist's hole), along Z
 };
 // The helm's middle in the head bone's frame; the wound and the spear in the chest's (spine_02) frame.
-export const HELM_CENTRE = new THREE.Vector3(0, 0.19, 0.012);
+// The original bucket occupied nearly a quarter of his height. Keep its collar-level pivot and details but
+// compress it to a human great helm; the same mapping is used by gaze/collision probes as by the geometry.
+export function helmShape(p: THREE.Vector3) { return p.set(p.x * 0.84, 1.39 + (p.y - 1.372) * 0.72, p.z * 0.84); }
+export const HELM_CENTRE = new THREE.Vector3(0, 0.124, 0.01);
 // The eye slit's middle on the helm's front (character space at rest).
-export const EYE = new THREE.Vector3(0, 1.634, 0.179 * 1.05 + 0.012 + 0.016);
+export const EYE = helmShape(new THREE.Vector3(0, 1.634, 0.179 * 1.05 + 0.012 + 0.016));
 // The wound: on the tabard round from the front toward his left (phi), at a height at rest.
 export const WOUND_AT = { phi: 0.74, y: 1.245 };
 
@@ -70,6 +73,7 @@ export type KnightModel = {
   panels: Panel[];
   skirtHolder: THREE.Object3D;
   scabbard: THREE.Bone;
+  drawnSword: THREE.Bone; // long blade held upright at rest; baked into the same meshes
   spear: THREE.Bone; // scaled to nothing unless wounded
   pauldrons: { mesh: THREE.Object3D; side: 'l' | 'r'; relC: THREE.Quaternion; relU: THREE.Quaternion; off: THREE.Vector3 }[];
   stain: { attr: THREE.BufferAttribute; clean: Float32Array; bloody: Float32Array };
@@ -209,7 +213,7 @@ function paintG(g: G, color: string) {
 }
 
 // The helm's profile (character space at rest).
-const HELM_PROF: [number, number][] = [[1.372, 0.0], [1.373, 0.12], [1.376, 0.155], [1.383, 0.166], [1.395, 0.169], ...smooth([[1.41, 0.17], [1.5, 0.178], [1.6, 0.179], [1.7, 0.174], [1.752, 0.165]], 2), [1.775, 0.155], [1.79, 0.14], [1.798, 0.117], [1.8, 0.07], [1.8, 0.0]];
+const HELM_PROF: [number, number][] = [[1.372, 0.0], [1.373, 0.12], [1.376, 0.155], [1.383, 0.166], [1.395, 0.169], ...smooth([[1.41, 0.17], [1.5, 0.178], [1.6, 0.179], [1.7, 0.174], [1.752, 0.165]], 2), [1.775, 0.163], [1.79, 0.159], [1.798, 0.154], [1.8, 0.153], [1.8, 0.0]];
 const HELM_SZ = 1.05, HELM_Z = 0.012;
 function helmR(y: number) {
   const p = HELM_PROF;
@@ -418,7 +422,11 @@ export function buildKnight(av: Avatar): KnightModel {
     const p = helmPoint(phi, 1.667, 0.0055), n = helmPoint(phi, 1.667, 0.02).sub(p).normalize();
     helmParts.push(stud(p, n, 0.007, 0.005, KC.steel, 8));
   }
-  on('Head', merge(helmParts), steelM);
+  const helm = merge(helmParts), hp = helm.attributes.position;
+  const hv = new THREE.Vector3();
+  for (let i = 0; i < hp.count; i++) { helmShape(hv.fromBufferAttribute(hp, i)); hp.setXYZ(i, hv.x, hv.y, hv.z); }
+  helm.computeVertexNormals();
+  on('Head', helm, steelM);
 
   // ================= Torso (spine_02): the gambeson body and padded collar, the tabard over them.
   const bodyParts: G[] = [];
@@ -692,10 +700,10 @@ export function buildKnight(av: Avatar): KnightModel {
   {
     const phiW = WOUND_AT.phi, yW = WOUND_AT.y;
     tabardPoint(phiW, yW, 0, WOUND);
-    const dir = new THREE.Vector3(0.78, 0.34, 0.52).normalize();
+    const dir = new THREE.Vector3(0.5, 0.72, 0.3).normalize();
     spear.name = 'spear';
     const wood: G[] = [], steel: G[] = [];
-    const len = 0.58, r = 0.022;
+    const len = 0.4, r = 0.018;
     const a = WOUND.clone().addScaledVector(dir, -0.05), b = WOUND.clone().addScaledVector(dir, len);
     wood.push(tube((t) => a.clone().lerp(b, t), () => r, { steps: 8, segs: 12, caps: 'flat', color: (p) => C(KC.wood).multiplyScalar(0.85 + 0.15 * vnoise(p.x * 400, (p.y + p.z) * 30)) }));
     // The break: splinters of different lengths.
@@ -766,6 +774,21 @@ export function buildKnight(av: Avatar): KnightModel {
     gr.add(gm); meshes.push(gm);
   }
 
+  // His long sword upright before him, as in the reference. This joint changes pose/visibility at rest, while
+  // the existing scabbard remains his moving silhouette. It shares the steel/cloth meshes and materials.
+  const drawnSword = new THREE.Bone(); drawnSword.name = 'drawnSword'; av.root.add(drawnSword);
+  {
+    const blade = lathe([[0, 0.025], [0.88, 0.023], [1.1, 0.018], [1.22, 0]], {
+      segs: 4, sz: 0.2, color: (p) => C(p.z > 0 ? KC.steel : KC.steelDark),
+    });
+    const guard = tube((t) => new THREE.Vector3(-0.13 + 0.26 * t, 0.008 + 0.012 * Math.sin(t * Math.PI), 0), () => 0.013, { steps: 8, segs: 6, color: KC.steel });
+    const pommel = blob(0.031, 0.033, 0.024, { p: 2.8, segs: 10, rings: 6, color: KC.steel, deform: (p) => { p.y -= 0.197; } });
+    const grip = lathe([[-0.178, 0.018], [-0.025, 0.018]], { segs: 10, color: (p) => C(KC.grip).multiplyScalar(0.8 + 0.2 * Math.abs(Math.sin(p.y * 145))) });
+    for (const [g, mat] of [[merge([blade, guard, pommel]), steelM], [grip, clothM]] as [G, THREE.Material][]) {
+      const mesh = new THREE.Mesh(g, mat); mesh.name = 'drawnSword'; drawnSword.add(mesh); meshes.push(mesh);
+    }
+  }
+
   // ================= All of it into three skinned meshes on one skeleton (one draw each).
   const baked = bake(av, meshes, [clothM, steelM, bloodM], stains);
   const cloth = baked.meshes[0], steel = baked.meshes[1], blood = baked.meshes[2];
@@ -773,7 +796,8 @@ export function buildKnight(av: Avatar): KnightModel {
   // The skirt's ground samples now index the cloth mesh.
   const sk = baked.parts.find((p) => p.name === 'skirt')!;
   for (const p of panels) p.samples = p.samples.map((i) => i + sk.start);
-  return { fade, meshes: baked.meshes, cloth, steel, blood, parts: baked.parts, panels, skirtHolder, scabbard, spear, pauldrons, stain: baked.stain };
+  drawnSword.scale.setScalar(1e-4);
+  return { fade, meshes: baked.meshes, cloth, steel, blood, parts: baked.parts, panels, skirtHolder, scabbard, drawnSword, spear, pauldrons, stain: baked.stain };
 }
 
 // Bakes the parts (meshes hung on bones, as made) into one skinned mesh per material: each vertex weighted to the

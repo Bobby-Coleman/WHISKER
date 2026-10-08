@@ -77,6 +77,14 @@ export class ToyKitten implements ToyCharacter, KittenHost {
 
   meow(kind: Meow = 'meow') { this.current?.meow(kind); }
 
+  // The prologue ends asleep in his lap. Clear its persistent targets before changing outfit/chapter so the
+  // biped's very first pose is upright rather than inheriting that curl from the four-legged form.
+  resetStoryPose() {
+    this.sit = this.crouch = this.curl = this.nudge = 0;
+    this.lookTarget = null;
+    this.setForm(null);
+  }
+
   resetPose(ground: (x: number, z: number) => number) {
     const b = this.body;
     this.lastGround = ground;

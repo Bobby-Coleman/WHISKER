@@ -19,7 +19,7 @@ const CHARS_EXT: string = import.meta.env.VITE_CHARS_EXT || '.glb';
 // The clip library, loaded once: every bone's rotation; translation only for the pelvis (the root's motion is
 // dropped: the game moves the character).
 export function loadClips() {
-  library ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/ual_anims${CHARS_EXT}`).then((g) => {
+  library ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/ual_anims-lite${CHARS_EXT}`).then((g) => {
     const m = new Map<string, THREE.AnimationClip>();
     for (const c of g.animations) {
       c.tracks = c.tracks.filter((t) => {
@@ -35,7 +35,7 @@ export function loadClips() {
   return library;
 }
 function loadMannequin() {
-  mannequin ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/mannequin${CHARS_EXT}`).then((g) => g.scene);
+  mannequin ??= loader.loadAsync(`${import.meta.env.BASE_URL}chars/mannequin-lite${CHARS_EXT}`).then((g) => g.scene);
   return mannequin;
 }
 
@@ -286,6 +286,12 @@ export class Avatar {
   private footOff = [0, 0];
   private feet = [0, 1].map(() => ({ A: new THREE.Vector3(), B: new THREE.Vector3(), T: new THREE.Vector3() }));
   hipOff = 0; private reachOff = 0;
+  // A new spawn has different ground and gaze. Keeping the previous IK's hip offset can leave a character
+  // crouched after a story pose or a teleport, even though the locomotion clips have returned to standing.
+  resetGrounding() {
+    this.hipOff = this.reachOff = this.lookYaw = this.lookPitch = 0;
+    this.footOff[0] = this.footOff[1] = 0;
+  }
   // How far a foot's ankle must rise from `ankle` (world) for its shoe to clear the ground (the character's own
   // soles: a big boot's heel and toe reach further than the skeleton's foot).
   soleLift: ((i: number, ankle: THREE.Vector3, ground: (x: number, z: number) => number) => number) | null = null;

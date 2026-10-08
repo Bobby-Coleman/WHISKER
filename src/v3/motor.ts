@@ -108,6 +108,7 @@ export class Motor {
     b.yaw = b.prevYaw = yaw; b.turnRate = 0;
     b.vel.set(0, 0, 0); b.vy = 0; b.visualDY = 0;
     this.vel.set(0, 0, 0);
+    this.windVel.set(0, 0); this.wade = b.wade = 0; b.wind = 0;
     this.jumping = false; this.buffer = 0; this.coyote = 0; this.airTime = 0;
     this.swimming = b.swimming = false;
     this.mode = 'move';
@@ -293,7 +294,7 @@ export class Motor {
     const k = Math.min(1, ((wl < 0.01 ? SWIM.decel : SWIM.accel) * dt) / dl);
     vx += dvx * k; vz += dvz * k;
     // Afloat: eased to the surface, with a slow bob.
-    const want = surf - SWIM.float + Math.sin(performance.now() / 1000 * 2.6) * 0.004;
+    const want = surf - SWIM.float + Math.sin(this.physics.time * 2.6) * 0.004;
     let vy = THREE.MathUtils.clamp((want - b.pos.y) * 7, -1.2, 1.2);
     this.buffer = Math.max(0, this.buffer - dt);
     let lunge = false;

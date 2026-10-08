@@ -20,7 +20,7 @@ const GAITS = ['Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Crouch_Fwd_Loop'];
 const SPEED = { walk: 0.8, jog: 2.2, sprint: 3.3 };
 const CLIMB_DIST = 0.075; // (climb.ts) her body's distance from the face
 const SWIM_FLOAT = 0.1; // (motor.ts) her feet under the surface while she swims
-const LONG_CAPE = { cols: 6, rows: 7, w0: 0.15, w1: 0.27, len: 0.19, drape: 0.058, trim: false, folds: { n: 3.5, amp: 0.0055 } };
+const LONG_CAPE = { cols: 6, rows: 7, w0: 0.15, w1: 0.28, len: 0.22, drape: 0.058, trim: false, folds: { n: 3.5, amp: 0.0055 } };
 
 const V = () => new THREE.Vector3();
 const clamp = THREE.MathUtils.clamp, lerp = THREE.MathUtils.lerp;
@@ -146,6 +146,10 @@ export class BipedKitten implements KittenForm {
     Object.assign(this.w, { carry: carried ? 1 : 0, climb: climbing ? 1 : 0, swim: swimming ? 1 : 0, air: 0, sit: h.sit, crouch: h.crouch, curl: h.curl, nudge: h.nudge, wind: b.wind });
     this.spd = 0; this.moveW = 0; this.turn = 0; this.lastYaw = h.renderYaw; this.land = 0; this.takeoff = -1; this.dip = 0;
     this.tumble = -1; this.wasCarried = carried; this.wasGrounded = b.grounded; this.stillT = 1;
+    this.airTime = this.climbOver = this.climbT = 0; this.climbRef = null;
+    this.av.resetGrounding();
+    this.lastVy = b.vy;
+    this.tailA.fill(0); this.tailV.fill(0);
     this.snap = true;
     this.pose(0, { dt: 0, time: this.t, ground, lookAt: null, active: false });
     this.resetCloth();

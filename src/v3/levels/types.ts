@@ -21,6 +21,7 @@ export type Ctx = {
   camera: THREE.PerspectiveCamera;
   hud: Hud;
   audio: Soundscape;
+  time: number;
   kitten: ToyKitten;
   knight: ToyKnight;
   // Set once the level is built and the characters placed.
@@ -48,6 +49,7 @@ export type Level = {
   update?(dt: number, c: Ctx): void;
   // The call button (her meow).
   call?(c: Ctx, kind: string): void;
+  hint?(c: Ctx): void;
   dispose?(): void;
   // Camera views drawn once while loading so their shaders compile ahead.
   warmViews?(): { pos: [number, number, number]; look: [number, number, number] }[];

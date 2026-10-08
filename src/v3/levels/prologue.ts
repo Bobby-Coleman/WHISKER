@@ -38,7 +38,7 @@ function base(x: number, z: number) {
   h += 3.4 * Math.exp(-(x * x + z * z) / (2 * 15 * 15));
   // The valley's rim: steep wooded hills all round, and the far hills beyond.
   const r = Math.hypot((x - CENTER.x) / 1.0, (z - CENTER.y) / 1.12);
-  h += THREE.MathUtils.smoothstep(r, 136, 158) * 26 + THREE.MathUtils.smoothstep(r, 158, 900) * (60 + 70 * n2.fbm(x / 400, z / 400, 3));
+  h += THREE.MathUtils.smoothstep(r, 136, 166) * 10 + THREE.MathUtils.smoothstep(r, 166, 1000) * (26 + 30 * n2.fbm(x / 400, z / 400, 3));
   // The camp, levelled.
   const dc = Math.hypot(x - CAMP.x, z - CAMP.z);
   h += (campH() - h) * (1 - THREE.MathUtils.smoothstep(dc, 4, 10));
@@ -84,6 +84,7 @@ class Director {
 
   start() {
     const c = this.c;
+    c.kitten.resetStoryPose(); c.knight.resetStoryPose();
     c.kitten.setOutfit({ armour: false, cape: false, bow: false });
     c.knight.setOutfit({ wounded: true });
     c.game.canSwitch = false;
@@ -142,7 +143,7 @@ class Director {
       ],
       marks: [
         { at: 8.5, who: 'knight', path: leg1, speed: 0.75 },
-        { at: 18.6, who: 'knight', path: leg2, speed: 0.8, face: FACE },
+        { at: 18.6, who: 'knight', path: leg2, speed: 0.8, face: FACE, until: 25.8 },
       ],
       cues: [
         { at: 0.3, run: () => c.audio.play('caw', new THREE.Vector3(-4, 8, 4), 1), onSkip: false },
@@ -174,6 +175,7 @@ class Director {
     const c = this.c;
     if (this.stage === 'walk') return;
     this.stage = 'walk';
+    this.seat(true);
     c.kitten.nudge = 0; c.kitten.lookTarget = null;
     c.game.switchTo(this.k);
     c.hud.objective('Find him. <b>The crows</b> are circling over the hawthorn.');
@@ -186,7 +188,7 @@ class Director {
     this.answerT = 2.5;
     const d = this.k.char.body.pos.distanceTo(SEAT);
     const g = THREE.MathUtils.clamp(2.2 - d / 60, 0.5, 1.6);
-    setTimeout(() => { this.c.audio.play('hum', SEAT.clone().add(new THREE.Vector3(0, 1, 0)), g * 1.6); this.c.audio.play('breath', SEAT, g); }, 900);
+    setTimeout(() => { if (dir !== this) return; this.c.audio.play('hum', SEAT.clone().add(new THREE.Vector3(0, 1, 0)), g * 1.6); this.c.audio.play('breath', SEAT, g); }, 900);
   }
 
   // ---- She finds him.
@@ -286,7 +288,9 @@ class Director {
     c.hud.fadeLevel(1);
     c.hud.subtitle(null);
     await c.hud.card('', 'WHISKER', '', 3.2);
+    if (dir !== this) return;
     await c.hud.card('', '', 'Two summers later.', 2.4);
+    if (dir !== this) return;
     c.next('moor');
   }
 
@@ -333,14 +337,14 @@ export const prologue: Level = {
     const t = new Terrain({
       cx: 0, cz: 55, half: 178, step: 2, height, farHalf: 2600, farStep: 60,
       color: (x, z, h, slope) => {
-        const g = col('#7aa64a').lerp(col('#4f7d3a'), THREE.MathUtils.clamp(0.5 + n2.noise(x / 22, z / 22) * 0.7, 0, 1));
-        g.lerp(col('#b7a35a'), THREE.MathUtils.clamp(n1.noise(x / 35 + 9, z / 35) * 0.8, 0, 0.45));
+        const g = col('#626d50').lerp(col('#4c4e3e'), THREE.MathUtils.clamp(0.5 + n2.noise(x / 22, z / 22) * 0.7, 0, 1));
+        g.lerp(col('#96927b'), THREE.MathUtils.clamp(n1.noise(x / 35 + 9, z / 35) * 0.8, 0, 0.45));
         const tr = trackDist(x, z);
-        g.lerp(col('#8c6c4c'), (1 - THREE.MathUtils.smoothstep(tr, 0.6, 2.2)) * 0.85);
+        g.lerp(col('#6a6354'), (1 - THREE.MathUtils.smoothstep(tr, 0.6, 2.2)) * 0.85);
         const wl = water.surfaceAt(x, z);
         if (wl !== null && h < wl + 0.25) g.lerp(col('#6a5640'), THREE.MathUtils.clamp((wl + 0.25 - h) * 3, 0, 1));
         g.lerp(col('#7a6a58'), THREE.MathUtils.clamp(slope * 1.2 - 0.5, 0, 0.8));
-        if (Math.hypot(x - CAMP.x, z - CAMP.z) < 6) g.lerp(col('#8c6c4c'), 0.5);
+        if (Math.hypot(x - CAMP.x, z - CAMP.z) < 6) g.lerp(col('#6a6354'), 0.5);
         return g;
       },
       grass: (x, z, h, slope) => {
@@ -353,12 +357,12 @@ export const prologue: Level = {
       },
     });
     terrain = t;
-    c.setTerrain(t, { root: '#3c5a26', mid: '#7a9f45', tip: '#d8c26a', dry: '#c99a55', height: 0.26 });
+    c.setTerrain(t, { root: '#39443a', mid: '#707d59', tip: '#a5a78a', dry: '#989078', height: 0.26 });
     const H = (x: number, z: number) => t.heightAt(x, z);
     const p = c.look.preset;
     c.root.add(water.build(H, { sunDir: c.look.sunDir, sun: new THREE.Color(p.sun).multiplyScalar(p.sunIntensity * 0.45), sky: new THREE.Color(p.hemiSky), horizon: new THREE.Color(p.horizon) }));
     WATER.surface = (x, z) => water.surfaceAt(x, z);
-    WIND.dir.set(0.7, -0.7).normalize(); WIND.base = 0.25;
+    WIND.dir.set(0.7, -0.7).normalize(); WIND.base = 0.8;
 
     // ---- The hawthorn.
     const ht = hawthorn(5);
@@ -505,6 +509,8 @@ export const prologue: Level = {
   begin() { if (dir && dir.stage === 'title') dir.opening(); },
   update(dt, c) { dir?.update(dt, (c as any).time ?? performance.now() / 1000); },
   call() { dir?.heard(); },
+  hint(c) { if (dir?.stage === 'walk') c.hud.say('Follow the crows over the lone hawthorn. Meow with Q and listen for his breathing.', 6); },
+  dispose() { dir?.music?.stop(0.4); dir = null; },
   warmViews() {
     const h = height;
     return [

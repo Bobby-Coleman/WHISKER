@@ -21,7 +21,7 @@ export const FUR = {
 const mix = (a: THREE.Color, b: THREE.Color, t: number, out: THREE.Color) => out.copy(a).lerp(b, Math.min(1, Math.max(0, t)));
 
 export const HEAD = {
-  eye: new THREE.Vector3(0.0275, -0.004, 0.0435), eyeR: 0.0188, ear: new THREE.Vector3(0.036, 0.042, -0.012),
+  eye: new THREE.Vector3(0.0275, -0.004, 0.0435), eyeR: 0.0145, ear: new THREE.Vector3(0.036, 0.042, -0.012),
   jaw: new THREE.Vector3(0, -0.0305, 0.0505), bow: new THREE.Vector3(0.024, 0.06, 0.012),
 };
 
@@ -41,7 +41,7 @@ export class KittenFace {
       this.ears.push(at(new THREE.Group(), centre, new THREE.Vector3(HEAD.ear.x * side, HEAD.ear.y, HEAD.ear.z).multiplyScalar(s), side > 0 ? 'earL' : 'earR'));
       const eye = at(new THREE.Group(), centre, new THREE.Vector3(HEAD.eye.x * side, HEAD.eye.y, HEAD.eye.z).multiplyScalar(s), side > 0 ? 'eyeL' : 'eyeR');
       eye.rotation.set(-0.04, 0.32 * side, 0);
-      eye.scale.set(1, 1.06, 0.9);
+      eye.scale.set(1, 0.88, 0.86);
       this.eyes.push(eye);
       this.lids.push(at(new THREE.Group(), eye, new THREE.Vector3(), side > 0 ? 'lidL' : 'lidR'));
     }
@@ -111,7 +111,7 @@ export class KittenFace {
       const crown = sstep(0.008, 0.026, p.y) * sstep(0.058, 0.03, p.z + Math.max(0, p.y - 0.03) * 0.3);
       const ax = Math.abs(p.x);
       const st = Math.max(sstep(0.0042, 0.0012, ax), sstep(0.0036, 0.001, Math.abs(ax - 0.0125 - Math.max(0, -p.z) * 0.1)), sstep(0.0032, 0.001, Math.abs(ax - 0.026 - Math.max(0, -p.z) * 0.18)) * 0.8);
-      out.lerp(FUR.fawnDD, crown * st * 0.62);
+      out.lerp(FUR.fawnDD, crown * st * 0.78);
       const brow = sstep(0.0035, 0.001, Math.abs(p.y - (0.0135 + (0.034 - ax) * 0.22))) * sstep(0.012, 0.018, ax) * sstep(0.04, 0.03, ax) * sstep(0.028, 0.04, p.z);
       out.lerp(FUR.fawnDD, brow * 0.45);
       // Stripes on the cheeks sweeping back from the outer corner of each eye.
@@ -119,10 +119,15 @@ export class KittenFace {
       out.lerp(FUR.fawnD, cs * 0.6);
       // The tufts' tips a shade lighter (fur catching the light).
       out.lerp(FUR.cheek, sstep(0.066, 0.078, r) * 0.35);
+      // A little variation follows the coat rather than a perfectly uniform painted surface. Baked vertex
+      // colour keeps this detail inexpensive and makes it travel with her face through every animation.
+      const fibre = Math.sin(p.x * 510 + p.y * 173 + Math.sin(p.z * 390) * 1.1) * Math.sin(p.y * 460 - p.z * 260);
+      out.multiplyScalar(1 + fibre * 0.035);
       void n;
       return out;
     });
     add(hg, this.centre);
+    add(furFringe(hg, s), this.centre);
 
     // ---- Nose: small, peach-pink, a soft rounded triangle.
     const ny = -0.0175, nz = 0.0565;
@@ -191,7 +196,7 @@ export class KittenFace {
       add(e, eye, 'eye', true);
       eye.updateMatrix();
       const inv = new THREE.Matrix3().setFromMatrix4(eye.matrix).invert();
-      for (const [dx, dy, r] of [[-0.34, 0.4, 0.0038], [0.32, -0.36, 0.0018]]) {
+      for (const [dx, dy, r] of [[-0.34, 0.4, 0.0029], [0.32, -0.36, 0.0015]]) {
         const d = new THREE.Vector3(dx, dy, 1).applyMatrix3(inv).normalize();
         const g = new THREE.CircleGeometry(r * s, 10);
         g.deleteAttribute('uv');
@@ -227,6 +232,45 @@ export class KittenFace {
 
   // Shown or folded away (no bow).
   showBow(on: boolean) { this.bow.scale.setScalar(on ? 1 : 1e-4); }
+}
+
+// Sparse, short tapered hairs break up the cheek/crown outline. They are opaque geometry baked into the
+// existing fur mesh, with no shell layers, alpha overdraw, texture downloads, or additional draw calls.
+function furFringe(head: THREE.BufferGeometry, size: number) {
+  const p = head.attributes.position, n = head.attributes.normal, c = head.attributes.color;
+  const pos: number[] = [], col: number[] = [], idx: number[] = [];
+  const at = new THREE.Vector3(), out = new THREE.Vector3(), dir = new THREE.Vector3(), right = new THREE.Vector3(), across = new THREE.Vector3(), v = new THREE.Vector3();
+  const shade = new THREE.Color();
+  let hairs = 0;
+  for (let i = 3; i < p.count && hairs < 240; i += 5) {
+    at.fromBufferAttribute(p, i);
+    const x = at.x / size, y = at.y / size, z = at.z / size;
+    if (y < -0.047 || y > 0.052 || z > 0.028 && Math.abs(x) < 0.046 || z < -0.025 && Math.abs(x) < 0.04) continue;
+    out.fromBufferAttribute(n, i).normalize();
+    dir.copy(out).multiplyScalar(0.62).add(new THREE.Vector3(x > 0 ? 0.15 : -0.15, -0.4, -0.25)).normalize();
+    right.crossVectors(dir, out);
+    if (right.lengthSq() < 1e-5) right.crossVectors(dir, new THREE.Vector3(0, 1, 0));
+    right.normalize(); across.crossVectors(dir, right).normalize();
+    const seed = Math.sin(i * 12.9898) * 43758.5453, random = seed - Math.floor(seed);
+    const length = (0.0022 + random * 0.0028) * size, width = (0.00035 + random * 0.0002) * size;
+    const base = pos.length / 3;
+    shade.fromBufferAttribute(c, i);
+    for (let j = 0; j < 3; j++) {
+      const a = j * Math.PI * 2 / 3;
+      v.copy(at).addScaledVector(right, Math.cos(a) * width).addScaledVector(across, Math.sin(a) * width);
+      pos.push(v.x, v.y, v.z); col.push(shade.r * 0.96, shade.g * 0.96, shade.b * 0.96);
+    }
+    v.copy(at).addScaledVector(dir, length);
+    shade.lerp(FUR.cheek, 0.14);
+    pos.push(v.x, v.y, v.z); col.push(shade.r, shade.g, shade.b);
+    for (let j = 0; j < 3; j++) idx.push(base + j, base + (j + 1) % 3, base + 3);
+    hairs++;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
 }
 
 const _p = new THREE.Vector3();

@@ -48,6 +48,7 @@ export class Game {
   // The call button: her meow (and, where there is a companion, wait / follow).
   onCall?: (who: Actor) => void;
   onSink?: (who: Actor) => void;
+  onHint?: () => void;
 
   constructor(public physics: Physics, kittenChar: Avatar, knightChar: Avatar, public level: LevelInfo, aspect: number) {
     const mk = (char: Avatar, kind: 'kitten' | 'knight'): Actor => {
@@ -100,6 +101,7 @@ export class Game {
   switchTo(next: Actor) {
     if (next === this.active) return;
     this.active = next;
+    this.climbJump = false;
     this.follower.mode = 'wait';
     this.follower.clear();
     this.onSwitch?.(next);
@@ -109,9 +111,10 @@ export class Game {
   handleInput(inp: InputFrame) {
     this.jumpHeld = inp.jumpHeld;
     if (this.locked) return;
-    const a = this.active;
+    if (inp.hintPressed) this.onHint?.();
     if (inp.switchPressed) { if (this.canSwitch) this.switchTo(this.companion); }
-    else if (inp.jumpPressed) {
+    const a = this.active;
+    if (!inp.switchPressed && inp.jumpPressed) {
       if (a === this.kitten && a.char.carriedBy) this.carry.putDown();
       else if (a === this.kitten && a.char.body.climb) this.climbJump = true;
       else a.motor.queueJump();

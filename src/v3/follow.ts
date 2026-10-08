@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { Actor } from './game';
 import type { MotorInput } from './motor';
+import { SOLID } from './physics';
 
 type Crumb = { p: THREE.Vector3; jump: boolean; climb: boolean };
 
@@ -61,7 +62,20 @@ export class Follower {
     if ((dLeader > 14 || this.stuckT > 3) && leader.motor.grounded && unseen(mp)) {
       for (let i = this.trail.length - 1; i >= 0; i--) {
         const c = this.trail[i];
-        if (!c.climb && !c.jump && flat(c.p, lp) > gap * 0.8 && unseen(c.p)) {
+        if (!c.climb && !c.jump && !this.unsafe?.(me, c.p) && Math.abs(c.p.y - mp.y) < 0.65 && flat(c.p, lp) > gap * 0.8 && unseen(c.p)) {
+          const origin = mp.clone(); origin.y += me.motor.build.height * 0.5;
+          const delta = c.p.clone().sub(mp), distance = delta.length();
+          if (distance > 0.01 && me.motor.physics.raycast(origin, delta.multiplyScalar(1 / distance), distance, SOLID)) continue;
+          // A destination may be dry even though a moat or cleft lies between it and the companion. Verify
+          // the whole short catch-up route; otherwise invisible teleporting could solve a closed bridge.
+          let routeSafe = true;
+          const samples = Math.ceil(distance / 0.55), sample = new THREE.Vector3();
+          for (let j = 1; j <= samples; j++) {
+            sample.lerpVectors(mp, c.p, j / samples);
+            const floor = me.motor.physics.groundY(sample.x, sample.y + 0.45, sample.z, 1.0, SOLID);
+            if (floor === null || Math.abs(floor - sample.y) > 0.55 || this.unsafe?.(me, sample)) { routeSafe = false; break; }
+          }
+          if (!routeSafe) continue;
           me.motor.place(c.p.clone(), Math.atan2(lp.x - c.p.x, lp.z - c.p.z));
           me.char.resetPose(me.ground);
           this.trail.splice(0, i + 1);

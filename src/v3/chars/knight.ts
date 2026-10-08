@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { CharacterBody, PoseContext, WIND } from '../body';
 import type { ToyCharacter } from './api';
 import { Avatar, Proportions } from './avatar';
-import { buildKnight, KnightModel, Part, HAND, HELM_CENTRE, EYE, Panel, tabardPoint } from './knight/model';
+import { buildKnight, KnightModel, Part, HAND, HELM_CENTRE, EYE, Panel, tabardPoint, helmShape } from './knight/model';
 
 const K = 0.84 / 0.917, SP = 0.91;
 // Hips 0.84 m, thigh 0.37, shin 0.39; shoulders 0.23 out at 1.32; a short neck under a big helm (top at 1.8).
@@ -83,6 +83,7 @@ export class ToyKnight implements ToyCharacter {
   private pelvisVel = new THREE.Vector3(); private lastPelvis = new THREE.Vector3();
   private scab = { ang: 0.0, vel: 0 };
   private seatLift = 0;
+  private swordRestT = 0; private swordRestW = 0;
   private lapRest = new THREE.Vector3(0, 0.33, 0.3);
   lapTops: number[] = [];
 
@@ -152,16 +153,41 @@ export class ToyKnight implements ToyCharacter {
   // A wounded stumble: he lurches, nearly falls, catches himself.
   stagger() { this.staggerT = 0; }
 
+  // Story controls belong to a scene, not to the persistent character. Call before placing him in a new chapter.
+  resetStoryPose() {
+    this.seated = this.headUp = this.shelter = this.restHand = 0;
+    this.gait = 'normal'; this.lookTarget = this.shelterAt = null;
+    this.hands = null; this.pushing = false;
+    this.slideT = this.staggerT = -1; this.u = 0;
+    this.seatW = this.stumbleW = this.headUpNow = this.shelterNow = this.restNow = 0;
+    this.handsW = this.pushW = 0;
+  }
+
   resetPose(_g?: (x: number, z: number) => number) {
     this.renderPos.copy(this.body.pos); this.renderYaw = this.body.yaw;
     this.place();
-    if (this.slideT < 0) this.u = this.seated;
+    this.slideT = -1;
+    this.u = this.seated;
     this.seatW = sm(this.u / 0.12);
     this.stumbleW = this.gait === 'stumble' ? 1 : 0;
     this.headUpNow = this.headUp; this.shelterNow = this.shelter; this.restNow = this.restHand;
     this.carryW = this.holding ? 1 : 0;
     for (const p of this.m?.panels ?? []) { p.a1 = p.v1 = p.a2 = p.v2 = 0; }
-    this.air = 0; this.land = 0;
+    this.air = this.land = this.spd = this.dip = this.lurch = this.seatLift = 0;
+    this.takeoff = this.staggerT = -1; this.wasGrounded = this.body.grounded;
+    this.pushW = this.pushing ? 1 : 0; this.handsW = this.hands ? 1 : 0;
+    this.lastPelvis.set(0, 0, 0); this.pelvisVel.set(0, 0, 0);
+    this.scab.ang = this.scab.vel = 0;
+    this.clothKey.p.set(Infinity, Infinity, Infinity);
+    this.body.visualDY = this.body.landing = 0;
+    this.move = null; this.oneShot = null;
+    this.swordRestT = this.swordRestW = 0;
+    if (this.m) { this.m.drawnSword.scale.setScalar(1e-4); this.m.scabbard.scale.setScalar(1); }
+    this.av.resetGrounding();
+    if (this.ready) {
+      for (const n of UPPER_SHOTS) { this.av.weight(n, 0); const c = this.av.clip(n)!; c.upper.timeScale = 0; }
+      this.av.root.position.set(0, 0, 0);
+    }
     // Story controls set right after a reset (a checkpoint: sat already) take effect at once.
     this.snap = true;
   }
@@ -383,6 +409,7 @@ export class ToyKnight implements ToyCharacter {
     av.footIK(ctx, dt, ikW, this.renderYaw, this.renderPos, lerp(1, 0.82, idleW));
     // Hands on something in the world go last (the hips may have settled under the feet).
     if (gripW > 0.001) this.gripArms(gripW, left, fwd);
+    this.restSword(dt, sp, seatW, left, fwd);
 
     // ---------- Head.
     this.headPose(ctx, dt, sp, seatW, stum);
@@ -393,6 +420,34 @@ export class ToyKnight implements ToyCharacter {
     this.cloth(ctx, dt, seatW);
   }
   private pushPhase = 0;
+
+  // A quiet shared silhouette: both companions hold their blades upright. Locomotion, carrying and mechanisms
+  // keep priority; this rest pose is delayed so brief pauses while solving a puzzle never trigger it.
+  private restSword(dt: number, sp: number, seatW: number, left: THREE.Vector3, fwd: THREE.Vector3) {
+    const idle = this.body.grounded && sp < 0.18 && seatW < 0.01 && !this.outfit.wounded &&
+      !this.holding && !this.hands && !this.pushing && !this.oneShot && !this.move && !this.carriedBy;
+    this.swordRestT = idle ? this.swordRestT + dt : 0;
+    const want = this.swordRestT > 0.6;
+    this.swordRestW += ((want ? 1 : 0) - this.swordRestW) * ease(want ? 7 : 16, dt);
+    const w = this.swordRestW, drawn = this.m.drawnSword;
+    const show = w > 0.35 && idle;
+    drawn.scale.setScalar(show ? 1 : 1e-4);
+    this.m.scabbard.scale.setScalar(show ? 1e-4 : 1);
+    if (!show) return;
+    const guard = this.L(-0.035, 1.14, 0.33);
+    this.av.root.updateWorldMatrix(true, false);
+    drawn.position.copy(this.av.root.worldToLocal(guard.clone()));
+    const up = new THREE.Quaternion().setFromAxisAngle(UP, this.renderYaw);
+    drawn.quaternion.copy(this.av.root.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(up));
+    drawn.updateMatrixWorld(true);
+    for (const s of ['l', 'r'] as Side[]) {
+      const at = guard.clone().addScaledVector(UP, s === 'r' ? -0.05 : -0.135);
+      const fingers = left.clone().multiplyScalar(s === 'r' ? 1 : -1);
+      const palm = fwd.clone().multiplyScalar(-1);
+      const pole = left.clone().multiplyScalar(s === 'l' ? 1 : -1).addScaledVector(UP, -0.7).addScaledVector(fwd, -0.15);
+      this.placeHand(s, at, fingers, palm, pole, w, 'grip');
+    }
+  }
 
   // Arms hang clear of the cuirass and skirt (the clips are made for a slimmer body).
   private splayArms(left: THREE.Vector3, fwd: THREE.Vector3, w: number) {
@@ -603,7 +658,7 @@ export class ToyKnight implements ToyCharacter {
     {
       const press = w * (1 - sm(stag * 1.6));
       const chest = 'spine_02';
-      const pt = this.chestPoint(chest, PRESS.phi, PRESS.y, 0.006);
+      const pt = this.chestPoint(chest, PRESS.phi, PRESS.y, 0.022);
       const n = this.chestPoint(chest, PRESS.phi, PRESS.y, 0.1).sub(pt).normalize();
       const fingers = this.chestDir(chest, PRESS.fx, PRESS.fy, 0.15).normalize();
       this.placeHand('r', pt, fingers, n.clone().negate(), left.clone().multiplyScalar(-0.7).addScaledVector(UP, -0.6).addScaledVector(fwd, 0.1), press);
@@ -737,7 +792,7 @@ export class ToyKnight implements ToyCharacter {
     {
       const rw = sm(this.restNow);
       // Sat, higher and further out toward the spear: clear of what sits in his lap.
-      const pt = this.chestPoint('spine_02', PRESS_SEAT.phi, PRESS_SEAT.y, 0.006);
+      const pt = this.chestPoint('spine_02', PRESS_SEAT.phi, PRESS_SEAT.y, 0.022);
       const n = this.chestPoint('spine_02', PRESS_SEAT.phi, PRESS_SEAT.y, 0.1).sub(pt).normalize();
       const fingers = this.chestDir('spine_02', PRESS_SEAT.fx, PRESS_SEAT.fy, 0.15).normalize();
       // The elbow tucked back and down at his side, clear of what is in his lap.
@@ -861,7 +916,7 @@ export class ToyKnight implements ToyCharacter {
 
   // A point on the helm's surface (round from the front, height at rest), where the head has it now.
   private helmPoint(phi: number, y: number) {
-    const v = new THREE.Vector3(Math.sin(phi) * 0.18, y, Math.cos(phi) * 0.18 * 1.05 + 0.012).sub(this.av.restP.get('Head')!);
+    const v = helmShape(new THREE.Vector3(Math.sin(phi) * 0.18, y, Math.cos(phi) * 0.18 * 1.05 + 0.012)).sub(this.av.restP.get('Head')!);
     const bn = this.av.bones.Head;
     bn.updateWorldMatrix(true, false);
     return v.applyQuaternion(this.av.canonFrame('Head')).applyMatrix4(bn.matrixWorld);
@@ -929,6 +984,7 @@ export class ToyKnight implements ToyCharacter {
         c = lerp(c, seatC, seatW);
       }
       if (this.oneShot) c = lerp(c, 0.5, 0.5);
+      c = lerp(c, 0.86, this.swordRestW);
       this.curl[i] += (c - this.curl[i]) * ease(10, dt);
       const v = clamp(this.curl[i], 0, 1);
       const inf = v < 0.5 ? [v * 2, 0] : [2 - v * 2, v * 2 - 1];
@@ -1026,15 +1082,16 @@ export class ToyKnight implements ToyCharacter {
         over2 = Math.max(over2, q.a2 * c);
       }
       const t1 = Math.max(n1, hang * 0.6 + sway * 0.5);
-      p.v1 += ((t1 - p.a1) * 120 - p.v1 * 14) * dt;
-      p.a1 += p.v1 * dt;
+      // A slow frame must not explode the cloth springs. The target is constant over these cheap substeps;
+      // mesh probes and collision work still happen just once per rendered frame.
+      const steps = Math.max(1, Math.ceil(dt * 60)), h = dt / steps;
+      for (let i = 0; i < steps; i++) { p.v1 += ((t1 - p.a1) * 120 - p.v1 * 14) * h; p.a1 += p.v1 * h; }
       if (p.a1 < n1) { p.a1 = n1; p.v1 = Math.max(0, p.v1); }
       // Lower part: from the hinge, hanging unless the knee or shin push it out.
       const H = p.hinge.clone().applyAxisAngle(p.axis, p.a1).add(p.pivot);
       const n2 = Math.max(need(p, H, p.len2, p.b2), over2);
       const t2 = Math.max(n2, hang + sway, p.a1 - 0.9);
-      p.v2 += ((t2 - p.a2) * 80 - p.v2 * 10) * dt;
-      p.a2 += p.v2 * dt;
+      for (let i = 0; i < steps; i++) { p.v2 += ((t2 - p.a2) * 80 - p.v2 * 10) * h; p.a2 += p.v2 * h; }
       if (p.a2 < n2) { p.a2 = n2; p.v2 = Math.max(0, p.v2); }
       // Sat on the ground, the skirt's sides and back bunch up under and round him.
       p.lower.scale.set(1, 1 - (Math.abs(p.phi) > 0.9 ? 0.5 : 0.15) * seatW, 1);
@@ -1048,8 +1105,11 @@ export class ToyKnight implements ToyCharacter {
     const sd = knL.clone().sub(thL).normalize();
     const back = Math.max(0, -sd.z);
     const tgt = clamp(back * 0.5 - 0.08, 0, 0.3);
-    this.scab.vel += ((tgt - this.scab.ang) * 60 - this.scab.vel * 9 + clamp(accL.z * 0.5, -3, 3)) * dt;
-    this.scab.ang = clamp(this.scab.ang + this.scab.vel * dt, -0.25, 0.4);
+    const scSteps = Math.max(1, Math.ceil(dt * 60)), scDt = dt / scSteps;
+    for (let i = 0; i < scSteps; i++) {
+      this.scab.vel += ((tgt - this.scab.ang) * 60 - this.scab.vel * 9 + clamp(accL.z * 0.5, -3, 3)) * scDt;
+      this.scab.ang = clamp(this.scab.ang + this.scab.vel * scDt, -0.25, 0.4);
+    }
     const hang = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.78 + this.scab.ang, 0, 0.1));
     if (seatW > 0.001) {
       // Lying along his left leg, a hand's width outside it, tip toward his feet, flat side up.
@@ -1181,7 +1241,7 @@ export class ToyKnight implements ToyCharacter {
     const kl = av.pos('calf_l'), kr = av.pos('calf_r');
     const fl = av.pos('foot_l'), fr = av.pos('foot_r');
     return [
-      new THREE.Sphere(head, 0.24), new THREE.Sphere(chest, 0.3), new THREE.Sphere(hips, 0.27),
+      new THREE.Sphere(head, 0.18), new THREE.Sphere(chest, 0.3), new THREE.Sphere(hips, 0.27),
       new THREE.Sphere(kl.lerp(fl, 0.3), 0.17), new THREE.Sphere(kr.lerp(fr, 0.3), 0.17),
       new THREE.Sphere(av.pos('thigh_l').lerp(av.pos('thigh_r'), 0.5).lerp(kl.clone().lerp(kr, 0.5), 0.5), 0.22),
     ];
@@ -1202,6 +1262,7 @@ export class ToyKnight implements ToyCharacter {
     for (const part of this.m.parts) {
       const mesh = part.mesh;
       if (!mesh.visible || (part.name === 'spear' && !this.outfit.wounded)) continue;
+      if (part.name === 'drawnSword' && this.m.drawnSword.scale.x < 0.1 || part.name === 'sword' && this.m.scabbard.scale.x < 0.1) continue;
       let low = Infinity;
       for (let i = part.start; i < part.start + part.count; i++) { mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld); low = Math.min(low, v.y - gr(v.x, v.z) + g); }
       out[part.name] = Math.min(out[part.name] ?? Infinity, +(low - g).toFixed(4));
@@ -1217,6 +1278,7 @@ export class ToyKnight implements ToyCharacter {
     for (const part of this.m.parts) {
       const mesh = part.mesh;
       if (!mesh.visible || (part.name === 'spear' && !this.outfit.wounded)) continue;
+      if (part.name === 'drawnSword' && this.m.drawnSword.scale.x < 0.1 || part.name === 'sword' && this.m.scabbard.scale.x < 0.1) continue;
       for (let i = part.start; i < part.start + part.count; i++) {
         mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld);
         const l = this.local(v).sub(c);

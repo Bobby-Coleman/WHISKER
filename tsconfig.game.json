@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/v3/**/*.ts", "src/world/noise.ts"],
+  "exclude": ["src/main-v1.ts", "src/v2", "src/render"]
+}

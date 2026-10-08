@@ -2,7 +2,8 @@
 // the horizon's colour (distant land fades into the sky), a hemisphere fill and one warm sun that casts the
 // shadows, kept on the player. A small environment map, made from the sky, gives metal something to reflect.
 import * as THREE from 'three';
-import { RIM } from './materials';
+import { RIM, SCENERY_WIND, AIR_LEVEL } from './materials';
+import { WIND } from '../body';
 
 export type LookPreset = {
   zenith: string; horizon: string; ground: string; sun: string; sunIntensity: number;
@@ -10,21 +11,21 @@ export type LookPreset = {
   hemiSky: string; hemiGround: string; hemiIntensity: number;
   fog: string; fogNear: number; fogFar: number;
   clouds: number; cloudColor: string; cloudShade: string;
-  rim: string; rimStrength: number; exposure: number;
+  rim: string; rimStrength: number; exposure: number; overcast?: number;
 };
 
 export const LOOKS: Record<string, LookPreset> = {
-  // The battlefield at sunset: a low gold sun, violet sky overhead, long shadows.
+  // A cold battlefield under thick cloud; the last warm light is a broad glow, never a sunset postcard.
   dusk: {
-    zenith: '#3b4f86', horizon: '#f4b27a', ground: '#4a3f45', sun: '#ffb877', sunIntensity: 2.6, sunElev: 7, sunAzim: 200,
-    hemiSky: '#8f9cc8', hemiGround: '#5c4634', hemiIntensity: 1.15, fog: '#d9a07e', fogNear: 30, fogFar: 520,
-    clouds: 0.55, cloudColor: '#ffd3a8', cloudShade: '#8a6f8f', rim: '#ffc996', rimStrength: 0.45, exposure: 1.0,
+    zenith: '#7f8e97', horizon: '#b0b7b7', ground: '#484b42', sun: '#dfd4c3', sunIntensity: 0.7, sunElev: 24, sunAzim: 200,
+    hemiSky: '#bbc1c2', hemiGround: '#535447', hemiIntensity: 1.8, fog: '#aeb6b8', fogNear: 9, fogFar: 370,
+    clouds: 0.96, cloudColor: '#b9bdbb', cloudShade: '#7c888e', rim: '#c3c9ca', rimStrength: 0.12, exposure: 0.98, overcast: 0.96,
   },
-  // A bright, blowy morning on the moor.
+  // Wet khaki turf, blue-grey distance and heavy winds; landmarks remain readable through the mist.
   morning: {
-    zenith: '#4f86d6', horizon: '#d6e9f3', ground: '#6f7a5a', sun: '#fff0d4', sunIntensity: 3.0, sunElev: 38, sunAzim: 140,
-    hemiSky: '#bcd7f2', hemiGround: '#6c7a48', hemiIntensity: 1.25, fog: '#cfe2ee', fogNear: 60, fogFar: 900,
-    clouds: 0.5, cloudColor: '#ffffff', cloudShade: '#a9b8cc', rim: '#e8f4ff', rimStrength: 0.3, exposure: 1.0,
+    zenith: '#8195a1', horizon: '#bbc4c8', ground: '#4c5549', sun: '#e1e3dd', sunIntensity: 0.8, sunElev: 36, sunAzim: 140,
+    hemiSky: '#bbc9ce', hemiGround: '#555f4d', hemiIntensity: 1.9, fog: '#b4bfc4', fogNear: 10, fogFar: 420,
+    clouds: 0.95, cloudColor: '#c2cacb', cloudShade: '#82939e', rim: '#c6d0d2', rimStrength: 0.13, exposure: 1.0, overcast: 0.92,
   },
 };
 
@@ -68,37 +69,41 @@ export class Look {
   uniforms: Record<string, THREE.IUniform>;
   preset!: LookPreset;
   sunDir = new THREE.Vector3();
-  private envRT: THREE.WebGLRenderTarget | null = null;
+  private envMaps = new Map<LookPreset, THREE.WebGLRenderTarget>();
+  private pmrem: THREE.PMREMGenerator;
 
   constructor(private renderer: THREE.WebGLRenderer, private scene: THREE.Scene, shadowSize: number) {
+    this.pmrem = new THREE.PMREMGenerator(renderer);
     this.uniforms = {
       zenith: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, groundC: { value: new THREE.Color() },
       sunDir: { value: new THREE.Vector3() }, sunC: { value: new THREE.Color() }, cloudAmt: { value: 0.5 },
       cloudC: { value: new THREE.Color() }, cloudS: { value: new THREE.Color() }, time: { value: 0 }, noise: { value: noiseTexture() },
-      windDir: { value: new THREE.Vector2(1, 0) },
+      windDir: { value: new THREE.Vector2(1, 0) }, overcast: { value: 0.9 }, windSpeed: { value: 0.3 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms, side: THREE.BackSide, depthWrite: false, fog: false,
       vertexShader: `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 zenith, horizon, groundC, sunDir, sunC, cloudC, cloudS; uniform float cloudAmt, time; uniform sampler2D noise; uniform vec2 windDir;
+        uniform vec3 zenith, horizon, groundC, sunDir, sunC, cloudC, cloudS; uniform float cloudAmt, time, overcast, windSpeed; uniform sampler2D noise; uniform vec2 windDir;
         varying vec3 vDir;
         void main(){
           vec3 d = normalize(vDir);
           float h = d.y;
           vec3 c = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.55));
-          c = mix(c, groundC, smoothstep(0.0, -0.25, h));
+          c = mix(c, groundC, 1.0 - smoothstep(-0.24, 0.0, h));
           float s = max(dot(d, sunDir), 0.0);
-          c += sunC * (pow(s, 6.0) * 0.35 + pow(s, 60.0) * 0.6);
-          c = mix(c, sunC * 1.6 + vec3(0.3), smoothstep(0.9993, 0.9996, s));
+          c += sunC * (pow(s, 6.0) * 0.11 + pow(s, 60.0) * 0.18) * (1.0 - overcast * 0.85);
+          c = mix(c, sunC * 1.6 + vec3(0.3), smoothstep(0.9993, 0.9996, s) * (1.0 - overcast));
           // Clouds: soft lumps on a dome, drifting with the wind, lit from the sun's side.
           if (h > 0.0 && cloudAmt > 0.0) {
-            vec2 uv = d.xz / (h + 0.12) * 0.22 + windDir * time * 0.004;
+            vec2 uv = d.xz / (h + 0.18) * 0.24 - windDir * time * (0.003 + windSpeed * 0.004);
             float n = texture2D(noise, uv * 0.6).g * 0.65 + texture2D(noise, uv * 1.7).r * 0.35;
             float cov = smoothstep(1.0 - cloudAmt * 0.75, 1.12 - cloudAmt * 0.6, n);
             float lit = clamp(dot(normalize(vec3(d.x, 0.3, d.z)), normalize(vec3(sunDir.x, 0.0, sunDir.z))) * 0.5 + 0.5, 0.0, 1.0);
-            vec3 cc = mix(cloudS, cloudC, lit * 0.8 + 0.2 * texture2D(noise, uv * 3.1).b);
-            c = mix(c, cc, cov * smoothstep(0.0, 0.18, h) * 0.9);
+            vec3 cc = mix(cloudS, cloudC, clamp(n * 1.1 + lit * 0.15, 0.0, 1.0));
+            c = mix(c, cc, mix(cov, 0.65 + n * 0.3, overcast) * smoothstep(0.0, 0.16, h));
+            // A broad pale horizon, the same air that hides distant hills and breaks the tree line into layers.
+            c = mix(horizon, c, smoothstep(0.015, 0.2, h));
           }
           gl_FragColor = vec4(c, 1.0);
           #include <tonemapping_fragment>
@@ -120,7 +125,8 @@ export class Look {
       const s = this.sun.shadow.camera as THREE.OrthographicCamera;
       s.left = -18; s.right = 18; s.top = 18; s.bottom = -18; s.near = 1; s.far = 160;
       this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.02;
-      this.sun.shadow.radius = 3;
+      this.sun.shadow.radius = 4;
+      this.sun.shadow.intensity = 0.45;
     }
     scene.add(this.sun, this.sun.target);
   }
@@ -132,7 +138,7 @@ export class Look {
     (u.zenith.value as THREE.Color).copy(C(p.zenith)); (u.horizon.value as THREE.Color).copy(C(p.horizon));
     (u.groundC.value as THREE.Color).copy(C(p.ground)); (u.sunC.value as THREE.Color).copy(C(p.sun));
     (u.cloudC.value as THREE.Color).copy(C(p.cloudColor)); (u.cloudS.value as THREE.Color).copy(C(p.cloudShade));
-    u.cloudAmt.value = p.clouds;
+    u.cloudAmt.value = p.clouds; u.overcast.value = p.overcast ?? 0;
     const el = THREE.MathUtils.degToRad(p.sunElev), az = THREE.MathUtils.degToRad(p.sunAzim);
     this.sunDir.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
     (u.sunDir.value as THREE.Vector3).copy(this.sunDir);
@@ -147,21 +153,28 @@ export class Look {
 
   // The sky (and a plain ground) into a small prefiltered map, for reflections on metal.
   private bakeEnv() {
-    const pm = new THREE.PMREMGenerator(this.renderer);
+    const cached = this.envMaps.get(this.preset);
+    if (cached) { this.scene.environment = cached.texture; return; }
     const s = new THREE.Scene();
     const sky = this.sky.clone();
     sky.scale.setScalar(100);
     s.add(sky);
-    this.envRT?.dispose();
-    this.envRT = pm.fromScene(s, 0, 0.1, 400);
-    this.scene.environment = this.envRT.texture;
-    pm.dispose();
+    // 128 px is ample for softly reflected overcast cloud; cache it for instant chapter revisits.
+    const env = this.pmrem.fromScene(s, 0.035, 0.1, 400, { size: 128 });
+    this.envMaps.set(this.preset, env);
+    this.scene.environment = env.texture;
   }
 
   // Each frame: the sun and its shadow box kept on the focus (snapped to texels so shadows do not shimmer).
   update(dt: number, focus: THREE.Vector3, windDir?: THREE.Vector2) {
     this.uniforms.time.value += dt;
+    AIR_LEVEL.value = focus.y;
+    this.uniforms.windSpeed.value = WIND.base + WIND.gust * 0.5;
     if (windDir) (this.uniforms.windDir.value as THREE.Vector2).copy(windDir);
+    SCENERY_WIND.time.value = WIND.time;
+    SCENERY_WIND.direction.value.copy(WIND.dir);
+    SCENERY_WIND.strength.value = WIND.base;
+    SCENERY_WIND.gust.value = WIND.gust;
     const cam = this.sun.shadow.camera as THREE.OrthographicCamera;
     const texel = (cam.right - cam.left) / this.sun.shadow.mapSize.x;
     const fx = Math.round(focus.x / texel) * texel, fz = Math.round(focus.z / texel) * texel;
@@ -175,5 +188,11 @@ export class Look {
     const c = this.sun.shadow.camera as THREE.OrthographicCamera;
     if (Math.abs(c.right - h) < 0.01) return;
     c.left = -h; c.right = h; c.top = h; c.bottom = -h; c.updateProjectionMatrix();
+  }
+
+  dispose() {
+    for (const env of this.envMaps.values()) env.dispose();
+    this.envMaps.clear(); this.pmrem.dispose();
+    this.sky.geometry.dispose(); (this.sky.material as THREE.Material).dispose();
   }
 }

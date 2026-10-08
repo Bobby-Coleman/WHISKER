@@ -12,7 +12,7 @@ export type CamKey = { pos: V3; look: V3; mm?: number; dof?: number };
 export type Shot = { at: number; dur: number; from: CamKey; to?: CamKey; ease?: 'linear' | 'smooth' | 'in' | 'out'; blend?: number; handheld?: number };
 // `probe`: how far above the path the ground is looked for (lower it under an overhang: a lap under a chest).
 // `arc`: a leap from the path's first point to its last, this high (m) over the straight line between them.
-export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number; probe?: number; arc?: number };
+export type Mark = { at: number; who: 'kitten' | 'knight'; path: [number, number, number][]; speed?: number; face?: number; probe?: number; arc?: number; until?: number };
 export type Cue = { at: number; run: () => void; onSkip?: boolean };
 export type Fade = { at: number; dur: number; to: number };
 export type Cutscene = {
@@ -72,8 +72,7 @@ export class Timeline {
     const cs = this.scene;
     if (!cs || cs.skippable === false) return;
     this.t = cs.length;
-    for (const c of cs.cues ?? []) if (!this.cueDone.has(c) && c.onSkip !== false) { this.cueDone.add(c); c.run(); }
-    this.finish();
+    this.finish(true);
   }
 
   // Each rendered frame while playing; returns false once it has ended.
@@ -83,7 +82,10 @@ export class Timeline {
     this.t += dt; this.clock += dt;
     const t = this.t;
     for (const c of cs.cues ?? []) if (!this.cueDone.has(c) && t >= c.at) { this.cueDone.add(c); c.run(); }
-    for (const r of this.runs) this.placeMark(r, t, dt);
+    // A newer mark owns the actor. Completed earlier tracks must never rewind it or supply fake velocity.
+    const owners = new Map<Actor, MarkRun>();
+    for (const r of this.runs) if (t >= r.m.at) owners.set(r.actor, r);
+    for (const r of owners.values()) if (r.m.until === undefined || t < r.m.until) this.placeMark(r, t, dt);
     // Camera: the last shot that has started.
     let shot: Shot | null = null;
     for (const s of cs.shots) if (t >= s.at) shot = s;
@@ -181,16 +183,20 @@ export class Timeline {
     r.actor.motor.syncCollider();
   }
 
-  private finish() {
+  private finish(skipped = false) {
     const cs = this.scene!, g = this.game;
     // Every mark at its end, and the characters handed back to their motors where they stand.
-    for (const r of this.runs) {
+    const owners = new Map<Actor, MarkRun>();
+    for (const r of this.runs) owners.set(r.actor, r);
+    for (const r of owners.values()) {
+      if (r.m.until !== undefined && r.m.until < cs.length) continue;
       const end = r.pts[r.pts.length - 1].clone();
       const probe = r.m.probe ?? 0.6;
       const gy = g.physics.groundY(end.x, end.y + probe, end.z, probe + 2.4);
       if (gy !== null) end.y = gy;
       r.actor.motor.place(end, r.m.face ?? r.actor.char.body.yaw);
     }
+    if (skipped) for (const c of cs.cues ?? []) if (!this.cueDone.has(c) && c.onSkip !== false) { this.cueDone.add(c); c.run(); }
     for (const a of [g.kitten, g.knight]) if (a.motor.mode === 'held') a.motor.place(a.char.body.pos.clone(), a.char.body.yaw);
     this.scene = null;
     this.runs = [];

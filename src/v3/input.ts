@@ -42,12 +42,12 @@ export class KeyboardMouseGamepad {
   constructor(private el: HTMLElement) {
     addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      if (e.code === 'Tab') e.preventDefault();
+      if (['Tab','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => this.clear());
     el.style.touchAction = 'none';
     // Any touch (the title card included) brings up the on-screen controls.
     addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') this.enterTouchMode(); }, { capture: true });
@@ -79,6 +79,11 @@ export class KeyboardMouseGamepad {
       if (this.locked || this.dragging) this.lookDelta.add(new THREE.Vector2(e.movementX, e.movementY));
     });
     el.addEventListener('wheel', (e) => { this.zoomDelta += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
+  }
+
+  clear() {
+    this.keys.clear(); this.pressed.clear(); this.touchHeld.clear(); this.lookDelta.set(0, 0);
+    this.zoomDelta = 0; this.dragging = false; this.stick = null; this.lookId = -1; this.drawStick();
   }
 
   private touchDown(e: PointerEvent) {

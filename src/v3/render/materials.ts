@@ -5,18 +5,60 @@ import * as THREE from 'three';
 
 // The palette, as sRGB hex.
 export const PAL = {
-  grassDark: '#3f7a3a', grass: '#6aa84f', grassTip: '#b9d36a', dryGrass: '#c8b46a',
-  dirt: '#8a6a4a', path: '#b08d64', mud: '#5d4632',
-  stone: '#8f8e88', stoneDark: '#6c6c68', slate: '#6f7c86',
-  wood: '#8a5d3b', woodDark: '#5e3f28', straw: '#d8b65e',
-  bannerRed: '#b8423a', bannerBlue: '#3c5d9a', gold: '#d9aa4a',
+  grassDark: '#39443a', grass: '#707d59', grassTip: '#a5a78a', dryGrass: '#989078',
+  dirt: '#706656', path: '#8b8775', mud: '#4c4e3e',
+  stone: '#858b85', stoneDark: '#626a65', slate: '#6b7880',
+  wood: '#75604b', woodDark: '#4f4335', straw: '#aaa080',
+  bannerRed: '#815048', bannerBlue: '#556676', gold: '#b29d70',
   cream: '#f6ecd9', ginger: '#e8a866', gingerDark: '#c8783e', pink: '#f2a7b3', noseP: '#e58c95',
   steel: '#c5ccd3', steelDark: '#7d8791', cloth: '#3b3f4a', clothDark: '#2a2d35', leather: '#5a3a26',
   blood: '#7a1418',
 };
 
 // Shared rim colour (the sky near the horizon) and strength; the look sets them per level.
-export const RIM = { color: { value: new THREE.Color('#ffd9b0') }, strength: { value: 0.35 }, wrap: { value: 0.35 } };
+export const RIM = { color: { value: new THREE.Color('#bbc5c8') }, strength: { value: 0.14 }, wrap: { value: 0.18 } };
+
+export const AIR_LEVEL = { value: 0 };
+export const MOOR_FOG_PARS = /* glsl */ `uniform float airLevel; varying float vAirHeight;`;
+
+// Early, soft aerial perspective preserves distant landmarks as silhouettes while the foreground stays clear.
+// It uses Three's existing fog uniforms and therefore adds neither textures nor shader variants.
+export const MOOR_FOG = /* glsl */ `
+#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+  #else
+    float airDistance = max(vFogDepth - fogNear, 0.0);
+    float fogFactor = max(smoothstep(fogNear, fogFar, vFogDepth),
+      1.0 - exp(-airDistance / max((fogFar - fogNear) * 0.36, 1.0)));
+    // Low mist gathers along turf, walls and tree roots; taller landmarks retain their silhouettes above it.
+    float lowAir = (1.0 - smoothstep(airLevel + 0.5, airLevel + 14.0, vAirHeight)) *
+      smoothstep(12.0, 68.0, vFogDepth) * 0.58;
+    fogFactor = max(fogFactor, lowAir);
+  #endif
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif
+`;
+
+export function moorAir(sh: { uniforms: Record<string, THREE.IUniform>; vertexShader: string; fragmentShader: string }) {
+  sh.uniforms.airLevel = AIR_LEVEL;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <fog_pars_vertex>', '#include <fog_pars_vertex>\nvarying float vAirHeight;')
+    .replace('#include <fog_vertex>', `#include <fog_vertex>
+      vec4 moorWorld = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        moorWorld = instanceMatrix * moorWorld;
+      #endif
+      vAirHeight = (modelMatrix * moorWorld).y;`);
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\n' + MOOR_FOG_PARS)
+    .replace('#include <fog_fragment>', MOOR_FOG);
+}
+
+// One clock/direction/envelope shared by scenery. The look updates it from the gameplay wind each frame.
+export const SCENERY_WIND = {
+  time: { value: 0 }, direction: { value: new THREE.Vector2(1, 0) }, strength: { value: 0.3 }, gust: { value: 0 },
+};
 
 // A dissolve (screen-door dither) a character's materials share: 1 solid .. 0 gone.
 export type Fade = { value: number };
@@ -29,6 +71,7 @@ float bayer4(vec2 p){
 
 function patch(m: THREE.MeshStandardMaterial, key: string, fade?: Fade) {
   m.onBeforeCompile = (sh) => {
+    moorAir(sh);
     sh.uniforms.rimColor = RIM.color; sh.uniforms.rimStrength = RIM.strength; sh.uniforms.wrapAmt = RIM.wrap;
     if (fade) {
       sh.uniforms.fadeAmt = fade;
@@ -37,6 +80,7 @@ function patch(m: THREE.MeshStandardMaterial, key: string, fade?: Fade) {
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (fadeAmt < 0.999 && fadeAmt < bayer4(gl_FragCoord.xy)) discard;');
     }
     sh.fragmentShader = sh.fragmentShader
+      .replace('#include <fog_fragment>', MOOR_FOG)
       .replace('#include <common>', '#include <common>\nuniform vec3 rimColor;\nuniform float rimStrength;\nuniform float wrapAmt;')
       .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
